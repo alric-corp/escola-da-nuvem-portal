@@ -84,7 +84,7 @@ Atividades pendentes com correspondência mostram **Abrir KC/LAB no Canvas**; at
 
 No CSV local de 14/09 da BRSAO267, todas as 166 atividades reconhecidas têm correspondência no catálogo; não há links pendentes nesse CSV. Os quatro links restantes do catálogo são LABs de Python que não aparecem nesse CSV; eles não geram atividades nem afetam médias. Agenda, materiais, fóruns e Skill Builder estão fora desta primeira integração com os cards de notas.
 
-No CSV local de 14/09 da BRSAO257, os 75 links do curso 4413 correspondem a todas as 75 atividades reconhecidas, incluindo os KCs de certificação 195–207. Os sete materiais complementares enviados junto com esses KCs estão preservados em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades ou alterar notas. A lista de pendências fica na raiz em [links-canvas-pendentes.md](../links-canvas-pendentes.md).
+No CSV local de 14/09 da BRSAO257, os 75 links do curso 4413 correspondem a todas as 75 atividades reconhecidas, incluindo os KCs de certificação 195–207. Os sete materiais complementares enviados junto com esses KCs estão preservados em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades ou alterar notas. A lista de pendências fica em [docs/links-canvas-pendentes.md](../docs/links-canvas-pendentes.md).
 
 Validação específica, sem acesso à AWS ou ao Canvas:
 

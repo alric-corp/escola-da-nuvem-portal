@@ -6,7 +6,7 @@ Comparação dos catálogos fornecidos, incluindo os KCs de certificação do cu
 
 Nenhuma atividade sem link: as 75 atividades do CSV têm correspondência no catálogo. Os 13 KCs de certificação 195–207 foram associados aos endereços fornecidos para o curso 4413.
 
-Os sete materiais complementares enviados junto com esses KCs estão registrados em [Materiais complementares](frontend/canvas-materiais-complementares.md).
+Os sete materiais complementares enviados junto com esses KCs estão registrados em [Materiais complementares](../frontend/canvas-materiais-complementares.md).
 
 ## BRSA0267 — AWS re/Start 1 — curso 4436
 
