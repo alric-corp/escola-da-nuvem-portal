@@ -61,6 +61,20 @@ class GradesTests(unittest.TestCase):
         self.assertEqual((by_id["001 KC (123)"]["completed"], by_id["001 KC (123)"]["pending"]), (0, 1))
         self.assertIsNone(by_id["001 KC (123)"]["average"])
 
+    def test_grade_changes_compare_numbers_not_text(self):
+        from changes import same_grade, snapshot_changes
+        self.assertTrue(same_grade("7.00", "7"))
+        self.assertTrue(same_grade("100", "100.0"))
+        self.assertFalse(same_grade("7", "8"))
+        self.assertFalse(same_grade(None, "0"))
+        self.assertFalse(same_grade("EX", "0"))
+        self.assertTrue(same_grade("EX", "EX"))
+        before = parse_csv(canvas_csv(kc="7.00", lab="50,00"), ["001 KC (123)", "002 Lab (456)"])
+        same = parse_csv(canvas_csv(kc="7", lab="50"), ["001 KC (123)", "002 Lab (456)"])
+        other = parse_csv(canvas_csv(kc="8", lab="50"), ["001 KC (123)", "002 Lab (456)"])
+        self.assertEqual(snapshot_changes(before, same)["gradesChanged"], 0)
+        self.assertEqual(snapshot_changes(before, other)["gradesChanged"], 1)
+
     def test_blank_lines_and_bom_are_ignored(self):
         self.assertEqual(len(parse_csv("\ufeff" + canvas_csv() + "\n\n")["students"]), 1)
 

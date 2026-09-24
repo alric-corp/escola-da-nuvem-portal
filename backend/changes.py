@@ -1,5 +1,14 @@
 """Comparações de publicações; relatórios pessoais recebem só o próprio aluno."""
+from decimal import Decimal
+
 from grades import summary
+
+
+def same_grade(a, b):
+    """Compara notas como número: o CSV exportado traz "7.00" e a API do Canvas, "7"."""
+    if a in (None, "EX") or b in (None, "EX"):
+        return a == b
+    return Decimal(a) == Decimal(b)
 
 
 def snapshot_changes(before, after):
@@ -15,7 +24,7 @@ def snapshot_changes(before, after):
     for sid in sorted(old.keys() & new.keys()):
         for aid in sorted(old_a.keys() & new_a.keys()):
             previous, current = old[sid]["grades"].get(aid), new[sid]["grades"].get(aid)
-            if previous != current:
+            if not same_grade(previous, current):
                 grade_count += 1
                 if len(grades) < 100:
                     grades.append({"student": new[sid]["name"], "activity": new_a[aid]["name"],

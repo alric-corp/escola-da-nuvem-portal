@@ -19,14 +19,14 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
 | Item que o `parse_csv` usa | Curso 4436 (BRSAO267) | Curso 4413 (BRSAO257) |
 | --- | --- | --- |
 | Atividades KC/LAB (`nome (id)` igual ao cabeçalho do CSV) | 163 de 163 | 74 de 74 |
-| Alunos (o CSV tem +1, o aluno de teste, que a API não lista) | 59 de 59 | 56 de 56 |
+| Alunos (o CSV da BRSA0267 tem +1: uma conta de teste com e-mail gmail, que o filtro de aluno de teste do `parse_csv` não pega e que não está mais matriculada no Canvas) | 59 de 59 | 56 de 56 |
 | E-mail (`login_id` = "SIS Login ID") | 59 de 59 | 56 de 56 (o mesmo aluno sem e-mail nos dois) |
 | Pontuação máxima (`points_possible`) | todas | todas |
 | "Graduated Final Points" | atividade "Graduated" (1 ponto), grupo "Graduated" | idem |
 | Notas iguais (pares com nota nos dois; o resto mudou desde 14/09) | 1054 de 1056 | 1805 de 1834 |
 
 - **Endpoints**: `/courses/{id}/assignments`, `/courses/{id}/users?enrollment_type[]=student&include[]=email`, `/courses/{id}/students/submissions?student_ids[]=all&workflow_state=graded`.
-- **Filtro `workflow_state=graded`**: seguro. As notas do CSV que ficaram de fora eram todas do aluno de teste; nenhuma submissão tem nota fora do estado "graded" (as "submitted" estão sem nota). Não havia nenhuma atividade dispensada (`excused`) nas duas turmas, então o mapeamento para "EX" **não foi verificado com dado real**.
+- **Filtro `workflow_state=graded`**: seguro. As notas do CSV que ficaram de fora eram todas de uma única conta de teste (ver linha de alunos acima); nenhuma submissão tem nota fora do estado "graded" (as "submitted" estão sem nota). Não havia nenhuma atividade dispensada (`excused`) nas duas turmas, então o mapeamento para "EX" **não foi verificado com dado real**.
 - **Tempo**: sem filtro, 4436 levou 112 chamadas e 88 s (10.800 submissões, 88% "não entregue"). Com o filtro, as notas saem em 15 chamadas e 10 s (4436) ou 15 s (4413). O endpoint usa paginação por marcador (sem `rel="last"`), então paralelizar por página não funciona; o caminho é dividir os alunos em grupos (`student_ids[]=...`) em paralelo, ou rodar a busca de forma assíncrona. O limite do API Gateway é 29 s.
 
 ## Decisões do titular (2026-09-24)
@@ -55,3 +55,11 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
 ## Limitação conhecida
 - Token pessoal expira em 22/12/2026; quando isso acontecer, a atualização falha (alarme) e as notas param na última publicação até o segredo ser atualizado.
 - Turmas de cursos novos continuam sem links e módulos até a parte 2 da [12](12-configuracao-da-turma-no-backend.md).
+
+## Verificação antes de ligar (2026-09-24)
+- Token novo gravado no segredo (`{"token": ...}`), funcionando; o token colado na conversa foi revogado (Canvas responde 401).
+- O acesso do token não é limitado por seção (uma seção por curso, com 59 e 56 alunos): enxerga a turma inteira.
+- **Correção de bug encontrada na simulação**: a comparação entre publicações tratava "100.00" (CSV exportado) e "100" (API) como notas diferentes, inflando a contagem de "notas alteradas" (1336 em vez de 304 na BRSA0267) e anulando a proteção de "nada mudou" ao alternar CSV e API. `changes.snapshot_changes` agora compara notas como número (`same_grade`), com testes.
+- Simulação sem gravar nada do que a primeira publicação automática faria (contra as publicações de 17/09 e 21/09):
+  - BRSA0267: 304 notas alteradas, 13 atividades novas liberadas, sai 1 conta (a conta de teste citada acima; ela tem conta vinculada no portal).
+  - BRSA0257: 110 notas alteradas, 4 atividades novas liberadas, ninguém entra ou sai.

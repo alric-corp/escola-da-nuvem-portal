@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 import unittest
@@ -122,6 +123,22 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(changed["status"], "published")
         self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "PUB#")), 2)
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "SYNC")["status"], "published")
+
+    def test_manual_csv_then_same_grades_from_canvas_is_unchanged(self):
+        text, count = self.csv(lab_scores=(100, 90, 50))
+        rows = list(csv.reader(io.StringIO(text)))
+        grade_cols = [i for i, h in enumerate(rows[0]) if "(" in h]
+        for row in rows[2:]:  # formato do CSV exportado pelo Canvas: "7.00", "100.00"
+            for i in grade_cols:
+                row[i] = f"{float(row[i]):.2f}" if row[i] not in ("", "EX") else row[i]
+        out = io.StringIO()
+        csv.writer(out).writerows(rows)
+        csv_like_export = out.getvalue()
+        self.assertIn("7.00", csv_like_export)
+        admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        draft = admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": csv_like_export})["draft"]
+        admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"]})
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", text, count)["status"], "unchanged")
 
     def test_empty_or_shrunken_roster_is_not_published(self):
         sync_from_canvas(self.repo, "BRSA0267", *self.csv(students=5, kc_scores=(7,) * 5, lab_scores=(100,) * 5))
