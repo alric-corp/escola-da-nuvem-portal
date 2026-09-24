@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: Backend (Python + Moto)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Testes do backend
+        run: python -m unittest discover -s backend
+      - name: Testes de integração (Moto, sem AWS real)
+        run: python -m unittest discover -s tests/integration
+
+  node:
+    name: Frontend (Node + Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - name: Testes de unidade (sem navegador)
+        run: npm test
+      - name: Instala o Chromium do Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Constrói o frontend e roda os testes de navegador
+        run: npm run test:browser
+
+  terraform:
+    name: Terraform (fmt, validate, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
+      - name: Testes (mock_provider, sem AWS real)
+        run: terraform test
