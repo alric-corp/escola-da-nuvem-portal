@@ -287,7 +287,17 @@ class Portal:
 
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
-        snapshot = parse_csv(body.get("csv"), body.get("activeIds"))
+        active_ids = body.get("activeIds")
+        snapshot = parse_csv(body.get("csv"), active_ids)
+        before = self.snapshot(self.publication(code, cohort["current"])) if cohort.get("current") else None
+        if active_ids is None and before:
+            # Sem seleção explícita (primeira prévia da semana): mantém liberadas as
+            # atividades já ativas na publicação atual, além da sugestão automática.
+            # Evita que uma atividade caia do cálculo só por ter poucas notas ainda.
+            previously_active = {a["id"] for a in before["activities"] if a["active"]}
+            for activity in snapshot["activities"]:
+                if activity["id"] in previously_active:
+                    activity["active"] = True
         draft_id = uuid.uuid4().hex
         key = f"cohorts/{code}/{draft_id}"
         self.repo.snapshot(key + "/source.csv", body["csv"], raw=True)
@@ -296,7 +306,6 @@ class Portal:
                  "base": cohort.get("current"), "snapshot": key + "/snapshot.json", "status": "draft",
                  "filename": str(body.get("filename", "notas.csv"))[:150]}
         self.repo.put(pk, "DRAFT#" + draft_id, draft, absent=True)
-        before = self.snapshot(self.publication(code, cohort["current"])) if cohort.get("current") else None
         return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot)),
                 "changes": snapshot_changes(before, snapshot)}
 

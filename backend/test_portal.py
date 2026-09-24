@@ -1,4 +1,6 @@
 import copy
+import csv
+import io
 import json
 import unittest
 from unittest.mock import patch
@@ -7,6 +9,28 @@ from grades import parse_csv
 from portal import APIError, Portal, authenticate, handler, class_report
 from repository import Conflict
 from test_grades import canvas_csv
+
+
+def sparse_lab_csv(lab_filled, students=6, extra_activity=False):
+    """Turma com um Lab pouco preenchido, para testar a sugestão de atividades liberadas."""
+    headers = ["Student", "ID", "SIS Login ID", "001 KC (1)", "002 Lab (2)"]
+    points = ["Points Possible", "", "", "10", "100"]
+    if extra_activity:
+        headers.append("003 Lab (3)")
+        points.append("100")
+    headers.append("Graduated Final Points")
+    points.append("1")
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(headers)
+    writer.writerow(points)
+    for i in range(students):
+        row = [f"Aluno {i}, Turma", str(200 + i), f"aluno{i}@example.test", "8", str(50) if i < lab_filled else ""]
+        if extra_activity:
+            row.append("60" if i < lab_filled else "")
+        row.append("0")
+        writer.writerow(row)
+    return out.getvalue()
 
 
 class MemoryRepository:
@@ -195,6 +219,39 @@ class PortalTests(unittest.TestCase):
         draft = self.call(self.admin, "preview", {"csv": canvas_csv(), "activeIds": []})["draft"]
         with self.assertRaises(APIError):
             self.call(self.admin, "publish", {"draftId": draft["id"]})
+
+    def test_preview_keeps_previously_active_activity_below_heuristic(self):
+        # Turma com 6 alunos: o Lab só tem 2 notas preenchidas na primeira semana
+        # (abaixo do limite automático de 5), mas o instrutor libera manualmente.
+        first_draft = self.call(self.admin, "preview", {
+            "csv": sparse_lab_csv(lab_filled=2),
+            "activeIds": ["001 KC (1)", "002 Lab (2)"],
+        })["draft"]
+        self.call(self.admin, "publish", {"draftId": first_draft["id"]})
+        # Semana seguinte: o Lab segue com poucas notas (3), abaixo do limite
+        # automático. Sem seleção explícita, a prévia deve mantê-lo liberado.
+        second = self.call(self.admin, "preview", {"csv": sparse_lab_csv(lab_filled=3)})
+        lab = next(a for a in second["activities"] if a["id"] == "002 Lab (2)")
+        self.assertTrue(lab["active"])
+        self.assertEqual(second["changes"]["activitiesPaused"], [])
+        # Uma atividade nova, ainda pouco preenchida, continua seguindo a
+        # sugestão automática (não vem liberada por padrão).
+        with_new_activity = self.call(self.admin, "preview", {"csv": sparse_lab_csv(lab_filled=3, extra_activity=True)})
+        extra = next(a for a in with_new_activity["activities"] if a["id"] == "003 Lab (3)")
+        self.assertFalse(extra["active"])
+
+    def test_preview_still_honors_explicit_selection(self):
+        first_draft = self.call(self.admin, "preview", {
+            "csv": sparse_lab_csv(lab_filled=2),
+            "activeIds": ["001 KC (1)", "002 Lab (2)"],
+        })["draft"]
+        self.call(self.admin, "publish", {"draftId": first_draft["id"]})
+        # Se o instrutor desmarcar explicitamente, a escolha dele prevalece.
+        updated = self.call(self.admin, "preview", {
+            "csv": sparse_lab_csv(lab_filled=3), "activeIds": ["001 KC (1)"],
+        })
+        lab = next(a for a in updated["activities"] if a["id"] == "002 Lab (2)")
+        self.assertFalse(lab["active"])
 
     def test_class_report_includes_names_but_no_private_fields(self):
         publication = self.publish(canvas_csv(extra=["Outro Aluno", "202", "other@example.test", "8", "100", "0"]))

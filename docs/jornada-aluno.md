@@ -1,0 +1,58 @@
+# Jornada do aluno
+
+## 1. Primeiro acesso
+
+1. O aluno abre o portal e vê a página de entrada (`frontend/pages/landing.js`), que orienta a criar a conta **com o mesmo e-mail do Canvas**.
+2. **Entrar no meu portal** redireciona para o Cognito Managed Login (pt-BR), onde o aluno cria a conta e confirma o código recebido por e-mail.
+3. De volta ao portal, `callback()` (`frontend/auth.js`) troca o código por tokens e `boot()` (`frontend/app.js`) chama:
+   - `GET /me`, que devolve o papel `student` quando não há vínculo de instrutor;
+   - `GET /cohorts`, que percorre as turmas e, em cada uma com publicação, procura o aluno no snapshot atual: primeiro pelo vínculo `STUDY#` e, sem vínculo, pelo e-mail.
+4. **Se nenhuma turma for encontrada**, a tela "Primeiro acesso" pede para conferir o e-mail, oferece **Verificar novamente** e **Entrar com outra conta**, e orienta a procurar o instrutor.
+
+## 2. Vínculo da matrícula
+
+Na primeira chamada a `GET /cohorts/{code}/report`, `Portal.student(bind=True)` grava numa única transação:
+
+- `COHORT#<code> / OWNER#<canvasId>` → `{userId}`
+- `USER#<sub> / STUDY#<code>` → `{canvasId}`
+
+A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se outra conta tentar usar o mesmo e-mail, `OWNER#` bloqueia. Um vínculo errado só pode ser corrigido direto no DynamoDB (veja [todo/11](../todo/11-admin-vinculos-e-nomes.md)).
+
+## 3. Meu desempenho (`frontend/pages/student.js` → `studentPage`)
+
+| Bloco | Origem |
+| --- | --- |
+| Data da última atualização e **Consultar atualização** | `updatedAt` da turma. Diferencia publicação de restauração. |
+| **Seu resumo**: com nota, sem nota, para revisar e o anel de progresso | `summary()` (backend) e `needsReview()` (frontend) |
+| **Por onde começar** / **Foco indicado pelo instrutor** | `nextActivities()` em `frontend/student-journey.js`. Com foco definido, mostra as atividades de foco que ainda estão pendentes ou em revisão. Sem foco, mostra até 3: primeiro as sem nota, depois as de revisão, na ordem da publicação. |
+| Situação (selo) e **Como interpretar minhas notas?** | `status`: `ok`, `attention`, `critical`, `graduated` ou `insufficient` |
+| Métricas: média KC, média LAB, com nota, sem nota | `summary()` |
+| **O que mudou nas suas notas** | `history[current].changes` (`student_changes`) |
+| **Seu aprendizado evolui** | Média total das últimas 8 publicações |
+
+## 4. Minhas atividades (`activitiesPage`)
+
+- As atividades são agrupadas por **módulo** (`groupActivities`). O módulo vem do catálogo Canvas da turma (`frontend/canvas-links.js`). Em turmas sem catálogo, todas caem em "Outras atividades".
+- Filtros combináveis:
+  - situação: todas, sem nota, revisar, com nota, não liberadas, dispensadas;
+  - tipo: KC ou LAB;
+  - módulo;
+  - busca por texto, que ignora acentos.
+- Os botões de atalho de "Meu desempenho" abrem esta tela já filtrada.
+- Os links "Abrir no Canvas" existem, mas estão **desligados** (`canvasLinksEnabled = false` em `frontend/ui.js`).
+
+## 5. Meu histórico (`historyPage`)
+
+O histórico mostra as últimas 12 publicações, sempre incluindo a atual. Para cada uma: médias de KC e LAB, diferença em pontos percentuais em relação à versão base, variação no número de pendências e a lista de atividades que mudaram.
+
+## 6. Sessão
+
+- O access token é renovado automaticamente com o refresh token.
+- A turma, a tela e os filtros ficam em `sessionStorage`, associados ao e-mail da conta.
+- Se a sessão expira, o aluno volta para a página de entrada com o aviso "Sua sessão expirou".
+
+## O que o aluno **não** tem hoje
+
+- Aviso de que há notas novas: ele precisa entrar no portal para descobrir.
+- Link direto para a atividade no Canvas (recurso pausado).
+- Correção do próprio vínculo ou do nome de exibição.

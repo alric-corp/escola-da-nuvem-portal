@@ -1,6 +1,8 @@
 # 📊 Desempenho Acadêmico — AWS re/Start
 
 > **Novo portal Escola da Nuvem:** o código está em [`frontend/`](frontend/README.md) e `backend/`, com identidade técnica escura, login Cognito, painéis por perfil, importação/publicação semanal, histórico e gestão de turmas. Veja o [guia de execução](frontend/README.md) e o [Terraform para implantação manual](infra/README.md). A documentação abaixo descreve a ferramenta local original, preservada como referência.
+>
+> **Fluxos do portal:** [`docs/`](docs/README.md) · **Melhorias planejadas:** [`todo/`](todo/README.md)
 
 **Versão atual:** v1.1.1  
 **Última atualização:** 19/05/2026
