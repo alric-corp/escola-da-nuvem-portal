@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
+const previewDir = path.join(os.tmpdir(), "avanca-preview");
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   const file = path.resolve(root, "." + (pathname === "/" ? "/index.html" : pathname));
@@ -161,11 +163,11 @@ try {
   await page.getByText("E-mail devolvido. Confira o endereço do aluno com a coordenação.", { exact: true }).waitFor();
   if (await page.getByRole("button", { name: "Fechar aviso" }).count())
     await page.getByRole("button", { name: "Fechar aviso" }).click();
-  await mkdir("/private/tmp/avanca-preview", { recursive: true });
+  await mkdir(`${previewDir}`, { recursive: true });
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Sem transbordamento em ${width}px`);
-    await page.screenshot({ path: `/private/tmp/avanca-preview/journey-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${previewDir}/journey-${width}.png`, fullPage: true });
   }
   assert.deepEqual(errors, []);
   console.log("Jornada: erros, datas, cálculo, histórico, sessão, filtros, prévia preservada, publicação e lembretes OK.");

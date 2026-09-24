@@ -2,11 +2,13 @@
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
+const previewDir = path.join(os.tmpdir(), "avanca-preview");
 const server = createServer(async (req, res) => {
   const filename = new URL(req.url, "http://localhost").pathname;
   const file = path.resolve(
@@ -43,11 +45,11 @@ try {
   });
   const errors = [];
   page.on("pageerror", (err) => errors.push(err.message));
-  await mkdir("/private/tmp/avanca-preview", { recursive: true });
+  await mkdir(`${previewDir}`, { recursive: true });
   await page.goto(origin);
   await page.getByRole("button", { name: "Entrar no meu portal" }).waitFor();
   await page.screenshot({
-    path: "/private/tmp/avanca-preview/login.png",
+    path: `${previewDir}/login.png`,
     fullPage: true,
   });
   assert.equal(
@@ -106,7 +108,7 @@ try {
     );
     if (width === 1512 && height === 850)
       await macPage.screenshot({
-        path: "/private/tmp/avanca-preview/login-macbook.png",
+        path: `${previewDir}/login-macbook.png`,
         fullPage: true,
       });
   }
@@ -142,7 +144,7 @@ try {
     .getByRole("button", { name: "Meu desempenho", exact: true })
     .click();
   await page.screenshot({
-    path: "/private/tmp/avanca-preview/aluno.png",
+    path: `${previewDir}/aluno.png`,
     fullPage: true,
   });
   await page
@@ -171,7 +173,7 @@ try {
   );
 
   await page.screenshot({
-    path: "/private/tmp/avanca-preview/instrutor.png",
+    path: `${previewDir}/instrutor.png`,
     fullPage: true,
   });
   // Desktop legibility must grow with the viewport, without page overflow.
@@ -198,7 +200,7 @@ try {
     assert.equal(sizes.overflow, false, `No page overflow at ${width}px`);
     previousTableSize = sizes.table;
     await page.screenshot({
-      path: `/private/tmp/avanca-preview/instrutor-${width}.png`,
+      path: `${previewDir}/instrutor-${width}.png`,
       fullPage: true,
     });
   }
@@ -236,7 +238,7 @@ try {
     true,
   );
   await page.screenshot({
-    path: "/private/tmp/avanca-preview/mobile.png",
+    path: `${previewDir}/mobile.png`,
     fullPage: true,
   });
   assert.deepEqual(errors, []);
@@ -454,7 +456,7 @@ try {
     ),
   );
   await adminPage.screenshot({
-    path: "/private/tmp/avanca-preview/pendencias-sem-email.png",
+    path: `${previewDir}/pendencias-sem-email.png`,
     fullPage: true,
   });
   await adminPage
@@ -492,7 +494,7 @@ try {
     "Turmas e acessos",
   );
   await adminPage.screenshot({
-    path: "/private/tmp/avanca-preview/acessos.png",
+    path: `${previewDir}/acessos.png`,
     fullPage: true,
   });
   await adminPage
@@ -520,7 +522,7 @@ try {
     "admin@example.test",
   );
   await adminPage.screenshot({
-    path: "/private/tmp/avanca-preview/publica-logado.png",
+    path: `${previewDir}/publica-logado.png`,
     fullPage: true,
   });
   await adminPage

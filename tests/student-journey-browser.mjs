@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
+const previewDir = path.join(os.tmpdir(), "avanca-preview");
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   const file = path.resolve(root, "." + (pathname === "/" ? "/index.html" : pathname));
@@ -94,7 +96,7 @@ try {
     await page.setViewportSize({width,height:1000});
     await page.getByRole("button",{name:"Meu desempenho",exact:true}).click();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.screenshot({path:`/private/tmp/avanca-preview/student-next-${width}.png`,fullPage:true});
+    await page.screenshot({path:`${previewDir}/student-next-${width}.png`,fullPage:true});
     await page.getByRole("button",{name:"Minhas atividades",exact:true}).click();
     const summary=page.locator(".activity-module summary").first();
     await summary.focus();
@@ -103,21 +105,23 @@ try {
     await page.keyboard.press("Enter");
     assert.notEqual(await page.locator(".activity-module").first().getAttribute("open"),null);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
-    await page.screenshot({path:`/private/tmp/avanca-preview/student-modules-${width}.png`,fullPage:true});
+    await page.screenshot({path:`${previewDir}/student-modules-${width}.png`,fullPage:true});
   }
   role="instructor";
   await page.reload();
   await page.getByRole("button",{name:"Painel do instrutor",exact:true}).click();
-  await page.locator(".focus-editor summary").click();
-  await page.locator("#focus-0").selectOption("cert");
-  await page.locator("#focus-1").selectOption("cert");
-  await page.getByRole("button",{name:"Salvar foco da turma",exact:true}).click();
-  await page.getByText("Escolha atividades diferentes para o foco da turma.",{exact:true}).waitFor();
-  assert.equal(saved,0);
-  await page.locator("#focus-1").selectOption("zero");
-  await page.locator("#focus-2").selectOption("ok");
-  assert.equal(await page.locator('#focus-0 option[value="future"]').count(),0);
+  await page.getByRole("button",{name:"Ver por atividade",exact:true}).click();
+  await page.getByRole("heading",{name:"Visão por atividade",exact:true}).waitFor();
+  assert.equal(await page.locator("tbody tr").count(),9); // "future" não liberada fica de fora
+  await page.locator('[data-add-focus="cert"]').click();
+  await page.locator('[data-add-focus="zero"]').click();
+  await page.locator('[data-add-focus="ok"]').click();
+  assert.equal(await page.locator('[data-add-focus]').count(),6); // 3 viraram "No foco"
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+  await page.getByRole("button",{name:"Voltar ao painel",exact:true}).click();
+  await page.getByRole("heading",{name:"Painel da BRSA0267",exact:true}).waitFor();
+  await page.locator(".focus-editor summary").click();
+  assert.equal(await page.locator(".focus-list li").count(),3);
   await page.getByRole("button",{name:"Salvar foco da turma",exact:true}).click();
   await page.getByText("Foco da BRSA0267 atualizado.",{exact:true}).waitFor();
   assert.equal(saved,1);

@@ -3,11 +3,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { readFile, mkdir } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
+const previewDir = path.join(os.tmpdir(), "avanca-preview");
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   const file = path.resolve(root, "." + (pathname === "/" ? "/index.html" : pathname));
@@ -79,7 +81,7 @@ try {
   assert.equal(await page.getByRole("link", { name: /Ver atividade no Canvas/ }).count(), 1);
   assert.equal(await page.locator(".activity-card img").count(), 0);
   assert.equal(await page.evaluate(() => window.injected), undefined);
-  await mkdir("/private/tmp/avanca-preview", { recursive: true });
+  await mkdir(`${previewDir}`, { recursive: true });
   for (const width of [1440, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Sem transbordamento em ${width}px`);
@@ -89,7 +91,7 @@ try {
       return { height: rect.height, right: rect.right, cardRight: card.right };
     }));
     assert.ok(boxes.every((b) => b.height >= 44 && b.right <= b.cardRight), `Links legíveis em ${width}px`);
-    await page.screenshot({ path: `/private/tmp/avanca-preview/canvas-links-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${previewDir}/canvas-links-${width}.png`, fullPage: true });
   }
   await page.locator("#cohort").selectOption("BRSA0257");
   await kcLink.waitFor();
