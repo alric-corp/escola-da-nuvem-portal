@@ -28,7 +28,7 @@ provider "aws" {
 data "aws_partition" "current" {}
 
 locals {
-  name       = "${var.project_name}-${var.environment}"
-  suffix     = "${local.name}-${var.aws_account_id}-${var.aws_region}"
-  portal_url = "https://${aws_cloudfront_distribution.portal.domain_name}"
+  name   = "${var.project_name}-${var.environment}"
+  suffix = "${local.name}-${var.aws_account_id}-${var.aws_region}"
+  # portal_url e allowed_origins: ver domain.tf.
 }

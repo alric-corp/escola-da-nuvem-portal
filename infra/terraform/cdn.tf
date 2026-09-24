@@ -32,6 +32,7 @@ resource "aws_cloudfront_distribution" "portal" {
   default_root_object = "index.html"
   comment             = local.name
   price_class         = "PriceClass_All"
+  aliases             = var.portal_domain_ready ? [var.portal_domain] : []
   origin {
     domain_name              = aws_s3_bucket.portal.bucket_regional_domain_name
     origin_id                = "portal-s3"
@@ -60,7 +61,10 @@ resource "aws_cloudfront_distribution" "portal" {
     }
   }
   viewer_certificate {
-    cloudfront_default_certificate = true
+    cloudfront_default_certificate = !var.portal_domain_ready
+    acm_certificate_arn            = var.portal_domain_ready ? aws_acm_certificate.portal.arn : null
+    ssl_support_method             = var.portal_domain_ready ? "sni-only" : null
+    minimum_protocol_version       = var.portal_domain_ready ? "TLSv1.2_2021" : null
   }
 }
 

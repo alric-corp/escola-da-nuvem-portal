@@ -52,6 +52,22 @@ output "escoladanuvem_mail_from_dns" {
   }
 }
 
+output "portal_domain_dns_records" {
+  description = "Registros a publicar no DNS de escoladanuvem.org (fora do controle do titular; pedir a quem administra o DNS institucional) para ativar o domínio próprio do portal. O primeiro valida o certificado ACM; o segundo aponta o domínio para o CloudFront. Depois de publicados os dois e o certificado mostrar status ISSUED, mude portal_domain_ready para true em terraform.tfvars."
+  value = {
+    acm_validation = {
+      type  = "CNAME"
+      name  = tolist(aws_acm_certificate.portal.domain_validation_options)[0].resource_record_name
+      value = tolist(aws_acm_certificate.portal.domain_validation_options)[0].resource_record_value
+    }
+    portal_alias = {
+      type  = "CNAME"
+      name  = var.portal_domain
+      value = aws_cloudfront_distribution.portal.domain_name
+    }
+  }
+}
+
 output "frontend_config" {
   description = "Configuração pública do frontend. Não contém credenciais nem dados de alunos."
   value = {

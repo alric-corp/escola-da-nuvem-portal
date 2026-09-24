@@ -59,7 +59,7 @@ resource "aws_apigatewayv2_api" "portal" {
   name          = local.name
   protocol_type = "HTTP"
   cors_configuration {
-    allow_origins = [local.portal_url]
+    allow_origins = local.allowed_origins
     allow_methods = ["GET", "POST", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 300
@@ -102,7 +102,10 @@ resource "aws_apigatewayv2_route" "portal" {
     "POST /cohorts/{code}/instructors", "GET /cohorts/{code}/instructors",
     "POST /cohorts/{code}/revoke-instructor",
     "POST /cohorts/{code}/pending-preview", "POST /cohorts/{code}/send-reminder",
-    "GET /cohorts/{code}/reminder-settings", "POST /cohorts/{code}/verify-sender"
+    "POST /cohorts/{code}/pending-preview-batch", "POST /cohorts/{code}/send-reminders",
+    "GET /cohorts/{code}/reminder-settings", "POST /cohorts/{code}/verify-sender",
+    "POST /cohorts/{code}/students-search", "POST /cohorts/{code}/unlink-student",
+    "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject"
   ])
   api_id               = aws_apigatewayv2_api.portal.id
   route_key            = each.value
@@ -143,8 +146,12 @@ resource "aws_apigatewayv2_stage" "portal" {
   name        = "$default"
   auto_deploy = true
   default_route_settings {
-    throttling_burst_limit = 20
-    throttling_rate_limit  = 10
+    # Cada entrada faz pelo menos 3 chamadas (/me, /cohorts, /report); o limite anterior
+    # (10 req/s, burst 20) deixava pouca margem para uma turma inteira abrindo o portal ao
+    # mesmo tempo. Sem 429 registrado no CloudWatch até aqui (uso baixo); ajustado de forma
+    # preventiva, mantendo proteção contra abuso. Ver todo/07.
+    throttling_burst_limit = 100
+    throttling_rate_limit  = 50
   }
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.access.arn

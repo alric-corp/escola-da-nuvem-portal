@@ -31,6 +31,12 @@ resource "aws_cognito_user_pool" "portal" {
   user_attribute_update_settings {
     attributes_require_verification_before_update = ["email"]
   }
+  lambda_config {
+    pre_token_generation_config {
+      lambda_arn     = aws_lambda_function.auth_trigger.arn
+      lambda_version = "V2_0"
+    }
+  }
   verification_message_template {
     default_email_option = "CONFIRM_WITH_CODE"
     email_subject        = "Seu código de verificação | Escola da Nuvem"
@@ -85,8 +91,8 @@ resource "aws_cognito_user_pool_client" "portal" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile", "${aws_cognito_resource_server.portal.identifier}/access"]
-  callback_urls                        = ["${local.portal_url}/"]
-  logout_urls                          = ["${local.portal_url}/"]
+  callback_urls                        = [for o in local.allowed_origins : "${o}/"]
+  logout_urls                          = [for o in local.allowed_origins : "${o}/"]
   explicit_auth_flows                  = ["ALLOW_USER_SRP_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
   prevent_user_existence_errors        = "ENABLED"
   enable_token_revocation              = true

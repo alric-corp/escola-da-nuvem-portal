@@ -25,6 +25,16 @@ run "private_storage_and_authenticated_api" {
     override_during = plan
     values          = { arn = "arn:aws:ses:us-east-1:123456789012:configuration-set/test-reminders" }
   }
+  override_resource {
+    target          = aws_lambda_function.auth_trigger
+    override_during = plan
+    values          = { arn = "arn:aws:lambda:us-east-1:123456789012:function:auth-trigger" }
+  }
+  override_resource {
+    target          = aws_cognito_user_pool.portal
+    override_during = plan
+    values          = { id = "us-east-1_test", arn = "arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_test" }
+  }
 
   assert {
     condition = alltrue([
@@ -97,5 +107,20 @@ run "private_storage_and_authenticated_api" {
   assert {
     condition     = aws_cognito_user_pool.portal.user_attribute_update_settings[0].attributes_require_verification_before_update == toset(["email"])
     error_message = "Mudanças de e-mail devem exigir verificação."
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.portal.lambda_config[0].pre_token_generation_config[0].lambda_arn == aws_lambda_function.auth_trigger.arn && aws_cognito_user_pool.portal.lambda_config[0].pre_token_generation_config[0].lambda_version == "V2_0"
+    error_message = "O access token deve ganhar email/email_verified pelo gatilho pre token generation (evento V2), para o backend não depender de /oauth2/userInfo a cada requisição."
+  }
+
+  assert {
+    condition     = aws_lambda_function.auth_trigger.handler == "auth_trigger.handler"
+    error_message = "O gatilho deve apontar para backend/auth_trigger.py."
+  }
+
+  assert {
+    condition     = aws_lambda_permission.auth_trigger.principal == "cognito-idp.amazonaws.com" && aws_lambda_permission.auth_trigger.source_arn == aws_cognito_user_pool.portal.arn
+    error_message = "Só o user pool do portal pode invocar o gatilho de pré-geração de token."
   }
 }
