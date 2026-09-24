@@ -62,7 +62,7 @@ try {
   await page.goto(origin);
   await page.getByRole("heading",{name:"Por onde começar",exact:true}).waitFor();
   assert.equal(await page.locator(".next-steps .activity-card").count(),3);
-  assert.equal(await page.locator(".activity-link").count(),0);
+  assert.equal(await page.locator(".activity-link").count(),3); // linux, network e python têm correspondência no catálogo 4436
   assert.ok(!(await page.locator(".next-steps").innerText()).includes("Certificação do Cenário"));
   await page.getByRole("button",{name:"Revisar resultados · 2",exact:true}).click();
   assert.equal(await page.locator(".activity-card").count(),2);

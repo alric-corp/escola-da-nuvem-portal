@@ -39,7 +39,7 @@ A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se 
   - módulo;
   - busca por texto, que ignora acentos.
 - Os botões de atalho de "Meu desempenho" abrem esta tela já filtrada.
-- Os links "Abrir no Canvas" existem, mas estão **desligados** (`canvasLinksEnabled = false` em `frontend/ui.js`).
+- Os links "Abrir no Canvas" estão **ativos** desde 24/09/2026 (`canvasLinksEnabled = true` em `frontend/ui.js`) nas turmas associadas em `cohortCanvasCourses` (BRSA0267 e BRSA0257). Ativado sem a validação com conta real de aluno recomendada anteriormente — ver [todo/02](../todo/02-ativar-links-canvas.md).
 
 ## 5. Meu histórico (`historyPage`)
 
@@ -54,5 +54,4 @@ O histórico mostra as últimas 12 publicações, sempre incluindo a atual. Para
 ## O que o aluno **não** tem hoje
 
 - Aviso de que há notas novas: ele precisa entrar no portal para descobrir.
-- Link direto para a atividade no Canvas (recurso pausado).
 - Correção do próprio vínculo ou do nome de exibição.

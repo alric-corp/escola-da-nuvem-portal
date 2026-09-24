@@ -82,7 +82,7 @@ try {
   failReport = false;
   await page.getByRole("button", { name: "Tentar novamente", exact: true }).click();
   await page.getByRole("heading", { name: "Por onde começar", exact: true }).waitFor();
-  assert.equal(await page.locator(".activity-link").count(), 0, "Links permanecem pausados");
+  assert.equal(await page.locator(".activity-link").count(), 1, "Link do Canvas aparece para a atividade com correspondência no catálogo");
   assert.match(await page.locator(".update-line").innerText(), /24\/09\/2026/);
   assert.match(await page.locator(".update-line").innerText(), /02\/09\/2026/);
   await page.getByText("Como interpretar minhas notas?", { exact: true }).click();

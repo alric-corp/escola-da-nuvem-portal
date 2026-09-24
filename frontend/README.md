@@ -64,7 +64,7 @@ Publique `frontend/dist` no bucket web e invalide o cache conforme o guia. O log
 
 Em **Meu desempenho**, o aluno vê até três próximos passos. O instrutor pode indicar até três atividades liberadas em **Foco da turma**, no painel do instrutor. Cada aluno vê apenas as indicações que estão sem nota ou abaixo da referência; atividades já na referência ou dispensadas não reaparecem como tarefa. Sem seleção do instrutor, o início mostra primeiro atividades sem nota, na ordem da publicação, depois sugestões de revisão. Os botões **Ver minhas pendências**, **Revisar resultados** e **Ver todas as atividades** abrem a lista completa com o filtro correspondente.
 
-**Minhas atividades** agrupa os itens por módulo, com seções expansíveis e contagens referentes ao filtro atual. Busca (sem distinção de acentos), tipo, situação e módulo podem ser combinados. A classificação usa título completo, tipo e curso confirmado no catálogo; itens desconhecidos ficam em **Outras atividades**. O módulo não depende da ativação dos links do Canvas, que permanece pausada.
+**Minhas atividades** agrupa os itens por módulo, com seções expansíveis e contagens referentes ao filtro atual. Busca (sem distinção de acentos), tipo, situação e módulo podem ser combinados. A classificação usa título completo, tipo e curso confirmado no catálogo; itens desconhecidos ficam em **Outras atividades**. O módulo não depende da ativação dos links do Canvas.
 
 **Revisar resultados** inclui somente atividades avaliadas com percentual abaixo de 70% em KCs ou 95% em LABs. Zero registrado entra em revisão, não em “Sem nota”. A API calcula `needsReview` antes do arredondamento; o frontend mantém compatibilidade com relatórios antigos. O destaque é uma sugestão de estudo, não uma exigência de reenvio nem confirmação de que o Canvas permite outra tentativa. Dispensadas e não liberadas ficam fora da revisão.
 
@@ -72,15 +72,15 @@ O foco é salvo por turma via `POST /cohorts/{code}/focus-activities`, somente p
 
 A lista reflete o último CSV publicado; as entregas continuam no Canvas. Detalhes individuais são retornados apenas no relatório autenticado do próprio aluno. Testes adicionais: `node --test tests/student-journey.mjs` e `node tests/student-journey-browser.mjs` (Playwright), além de `backend/test_journey.py`.
 
-### Links das atividades no Canvas — pausados
+### Links das atividades no Canvas
 
-**Pausado a pedido do titular:** `canvasLinksEnabled = false` em `app.js`; os botões não são exibidos. Os catálogos e seus testes foram preservados.
+**Ativado em 24/09/2026:** `canvasLinksEnabled = true` em `frontend/ui.js`. Os botões passam a ser exibidos nas duas turmas associadas. Ativado sem a validação com contas reais de aluno recomendada anteriormente; ver [todo/02](../todo/02-ativar-links-canvas.md) para o acompanhamento pós-ativação.
 
 `frontend/canvas-links.js` contém os catálogos fornecidos pelo instrutor: curso Canvas **4436**, com 170 links de KCs e LABs, e curso **4413**, com 75 links. Os endereços são de **itens de módulo**; não são montados com os IDs de tarefas encontrados nos cabeçalhos do CSV. A correspondência usa título completo e tipo, tolerando acentos, pontuação, espaços e o sufixo numérico do CSV. Números iniciais iguais não bastam para associar títulos diferentes.
 
 O catálogo só é usado nas turmas explicitamente associadas em `cohortCanvasCourses`. As associações confirmadas são **BRSA0267 → 4436 (AWS re/Start 1)** e **BRSA0257 → 4413 (AWS re/Start 2)**. AWS re/Start 1 é o nome usado pelos instrutores e pela coordenação da Escola da Nuvem para o programa que aborda Linux, Redes, Python e outros tópicos. O nome do programa não substitui o código da turma: novas turmas precisam de confirmação do próprio curso Canvas e de seu catálogo de itens. Usar o código exato do portal, sem substituir automaticamente a letra O pelo número zero. Essa configuração é feita no código nesta versão. Atividades ausentes em um catálogo nunca usam links do outro curso.
 
-Quando o recurso for retomado, atividades pendentes com correspondência mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem no painel pessoal, em Minhas atividades e nas pendências consultadas pelo instrutor. Atividades não liberadas, dispensadas ou sem correspondência ficam sem botão. A demonstração local não direciona dados fictícios para um curso real. O clique não altera notas, status, matrícula ou progresso e não substitui o login/permissões do Canvas.
+Atividades pendentes com correspondência mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem no painel pessoal, em Minhas atividades e nas pendências consultadas pelo instrutor. Atividades não liberadas, dispensadas ou sem correspondência ficam sem botão. A demonstração local não direciona dados fictícios para um curso real. O clique não altera notas, status, matrícula ou progresso e não substitui o login/permissões do Canvas.
 
 No CSV local de 14/09 da BRSAO267, todas as 166 atividades reconhecidas têm correspondência no catálogo; não há links pendentes nesse CSV. Os quatro links restantes do catálogo são LABs de Python que não aparecem nesse CSV; eles não geram atividades nem afetam médias. Agenda, materiais, fóruns e Skill Builder estão fora desta primeira integração com os cards de notas.
 

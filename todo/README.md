@@ -9,7 +9,7 @@ Legenda de status: ⬜ a fazer · 🟨 em andamento · ✅ concluída
 | # | Tarefa | Área | Esforço | Status |
 | --- | --- | --- | --- | --- |
 | 01 | [Lembrar as atividades liberadas entre importações](01-lembrar-atividades-liberadas.md) | Instrutor | P | ✅ |
-| 02 | [Validar e ativar os links para o Canvas](02-ativar-links-canvas.md) | Aluno | P | ⬜ |
+| 02 | [Validar e ativar os links para o Canvas](02-ativar-links-canvas.md) | Aluno | P | 🟨 (ativado sem validação real, ver arquivo) |
 | 03 | [Tom da situação e explicação da média para o aluno](03-tom-e-media-para-o-aluno.md) | Aluno | P | ⬜ |
 | 04 | [Remover a chamada ao /oauth2/userInfo em cada requisição](04-email-no-access-token.md) | Backend/Infra | M | ⬜ |
 
