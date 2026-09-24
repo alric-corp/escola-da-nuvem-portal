@@ -183,6 +183,31 @@ class AWSPersistenceTests(unittest.TestCase):
         item = db.get_item(TableName="portal-test", Key={"PK": {"S": "COHORT#BRSA0267"}, "SK": {"S": "DRAFT#" + draft["id"]}})["Item"]
         self.assertNotIn("expiresAt", item)
 
+    def test_canvas_sync_lambda_end_to_end(self):
+        from functools import partial
+        import canvas_sync
+        from canvas import CanvasClient
+        from test_canvas import BASE, FakeCanvas, course
+        sm = boto3.client("secretsmanager", region_name="us-east-1")
+        arn = sm.create_secret(Name="canvas-token", SecretString='{"token": "t"}')["ARN"]
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        fake = FakeCanvas({"4436": course(lab_scores=(100, 90, 50))})
+        env = {"CANVAS_SECRET_ARN": arn, "CANVAS_BASE_URL": BASE}
+        with patch.dict(os.environ, env), patch.object(canvas_sync, "CanvasClient", partial(CanvasClient, opener=fake)):
+            self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "published"}})
+            self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "unchanged"}})
+        self.assertEqual(fake.auth, {"Bearer t"})
+        cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+        self.assertEqual(cohort["updateKind"], "canvas")
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "SYNC")["status"], "unchanged")
+        student = Portal(Repository(), {"sub": "s0", "email": "aluno0@example.test", "groups": []})
+        self.assertEqual(student.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["kc"], 70)
+        # Como o Terraform cria: segredo sem nenhum valor gravado.
+        empty = sm.create_secret(Name="canvas-token-vazio")["ARN"]
+        with patch.dict(os.environ, {**env, "CANVAS_SECRET_ARN": empty}), self.assertRaises(RuntimeError) as err:
+            canvas_sync.handler({}, None)
+        self.assertIn("ainda não foi gravado", str(err.exception))
+
     def test_class_report_is_instructor_only_after_new_csv(self):
         draft = self.call("preview", {"csv": canvas_csv()})["draft"]
         self.call("publish", {"draftId": draft["id"]})

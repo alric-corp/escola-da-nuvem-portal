@@ -2311,3 +2311,8 @@ details ul, .onboarding ol { padding-left: 24px; }
 .evo-key.evo-kc::before { border-color: var(--primary); }
 .evo-key.evo-lab::before { border-color: var(--warning); }
 .evo-key.evo-ref-key::before { border-top: 2px dashed var(--text-secondary); }
+
+/* Atualização automática pelo Canvas (todo/17). */
+.stack-form .checkbox-line { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.stack-form .checkbox-line input { width: auto; margin: 0; }
+.update-line .sync-failed { color: var(--warning); font-weight: 600; }

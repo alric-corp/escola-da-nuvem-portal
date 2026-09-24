@@ -503,7 +503,10 @@ class Portal:
 
     def _set_cohort_settings(self, cohort, pk, body):
         require(self.admin)
-        require(set(body) == {"thresholds", "canvasCourseId"}, 400, "Solicitação inválida.")
+        require(set(body) == {"thresholds", "canvasCourseId", "autoSync"}, 400, "Solicitação inválida.")
+        require(isinstance(body["autoSync"], bool), 400, "Informe se a atualização automática fica ligada.")
+        require(not body["autoSync"] or body["canvasCourseId"], 400,
+                "Informe o ID do curso Canvas para ligar a atualização automática.")
         thresholds = body["thresholds"]
         require(isinstance(thresholds, dict) and set(thresholds) == {"kc", "lab"}
                 and all(isinstance(thresholds[k], (int, float)) and 1 <= thresholds[k] <= 100 for k in ("kc", "lab")),
@@ -513,13 +516,14 @@ class Portal:
                 400, "Informe um ID de curso Canvas numérico, ou nenhum.")
         thresholds = {"kc": thresholds["kc"], "lab": thresholds["lab"]}
         updated = {**{k: v for k, v in cohort.items() if not k.startswith("_")},
-                   "thresholds": thresholds, "canvasCourseId": canvas_course_id}
+                   "thresholds": thresholds, "canvasCourseId": canvas_course_id, "autoSync": body["autoSync"]}
         self.repo.transaction([
             (pk, "METADATA", updated, cohort),
             (pk, "AUDIT#" + uuid.uuid4().hex,
-             {"action": "settings", "thresholds": thresholds, "canvasCourseId": canvas_course_id, "by": self.uid, "at": now()}, None),
+             {"action": "settings", "thresholds": thresholds, "canvasCourseId": canvas_course_id,
+              "autoSync": body["autoSync"], "by": self.uid, "at": now()}, None),
         ])
-        return {"thresholds": thresholds, "canvasCourseId": canvas_course_id}
+        return {"thresholds": thresholds, "canvasCourseId": canvas_course_id, "autoSync": body["autoSync"]}
 
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
@@ -546,7 +550,7 @@ class Portal:
         return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot), cohort_thresholds(cohort)),
                 "changes": snapshot_changes(before, snapshot)}
 
-    def _publish(self, cohort, pk, teach, body):
+    def _publish(self, cohort, pk, teach, body, kind="publish"):
         require(teach)
         draft = self.repo.get(pk, "DRAFT#" + str(body.get("draftId", "")))
         require(draft is not None and draft["createdBy"] == self.uid, 404, "Prévia não encontrada para sua conta.")
@@ -582,7 +586,7 @@ class Portal:
         publication = {**draft, "status": "published", "publishedAt": published_at, "publishedBy": self.uid,
                        "changes": change_counts(changes), "history": history_key, "releasedAt": released}
         next_cohort = {k: v for k, v in cohort.items() if not k.startswith("_")}
-        next_cohort.update(current=draft["id"], updatedAt=publication["publishedAt"], updateKind="publish")
+        next_cohort.update(current=draft["id"], updatedAt=publication["publishedAt"], updateKind=kind)
         self.repo.transaction([
             (pk, "METADATA", next_cohort, cohort),
             (pk, "DRAFT#" + draft["id"], publication, draft),
@@ -618,6 +622,7 @@ class Portal:
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
                     "thresholds": thresholds, "canvasCourseId": canvas_course_id,
+                    "canvasSync": self.repo.get(pk, "SYNC"),
                     "history": sorted(({k: v for k, v in p.items() if k != "releasedAt"} for p in self.repo.list(pk, "PUB#")),
                                      key=lambda p: p["publishedAt"], reverse=True)}
         student = self.student(code, snap, bind=True)
@@ -628,6 +633,49 @@ class Portal:
                 "updateKind": cohort.get("updateKind", "publish"),
                 "thresholds": thresholds, "canvasCourseId": canvas_course_id,
                 "student": summary(student, snap["activities"], thresholds), "history": history, "focus": focus}
+
+
+SYNC_USER = {"sub": "system:canvas-sync", "email": "canvas-sync@system", "groups": ["admin"]}
+SYNC_MIN_ROSTER = 0.8
+
+
+def sync_from_canvas(repo, code, csv_text, api_students):
+    """Publica as notas vindas do Canvas (todo/17), como se o instrutor tivesse enviado o CSV.
+
+    Não publica se nada mudou (evita encher o histórico do aluno) nem se a turma veio vazia ou
+    muito menor que a publicação atual (mais provável ser falha da API do que evasão). Grava o
+    resultado em COHORT#<code>/SYNC e devolve {"status": ...}; falhas levantam exceção.
+    """
+    portal = Portal(repo, SYNC_USER)
+    pk = "COHORT#" + code
+    cohort = portal.cohort(code)
+    current = portal.snapshot(portal.publication(code, cohort["current"])) if cohort.get("current") else None
+
+    def record(status, message, publication_id=None):
+        result = {"status": status, "message": message, "at": now(), "students": api_students,
+                  "publicationId": publication_id}
+        repo.put(pk, "SYNC", result)
+        return result
+
+    try:
+        require(api_students > 0, 409, "O Canvas não devolveu nenhum aluno; nada foi publicado.")
+        if current:
+            require(api_students >= SYNC_MIN_ROSTER * len(current["students"]), 409,
+                    f"O Canvas devolveu {api_students} alunos, bem menos que os {len(current['students'])} "
+                    "da publicação atual; nada foi publicado.")
+        preview = portal._preview(code, cohort, pk, True, {"csv": csv_text, "filename": "canvas-api.csv"})
+        changes = preview["changes"]
+        if current and not any(changes[k] for k in (
+                "gradesChanged", "studentsAdded", "studentsRemoved", "studentsUpdated", "activitiesAdded",
+                "activitiesRemoved", "activitiesReleased", "activitiesPaused", "scalesChanged")):
+            return record("unchanged", "Nenhuma mudança no Canvas desde a última publicação.")
+        publication = portal._publish(portal.cohort(code), pk, True,
+                                      {"draftId": preview["draft"]["id"], "acknowledgeRemoved": True},
+                                      kind="canvas")["publication"]
+        return record("published", f"{changes['gradesChanged']} nota(s) alterada(s).", publication["id"])
+    except (APIError, ValidationError) as err:
+        record("failed", err.message if isinstance(err, APIError) else str(err))
+        raise
 
 
 def authenticate(event):

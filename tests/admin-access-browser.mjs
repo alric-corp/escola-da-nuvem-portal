@@ -35,7 +35,7 @@ try {
   ];
   let rejectCalls = 0, unlinkCalls = 0, renameCalls = 0, settingsCalls = 0;
   let bound = true;
-  let cohortSettings = { thresholds: { kc: 70, lab: 95 }, canvasCourseId: null };
+  let cohortSettings = { thresholds: { kc: 70, lab: 95 }, canvasCourseId: null, autoSync: false };
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
   await page.route("**/api/**", async (route) => {
@@ -112,12 +112,14 @@ try {
   await page.locator('#cohort-settings-form input[name="kc"]').fill("60");
   await page.locator('#cohort-settings-form input[name="lab"]').fill("90");
   await page.locator('#cohort-settings-form input[name="canvasCourseId"]').fill("4436");
+  await page.locator('#cohort-settings-form input[name="autoSync"]').check();
   await page.getByRole("button", { name: "Salvar configurações", exact: true }).click();
   await page.getByText("Configurações da turma atualizadas.", { exact: true }).waitFor();
   assert.equal(settingsCalls, 1);
-  assert.deepEqual(cohortSettings, { thresholds: { kc: 60, lab: 90 }, canvasCourseId: "4436" });
+  assert.deepEqual(cohortSettings, { thresholds: { kc: 60, lab: 90 }, canvasCourseId: "4436", autoSync: true });
   assert.equal(await page.locator('#cohort-settings-form input[name="kc"]').inputValue(), "60");
   assert.equal(await page.locator('#cohort-settings-form input[name="canvasCourseId"]').inputValue(), "4436");
+  assert.ok(await page.locator('#cohort-settings-form input[name="autoSync"]').isChecked());
 
   assert.deepEqual(errors, []);
   console.log("Admin: filtro de solicitações, recusar, buscar aluno, desvincular, editar nome e configurar turma OK.");

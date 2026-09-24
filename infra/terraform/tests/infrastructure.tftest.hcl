@@ -145,4 +145,14 @@ run "private_storage_and_authenticated_api" {
     ])
     error_message = "Versões não correntes do bucket de importações devem expirar em 90 dias."
   }
+
+  assert {
+    condition     = aws_scheduler_schedule.canvas_sync.state == "DISABLED" && aws_scheduler_schedule.canvas_sync.schedule_expression_timezone == "America/Sao_Paulo" && aws_scheduler_schedule.canvas_sync.schedule_expression == "cron(0 6,18 * * ? *)"
+    error_message = "A atualização pelo Canvas roda às 6h e às 18h de Brasília e nasce desligada até o token ser gravado."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.canvas_sync_errors.metric_name == "Errors" && length(aws_cloudwatch_metric_alarm.canvas_sync_errors.alarm_actions) == 1
+    error_message = "Falhas da atualização pelo Canvas precisam acionar o alarme."
+  }
 }

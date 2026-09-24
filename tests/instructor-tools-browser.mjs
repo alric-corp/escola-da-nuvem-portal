@@ -56,12 +56,13 @@ try {
     if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor" }] } });
     if (endpoint.endsWith("/report")) {
       if (role === "instructor")
-        return route.fulfill({ json: { students, activities: all, publication, history: [publication], thresholds, canvasCourseId: "4436", focus: { activityIds: [], version: null } } });
+        return route.fulfill({ json: { students, activities: all, publication, history: [publication], thresholds, canvasCourseId: "4436", focus: { activityIds: [], version: null },
+          updateKind: "canvas", canvasSync: { status: "failed", at: "2026-09-21T09:00:00Z", message: "Token do Canvas recusado (expirado ou revogado)." } } });
       const student = { ...students[0], activities: [
         activity("velha", "10- CF - KC — Introdução ao Amazon S3", "kc", "pending", { releasedAt: "2026-09-01T12:00:00Z" }),
         activity("nova", "226-LX-KC - Uma introdução ao Linux", "kc", "pending", { releasedAt: "2026-09-20T12:00:00Z" }),
       ] };
-      return route.fulfill({ json: { student, publication, history, thresholds, canvasCourseId: "4436", focus: { activityIds: [], version: null } } });
+      return route.fulfill({ json: { student, publication, history, thresholds, canvasCourseId: "4436", focus: { activityIds: [], version: null }, updateKind: "canvas" } });
     }
     if (endpoint.endsWith("/pending-preview"))
       return route.fulfill({ json: {
@@ -77,6 +78,10 @@ try {
 
   await page.goto(origin);
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
+
+  // 17: instrutor vê que as notas vieram do Canvas e o motivo da última falha.
+  assert.match(await page.locator(".update-line").innerText(), /trazidas automaticamente do Canvas/);
+  assert.match(await page.locator(".update-line .sync-failed").innerText(), /Token do Canvas recusado/);
 
   // 19: busca sem acento encontra "João".
   await page.locator("#search").fill("joao");
@@ -116,6 +121,8 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "Por onde começar", exact: true }).waitFor();
   assert.match(await page.locator(".next-steps .activity-card").first().innerText(), /226-LX-KC/);
+  assert.match(await page.locator(".update-line").innerText(), /trazidas automaticamente do Canvas/);
+  assert.equal(await page.locator(".update-line .sync-failed").count(), 0);
   assert.equal(await page.locator(".evolution path.evo-kc").count(), 1);
   assert.equal(await page.locator(".evolution path.evo-lab").count(), 1);
   assert.equal(await page.locator(".evolution line.evo-ref").count(), 2);

@@ -1,7 +1,7 @@
 data "archive_file" "api" {
   type        = "zip"
   source_dir  = "${path.module}/../../backend"
-  excludes    = ["test_identity.py", "test_portal.py", "test_grades.py", "test_reminders.py", "test_journey.py", "__pycache__"]
+  excludes    = ["test_identity.py", "test_portal.py", "test_grades.py", "test_reminders.py", "test_journey.py", "test_canvas.py", "__pycache__"]
   output_path = "${path.module}/.build/identity.zip"
 }
 

@@ -130,7 +130,18 @@ export function errorPanel(message, action) {
 export function updateInfo() {
   const r = state.report;
   if (!r?.publication) return "";
-  return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : ""}<p>As notas mudam quando o instrutor publica uma atualização. Entregas e correções são feitas no Canvas.</p></div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+  const source = r.updateKind === "canvas"
+    ? "<p>Notas trazidas automaticamente do Canvas. O portal atualiza às 6h e às 18h; uma correção feita no Canvas aparece aqui na atualização seguinte.</p>"
+    : "<p>As notas mudam quando o instrutor publica uma atualização. Entregas e correções são feitas no Canvas.</p>";
+  return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : ""}${source}${canvasSyncStatus(r.canvasSync)}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+}
+
+// Só o relatório do instrutor traz canvasSync (backend/portal.py); o aluno não vê falhas técnicas.
+function canvasSyncStatus(sync) {
+  if (!sync) return "";
+  if (sync.status === "failed")
+    return `<p class="sync-failed" role="status">A atualização automática pelo Canvas falhou em ${date(sync.at)}: ${e(sync.message)} As notas exibidas são da última publicação bem-sucedida.</p>`;
+  return `<p class="small">Última verificação no Canvas: ${date(sync.at)} · ${sync.status === "unchanged" ? "sem mudanças" : e(sync.message)}</p>`;
 }
 
 export function gradingHelp(thresholds = { kc: 70, lab: 95 }) {

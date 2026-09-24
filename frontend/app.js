@@ -694,7 +694,7 @@ document.addEventListener("submit", (event) => {
         const canvasCourseId = data.get("canvasCourseId").trim() || null;
         await api(`/cohorts/${state.code}/settings`, {
           method: "POST",
-          body: { thresholds: { kc, lab }, canvasCourseId },
+          body: { thresholds: { kc, lab }, canvasCourseId, autoSync: data.get("autoSync") === "on" },
         });
         await boot();
         notice("Configurações da turma atualizadas.");

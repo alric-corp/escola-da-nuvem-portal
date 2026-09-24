@@ -449,8 +449,8 @@ class PortalTests(unittest.TestCase):
         self.assertIsNone(report["canvasCourseId"])
         self.assertEqual(report["students"][0]["status"], "attention")  # kc 70% ok, lab 50% abaixo de 95%
 
-        result = self.call(self.admin, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436"})
-        self.assertEqual(result, {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436"})
+        result = self.call(self.admin, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436", "autoSync": False})
+        self.assertEqual(result, {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436", "autoSync": False})
 
         report = self.call(self.admin, "report", method="GET")
         self.assertEqual(report["thresholds"], {"kc": 60, "lab": 40})
@@ -468,15 +468,17 @@ class PortalTests(unittest.TestCase):
         self.publish()
         for actor in (self.student, self.instructor):
             with self.assertRaises(APIError) as err:
-                self.call(actor, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": None})
+                self.call(actor, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": None, "autoSync": False})
             self.assertEqual(err.exception.status, 403)
         for body in (
-            {"thresholds": {"kc": 60, "lab": 40}},
-            {"thresholds": {"kc": 0, "lab": 40}, "canvasCourseId": None},
-            {"thresholds": {"kc": 60, "lab": 101}, "canvasCourseId": None},
-            {"thresholds": {"kc": 60}, "canvasCourseId": None},
-            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "abc"},
-            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": ""},
+            {"thresholds": {"kc": 60, "lab": 40}, "autoSync": False},
+            {"thresholds": {"kc": 0, "lab": 40}, "canvasCourseId": None, "autoSync": False},
+            {"thresholds": {"kc": 60, "lab": 101}, "canvasCourseId": None, "autoSync": False},
+            {"thresholds": {"kc": 60}, "canvasCourseId": None, "autoSync": False},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "abc", "autoSync": False},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "", "autoSync": False},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436", "autoSync": "sim"},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": None, "autoSync": True},
         ):
             with self.subTest(body=body), self.assertRaises(APIError) as err:
                 self.call(self.admin, "settings", body)
