@@ -84,12 +84,10 @@ export async function callback(config) {
       Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0)),
     ),
   );
-  // O ID token só é usado para correlacionar o nonce; a API valida o access token.
-  if (
-    id.nonce !== flow.nonce ||
-    id.aud !== config.userPoolClientId ||
-    id.exp * 1000 <= Date.now()
-  )
+  // O ID token só é usado para correlacionar o nonce; a API valida o access token. Não
+  // conferir "exp" contra o relógio do computador: com o relógio adiantado (fuso errado é
+  // comum), todo login falhava, e o token acabou de chegar do Cognito pela troca com PKCE.
+  if (id.nonce !== flow.nonce || id.aud !== config.userPoolClientId)
     throw new Error("Sessão inválida. Entre novamente.");
   localStorage.setItem(
     key,
