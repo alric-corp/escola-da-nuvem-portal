@@ -1,6 +1,6 @@
 # 14 · Integração contínua (GitHub Actions)
 
-**Status:** 🟨 pronto no repositório, aguardando commit/push · **Prioridade:** média · **Esforço:** pequeno · **Área:** qualidade
+**Status:** ✅ concluída (rodando no GitHub Actions) · **Prioridade:** média · **Esforço:** pequeno · **Área:** qualidade
 
 ## Problema
 Havia cerca de 100 testes (Python, Moto, Node, Playwright, Terraform), mas eles dependiam de instalações manuais em `/private/tmp` e nada rodava automaticamente.
@@ -24,8 +24,8 @@ Havia cerca de 100 testes (Python, Moto, Node, Playwright, Terraform), mas eles 
 - `python -m unittest discover -s backend` e `-s tests/integration`: rodados numa venv limpa só com `requirements-dev.txt` instalado — **93 + 14 = 107 testes**, todos passando. (`tests/integration` também recolhe outros arquivos além de `test_aws.py`, ex. o citado em `infra/SES.md`.)
 - `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate`, `terraform test`: simulados a partir de uma cópia completa do repositório (sem `backend.hcl`, sem `terraform.tfvars`, sem `.terraform/` pré-existente, sem credenciais AWS no ambiente) — passam exatamente como rodariam num runner do GitHub Actions.
 
-## Pendente — commit e push
-Este trabalho só passa a valer quando os arquivos forem commitados e enviados ao GitHub (o workflow só é reconhecido pelo Actions depois de estar em `.github/workflows/` no branch correspondente). Isso não foi feito nesta sessão — cabe ao titular decidir quando commitar (há também bastante trabalho de outras tarefas do `todo/` ainda não commitado nesta árvore de trabalho).
+## Commitado e enviado em 2026-09-24
+Enviado ao `alric-corp/main` (6 commits, incluindo o trabalho das tarefas 02–09, 11 e este). Primeira execução do workflow (`gh run watch`): **os três jobs passaram** — Terraform (25s), Backend (30s), Frontend/Playwright (1m3s). Únicos avisos: depreciação do Node 20 nas actions oficiais (`actions/checkout@v4`, `setup-python@v5`, `setup-terraform@v3`) e aviso futuro sobre `ubuntu-latest` migrar para Ubuntu 26 em outubro — nada do código deste projeto, não bloqueiam o CI.
 
 ## Proposta original
 - [x] `package.json` na raiz, com Playwright como devDependency e scripts `test`, `test:browser`.
