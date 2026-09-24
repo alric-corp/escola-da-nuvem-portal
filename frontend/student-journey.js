@@ -26,8 +26,11 @@ const modules = [
   ["Preparação para certificação", range(195, 207)],
 ];
 
-export function activityModule(cohort, activity) {
-  const course = cohortCanvasCourses[cohort];
+export function activityModule(cohort, activity, courseId) {
+  // courseId (de COHORT#<code>/METADATA, ver todo/12) tem prioridade sobre o mapeamento
+  // fixo em cohortCanvasCourses, que fica só como compatibilidade para turmas sem essa
+  // configuração ainda.
+  const course = courseId ?? cohortCanvasCourses[cohort];
   const entry = canvasActivityEntry(course, activity);
   if (!entry) return "Outras atividades";
   const code = Number(entry.title.match(/^\d+/)?.[0]);
@@ -50,10 +53,10 @@ export function nextActivities(activities, focusIds = []) {
   return [...activities.filter((a) => a.state === "pending"), ...activities.filter(needsReview)].slice(0, 3);
 }
 
-export function groupActivities(cohort, activities) {
+export function groupActivities(cohort, activities, courseId) {
   const groups = new Map();
   for (const activity of activities) {
-    const name = activityModule(cohort, activity);
+    const name = activityModule(cohort, activity, courseId);
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(activity);
   }

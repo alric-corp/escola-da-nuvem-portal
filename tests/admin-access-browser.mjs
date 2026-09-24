@@ -1,6 +1,7 @@
 // Teste isolado com API fictícia. Nunca acessa dados AWS reais.
 // Cobre o todo/11: buscar aluno, ver vínculo, desvincular, editar nome de exibição,
-// recusar solicitação e filtrar por status.
+// recusar solicitação e filtrar por status. Cobre também o todo/12: configurar limites
+// de referência e o ID do curso Canvas da turma sem editar código.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
@@ -32,15 +33,21 @@ try {
     { userId: "t1", email: "prof1@escoladanuvem.org", status: "pending" },
     { userId: "t2", email: "prof2@escoladanuvem.org", status: "approved" },
   ];
-  let rejectCalls = 0, unlinkCalls = 0, renameCalls = 0;
+  let rejectCalls = 0, unlinkCalls = 0, renameCalls = 0, settingsCalls = 0;
   let bound = true;
+  let cohortSettings = { thresholds: { kc: 70, lab: 95 }, canvasCourseId: null };
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const endpoint = new URL(request.url()).pathname.slice(4);
     if (endpoint === "/me") return route.fulfill({ json: { roles: ["admin"], email: "admin@example.test" } });
-    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: true }] } });
+    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: true, ...cohortSettings }] } });
+    if (endpoint.endsWith("/settings") && request.method() === "POST") {
+      settingsCalls++;
+      cohortSettings = request.postDataJSON();
+      return route.fulfill({ json: cohortSettings });
+    }
     if (endpoint === "/requests") return route.fulfill({ json: { requests } });
     if (endpoint.endsWith("/instructors")) return route.fulfill({ json: { instructors: [] } });
     if (endpoint.endsWith("/report")) return route.fulfill({ json: { students: [], publication: null, history: [] } });
@@ -98,10 +105,22 @@ try {
   await page.locator('[data-start-edit-name="101"]').click();
   await page.locator('input[name="displayName"]').fill("Ana Apelido");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
+  await page.getByText("Nome atualizado.", { exact: true }).waitFor();
   assert.equal(renameCalls, 1);
 
+  // Configurações da turma: limites e ID do curso Canvas, sem editar código.
+  await page.locator('#cohort-settings-form input[name="kc"]').fill("60");
+  await page.locator('#cohort-settings-form input[name="lab"]').fill("90");
+  await page.locator('#cohort-settings-form input[name="canvasCourseId"]').fill("4436");
+  await page.getByRole("button", { name: "Salvar configurações", exact: true }).click();
+  await page.getByText("Configurações da turma atualizadas.", { exact: true }).waitFor();
+  assert.equal(settingsCalls, 1);
+  assert.deepEqual(cohortSettings, { thresholds: { kc: 60, lab: 90 }, canvasCourseId: "4436" });
+  assert.equal(await page.locator('#cohort-settings-form input[name="kc"]').inputValue(), "60");
+  assert.equal(await page.locator('#cohort-settings-form input[name="canvasCourseId"]').inputValue(), "4436");
+
   assert.deepEqual(errors, []);
-  console.log("Admin: filtro de solicitações, recusar, buscar aluno, desvincular e editar nome OK.");
+  console.log("Admin: filtro de solicitações, recusar, buscar aluno, desvincular, editar nome e configurar turma OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

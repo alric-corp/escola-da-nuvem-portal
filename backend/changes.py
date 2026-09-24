@@ -41,26 +41,27 @@ def change_counts(changes):
             for key, value in changes.items() if key != "gradeDetails"}
 
 
-def student_history(before, snapshot):
+def student_history(before, snapshot, thresholds=None):
     """Resumo por aluno (médias e comparação com a publicação anterior), gravado uma vez
     na publicação para que o relatório do aluno não precise reler snapshots antigos."""
     before = before or {"students": [], "activities": []}
     prior_by_id = {s["id"]: s for s in before["students"]}
     result = {}
     for student in snapshot["students"]:
-        s = summary(student, snapshot["activities"])
+        s = summary(student, snapshot["activities"], thresholds)
         result[student["id"]] = {
             "kc": s["kc"], "lab": s["lab"], "total": s["total"],
-            "changes": student_changes(prior_by_id.get(student["id"]), before["activities"], student, snapshot["activities"]),
+            "changes": student_changes(prior_by_id.get(student["id"]), before["activities"], student,
+                                        snapshot["activities"], thresholds),
         }
     return result
 
 
-def student_changes(before_student, before_activities, student, activities):
+def student_changes(before_student, before_activities, student, activities, thresholds=None):
     if before_student is None:
         return None
-    previous = summary(before_student, before_activities)
-    current = summary(student, activities)
+    previous = summary(before_student, before_activities, thresholds)
+    current = summary(student, activities, thresholds)
     old = {a["id"]: a for a in previous["activities"]}
     new = {a["id"]: a for a in current["activities"]}
     updates = []

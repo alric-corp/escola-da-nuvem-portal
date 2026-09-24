@@ -1,18 +1,19 @@
 import { activityModule } from "../student-journey.js";
 import { e, heading, percent, state } from "../ui.js";
 
-function moduleOptions(activities) {
-  const names = [...new Set(activities.map((a) => activityModule(state.code, a)))];
+function moduleOptions(activities, courseId) {
+  const names = [...new Set(activities.map((a) => activityModule(state.code, a, courseId)))];
   return names.sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
 export function activityOverviewPage() {
   const all = (state.report.activities || []).filter((a) => a.active);
+  const courseId = state.report.canvasCourseId;
   const focusIds = state.focusDraft || state.report.focus?.activityIds || [];
   const filtered = all.filter(
     (a) =>
       (state.activityOverviewKind === "all" || a.kind === state.activityOverviewKind) &&
-      (state.activityOverviewModule === "all" || activityModule(state.code, a) === state.activityOverviewModule),
+      (state.activityOverviewModule === "all" || activityModule(state.code, a, courseId) === state.activityOverviewModule),
   );
   const sorted = [...filtered].sort((x, y) => {
     if (state.activityOverviewSort === "pending" && x.pending !== y.pending) return y.pending - x.pending;
@@ -30,7 +31,7 @@ export function activityOverviewPage() {
     ["lab", "Somente LABs"],
   ]
     .map(([value, label]) => `<option value="${value}" ${state.activityOverviewKind === value ? "selected" : ""}>${label}</option>`)
-    .join("")}</select></label><label for="activity-overview-module">Módulo <select id="activity-overview-module"><option value="all">Todos os módulos</option>${moduleOptions(all)
+    .join("")}</select></label><label for="activity-overview-module">Módulo <select id="activity-overview-module"><option value="all">Todos os módulos</option>${moduleOptions(all, courseId)
     .map((name) => `<option value="${e(name)}" ${state.activityOverviewModule === name ? "selected" : ""}>${e(name)}</option>`)
     .join("")}</select></label><select id="activity-overview-sort" aria-label="Ordenar atividades">${[
     ["name", "Nome A–Z"],
@@ -45,7 +46,7 @@ export function activityOverviewPage() {
       const pctPending = total ? (a.pending / total) * 100 : null;
       const pctReview = a.completed ? (a.needsReview / a.completed) * 100 : null;
       const inFocus = focusIds.includes(a.id);
-      return `<tr><td>${e(a.name)}</td><td>${e(activityModule(state.code, a))}</td><td>${a.kind === "kc" ? "KC" : "LAB"}</td><td>${percent(pctCompleted)}</td><td>${percent(pctPending)}</td><td>${percent(pctReview)}</td><td>${percent(a.average)}</td><td>${
+      return `<tr><td>${e(a.name)}</td><td>${e(activityModule(state.code, a, courseId))}</td><td>${a.kind === "kc" ? "KC" : "LAB"}</td><td>${percent(pctCompleted)}</td><td>${percent(pctPending)}</td><td>${percent(pctReview)}</td><td>${percent(a.average)}</td><td>${
         inFocus
           ? '<span class="badge ok">No foco</span>'
           : `<button class="button secondary" data-add-focus="${e(a.id)}" ${focusIds.length >= 3 ? "disabled" : ""}>Adicionar ao foco</button>`

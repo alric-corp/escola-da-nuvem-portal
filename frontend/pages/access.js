@@ -1,6 +1,13 @@
-import { e, heading, icon, state } from "../ui.js";
+import { current, e, heading, icon, state } from "../ui.js";
 
 const requestStatusLabels = { pending: "Aguardando aprovação", approved: "Aprovada", rejected: "Recusada" };
+
+function settingsSection() {
+  if (!state.code) return "";
+  const cohort = current();
+  const thresholds = cohort?.thresholds || { kc: 70, lab: 95 };
+  return `<section class="panel"><h2>Configurações da ${e(state.code)}</h2><p class="small">Limites de referência e curso do Canvas associado a esta turma. Não exige publicar notas de novo nem alterar código.</p><form id="cohort-settings-form" class="stack-form"><label>Referência de KC (%)<input type="number" name="kc" min="1" max="100" value="${e(thresholds.kc)}" required></label><label>Referência de LAB (%)<input type="number" name="lab" min="1" max="100" value="${e(thresholds.lab)}" required></label><label>ID do curso no Canvas (opcional)<input name="canvasCourseId" placeholder="Ex.: 4436" pattern="[0-9]*" value="${e(cohort?.canvasCourseId || "")}"></label><button class="button primary" type="submit">Salvar configurações</button></form></section>`;
+}
 
 function requestsSection() {
   const filtered = state.requests.filter((r) => state.requestsFilter === "all" || r.status === state.requestsFilter);
@@ -57,5 +64,6 @@ export function accessPage() {
   <div class="two-columns"><section class="panel"><h2>Criar uma turma</h2><form id="cohort-form" class="stack-form"><label>Código da turma<input name="code" placeholder="BRSA0268" required pattern="[A-Za-z0-9-]{3,32}" maxlength="32"></label><label>Nome da turma<input name="name" placeholder="AWS re/Start · nova turma" required maxlength="100"></label><button class="button primary">Criar turma ${icon("arrow")}</button></form></section><section class="panel"><h2>Como funciona o acesso</h2><p>Instrutores solicitam acesso com o e-mail institucional confirmado. Você aprova cada pessoa e escolhe as turmas que ela pode acompanhar.</p><p>Alunos são reconhecidos pelo e-mail do Canvas no primeiro acesso. O vínculo passa a usar o ID do aluno e a conta confirmada.</p></section></div>
   ${requestsSection()}
   <section class="panel"><h2>Instrutores da ${e(state.code || "turma selecionada")}</h2>${state.instructors.length ? state.instructors.map((i) => `<div class="approve-form"><div><strong>${e(i.email)}</strong><small>Acesso à turma ${e(i.code)}</small></div><button class="button secondary" data-revoke="${e(i.userId)}">Remover acesso</button></div>`).join("") : '<p class="small">Nenhum instrutor vinculado. Administradores têm acesso global.</p>'}</section>
+  ${settingsSection()}
   ${studentsSection()}`;
 }

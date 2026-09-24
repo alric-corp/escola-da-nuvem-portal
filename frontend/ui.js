@@ -36,17 +36,17 @@ export const badge = (status) =>
 // Rótulo do aluno para attention/critical: "Crítico" soa punitivo para quem não fez nada
 // de errado (atividade liberada sem nota já conta como 0%). O instrutor continua vendo
 // badge(s.status) com os rótulos originais.
-export function studentStatusLabel(s) {
+export function studentStatusLabel(s, thresholds = { kc: 70, lab: 95 }) {
   if (s.status !== "attention" && s.status !== "critical") return labels[s.status] || s.status;
-  const kcBelow = s.kc != null && s.kc < 70;
-  const labBelow = s.lab != null && s.lab < 95;
+  const kcBelow = s.kc != null && s.kc < thresholds.kc;
+  const labBelow = s.lab != null && s.lab < thresholds.lab;
   if (kcBelow && labBelow) return "Foque em KCs e LABs";
   if (labBelow) return "Foque nos LABs";
   if (kcBelow) return "Foque nos KCs";
   return labels[s.status];
 }
-export const studentBadge = (s) =>
-  `<span class="badge ${e(s.status)}">${e(studentStatusLabel(s))}</span>`;
+export const studentBadge = (s, thresholds) =>
+  `<span class="badge ${e(s.status)}">${e(studentStatusLabel(s, thresholds))}</span>`;
 export const icon = (name, size = 20) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
     {
@@ -130,8 +130,8 @@ export function updateInfo() {
   return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : ""}<p>As notas mudam quando o instrutor publica uma atualização. Entregas e correções são feitas no Canvas.</p></div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
 }
 
-export function gradingHelp() {
-  return `<details class="grading-help"><summary>Como interpretar minhas notas?</summary><p>Uma atividade sem nota registrada pode estar aguardando entrega ou correção. O portal não confirma a entrega.</p><p>Atividades liberadas sem nota contam como zero na média. Uma nota zero registrada conta como avaliada. Atividades dispensadas ou não liberadas ficam fora do cálculo.</p><p>As referências são 70% em KCs e 95% em LABs. Estar na referência não significa que todas as atividades tenham nota.</p></details>`;
+export function gradingHelp(thresholds = { kc: 70, lab: 95 }) {
+  return `<details class="grading-help"><summary>Como interpretar minhas notas?</summary><p>Uma atividade sem nota registrada pode estar aguardando entrega ou correção. O portal não confirma a entrega.</p><p>Atividades liberadas sem nota contam como zero na média. Uma nota zero registrada conta como avaliada. Atividades dispensadas ou não liberadas ficam fora do cálculo.</p><p>As referências são ${thresholds.kc}% em KCs e ${thresholds.lab}% em LABs. Estar na referência não significa que todas as atividades tenham nota.</p></details>`;
 }
 
 export function current() {

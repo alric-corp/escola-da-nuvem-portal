@@ -666,6 +666,16 @@ document.addEventListener("submit", (event) => {
         });
         await boot();
         notice("Turma criada.");
+      } else if (form.id === "cohort-settings-form") {
+        const data = new FormData(form);
+        const kc = Number(data.get("kc")), lab = Number(data.get("lab"));
+        const canvasCourseId = data.get("canvasCourseId").trim() || null;
+        await api(`/cohorts/${state.code}/settings`, {
+          method: "POST",
+          body: { thresholds: { kc, lab }, canvasCourseId },
+        });
+        await boot();
+        notice("Configurações da turma atualizadas.");
       } else if (form.id === "student-search-form") {
         const query = new FormData(form).get("query").trim();
         if (!query) throw new Error("Digite ao menos um caractere para buscar.");

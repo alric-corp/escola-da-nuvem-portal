@@ -261,7 +261,7 @@ class PortalTests(unittest.TestCase):
         encoded = json.dumps(report)
         for private in ("@", "canvasId", '"id"', "snapshot", "source.csv", "publishedBy", "filename", publication["id"]):
             self.assertNotIn(private, encoded)
-        self.assertEqual(set(report), {"cohort", "updatedAt", "students"})
+        self.assertEqual(set(report), {"cohort", "updatedAt", "thresholds", "students"})
         self.assertEqual(set(report["students"][0]), {"name", "kc", "lab", "total", "completed", "pending", "status"})
         self.assertEqual({s["status"] for s in report["students"]}, {"ok", "attention"})
 
@@ -390,6 +390,46 @@ class PortalTests(unittest.TestCase):
         audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0]["action"], "display-name")
+
+    def test_settings_update_thresholds_and_canvas_course_id_and_audit(self):
+        self.publish()
+        report = self.call(self.admin, "report", method="GET")
+        self.assertEqual(report["thresholds"], {"kc": 70, "lab": 95})
+        self.assertIsNone(report["canvasCourseId"])
+        self.assertEqual(report["students"][0]["status"], "attention")  # kc 70% ok, lab 50% abaixo de 95%
+
+        result = self.call(self.admin, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436"})
+        self.assertEqual(result, {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "4436"})
+
+        report = self.call(self.admin, "report", method="GET")
+        self.assertEqual(report["thresholds"], {"kc": 60, "lab": 40})
+        self.assertEqual(report["canvasCourseId"], "4436")
+        self.assertEqual(report["students"][0]["status"], "ok")  # 70% e 50% acima dos novos limites
+        student_report = self.call(self.student, "report", method="GET")
+        self.assertEqual(student_report["thresholds"], {"kc": 60, "lab": 40})
+        self.assertEqual(student_report["canvasCourseId"], "4436")
+
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0]["action"], "settings")
+
+    def test_settings_requires_admin_and_validates_input(self):
+        self.publish()
+        for actor in (self.student, self.instructor):
+            with self.assertRaises(APIError) as err:
+                self.call(actor, "settings", {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": None})
+            self.assertEqual(err.exception.status, 403)
+        for body in (
+            {"thresholds": {"kc": 60, "lab": 40}},
+            {"thresholds": {"kc": 0, "lab": 40}, "canvasCourseId": None},
+            {"thresholds": {"kc": 60, "lab": 101}, "canvasCourseId": None},
+            {"thresholds": {"kc": 60}, "canvasCourseId": None},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": "abc"},
+            {"thresholds": {"kc": 60, "lab": 40}, "canvasCourseId": ""},
+        ):
+            with self.subTest(body=body), self.assertRaises(APIError) as err:
+                self.call(self.admin, "settings", body)
+            self.assertEqual(err.exception.status, 400)
 
     def test_reject_request_only_pending_and_admin_only(self):
         self.instructor.dispatch("POST", "/access-request", {})

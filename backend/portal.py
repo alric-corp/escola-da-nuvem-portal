@@ -30,6 +30,12 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def cohort_thresholds(cohort):
+    """Limites de referência (%) da turma; 70/95 se a turma não tiver configurado os seus."""
+    thresholds = cohort.get("thresholds") or {}
+    return {"kc": thresholds.get("kc", 70), "lab": thresholds.get("lab", 95)}
+
+
 def display_snapshot(repo, code, snapshot):
     """Aplica nomes de exibição por matrícula sem alterar CSV, notas ou e-mail."""
     profiles = {p["canvasId"]: p for p in repo.list("COHORT#" + code, "PROFILE#")}
@@ -46,15 +52,17 @@ def class_report(repo, code):
     cohort = repo.get(pk, "METADATA")
     require(cohort is not None, 404, "Turma não encontrada.")
     if not cohort.get("current"):
-        return {"cohort": code, "updatedAt": None, "students": []}
+        return {"cohort": code, "updatedAt": None, "thresholds": cohort_thresholds(cohort), "students": []}
     publication = repo.get(pk, "PUB#" + cohort["current"])
     require(publication is not None, 404, "Publicação não encontrada.")
     snapshot = display_snapshot(repo, code, repo.snapshot(publication["snapshot"]))
+    thresholds = cohort_thresholds(cohort)
     rows = [{"name": student["name"],
-             **{k: v for k, v in summary(student, snapshot["activities"]).items()
+             **{k: v for k, v in summary(student, snapshot["activities"], thresholds).items()
                 if k in ("kc", "lab", "total", "completed", "pending", "status")}}
             for student in snapshot["students"]]
-    return {"cohort": code, "updatedAt": cohort.get("updatedAt", publication["publishedAt"]), "students": rows}
+    return {"cohort": code, "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
+            "thresholds": thresholds, "students": rows}
 
 
 class Portal:
@@ -82,7 +90,7 @@ class Portal:
             self.cache[key] = self.repo.snapshot(key)
         return self.cache[key]
 
-    def student_summary_entry(self, pk, publication, student_id, current_snap=None):
+    def student_summary_entry(self, pk, publication, student_id, thresholds, current_snap=None):
         hist = self.history(publication)
         if hist is not None:
             return hist.get(student_id)
@@ -92,12 +100,12 @@ class Portal:
         own = next((s for s in old["students"] if s["id"] == student_id), None)
         if not own:
             return None
-        s = summary(own, old["activities"])
+        s = summary(own, old["activities"], thresholds)
         base = self.repo.get(pk, "PUB#" + publication["base"]) if publication.get("base") else None
         previous = self.snapshot(base) if base else {"students": [], "activities": []}
         prior = next((s for s in previous["students"] if s["id"] == student_id), None)
         return {"kc": s["kc"], "lab": s["lab"], "total": s["total"],
-                "changes": student_changes(prior, previous["activities"], own, old["activities"])}
+                "changes": student_changes(prior, previous["activities"], own, old["activities"], thresholds)}
 
     def cohort(self, code):
         require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)), 400, "Código de turma inválido.")
@@ -218,6 +226,8 @@ class Portal:
             return self._unlink_student(code, pk, body)
         if operation == "display-name" and method == "POST":
             return self._set_display_name(pk, body)
+        if operation == "settings" and method == "POST":
+            return self._set_cohort_settings(cohort, pk, body)
         if operation == "preview" and method == "POST":
             return self._preview(code, cohort, pk, teach, body)
         if operation == "publish" and method == "POST":
@@ -273,7 +283,7 @@ class Portal:
         snap = display_snapshot(self.repo, code, self.snapshot(publication))
         raw_student = next((s for s in snap["students"] if s["id"] == body["studentId"]), None)
         require(raw_student is not None, 404, "Aluno não encontrado nesta publicação.")
-        student = summary(raw_student, snap["activities"])
+        student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
         if not reminders_enabled:
             return {"student": {k: student[k] for k in ("id", "name", "email")},
                     "activities": [a for a in student["activities"] if a["state"] == "pending"],
@@ -336,7 +346,7 @@ class Portal:
             if raw_student is None:
                 candidates.append({"id": sid, "name": None, "email": None, "pending": 0, "skip": "not-found"})
                 continue
-            student = summary(raw_student, snap["activities"])
+            student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
             pending = [a for a in student["activities"] if a["state"] == "pending"]
             sk = "REMINDER#" + publication["id"] + "#" + student["id"]
             previous = self.repo.get(pk, sk)
@@ -460,6 +470,26 @@ class Portal:
         ])
         return {"canvasId": canvas_id, "displayName": display_name}
 
+    def _set_cohort_settings(self, cohort, pk, body):
+        require(self.admin)
+        require(set(body) == {"thresholds", "canvasCourseId"}, 400, "Solicitação inválida.")
+        thresholds = body["thresholds"]
+        require(isinstance(thresholds, dict) and set(thresholds) == {"kc", "lab"}
+                and all(isinstance(thresholds[k], (int, float)) and 1 <= thresholds[k] <= 100 for k in ("kc", "lab")),
+                400, "Informe limites de KC e LAB entre 1 e 100.")
+        canvas_course_id = body["canvasCourseId"]
+        require(canvas_course_id is None or (isinstance(canvas_course_id, str) and re.fullmatch(r"\d{1,10}", canvas_course_id)),
+                400, "Informe um ID de curso Canvas numérico, ou nenhum.")
+        thresholds = {"kc": thresholds["kc"], "lab": thresholds["lab"]}
+        updated = {**{k: v for k, v in cohort.items() if not k.startswith("_")},
+                   "thresholds": thresholds, "canvasCourseId": canvas_course_id}
+        self.repo.transaction([
+            (pk, "METADATA", updated, cohort),
+            (pk, "AUDIT#" + uuid.uuid4().hex,
+             {"action": "settings", "thresholds": thresholds, "canvasCourseId": canvas_course_id, "by": self.uid, "at": now()}, None),
+        ])
+        return {"thresholds": thresholds, "canvasCourseId": canvas_course_id}
+
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
         active_ids = body.get("activeIds")
@@ -481,7 +511,7 @@ class Portal:
                  "base": cohort.get("current"), "snapshot": key + "/snapshot.json", "status": "draft",
                  "filename": str(body.get("filename", "notas.csv"))[:150]}
         self.repo.put(pk, "DRAFT#" + draft_id, draft, absent=True)
-        return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot)),
+        return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot), cohort_thresholds(cohort)),
                 "changes": snapshot_changes(before, snapshot)}
 
     def _publish(self, cohort, pk, teach, body):
@@ -499,7 +529,7 @@ class Portal:
         # Resumo por aluno gravado agora, com o que já está em memória (snap e before), para
         # que _report não precise reler dezenas de snapshots a cada carregamento do histórico.
         history_key = draft["snapshot"].rsplit("/", 1)[0] + "/history.json"
-        self.repo.snapshot(history_key, student_history(before, snap))
+        self.repo.snapshot(history_key, student_history(before, snap, cohort_thresholds(cohort)))
         publication = {**draft, "status": "published", "publishedAt": now(), "publishedBy": self.uid,
                        "changes": change_counts(changes), "history": history_key}
         next_cohort = {k: v for k, v in cohort.items() if not k.startswith("_")}
@@ -525,16 +555,20 @@ class Portal:
     def _report(self, code, cohort, pk, teach):
         if not cohort.get("current"):
             require(teach)
-            return {"cohort": code, "publication": None, "students": [], "history": []}
+            return {"cohort": code, "publication": None, "students": [], "history": [],
+                    "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId")}
         publication = self.publication(code, cohort["current"])
         snap = display_snapshot(self.repo, code, self.snapshot(publication))
         focus = self.repo.get(pk, "FOCUS") or {"activityIds": [], "version": None}
         active = {a["id"] for a in snap["activities"] if a["active"]}
         focus = {"activityIds": [i for i in focus["activityIds"] if i in active], "version": focus.get("version")}
+        thresholds = cohort_thresholds(cohort)
+        canvas_course_id = cohort.get("canvasCourseId")
         if teach:
-            return {"cohort": code, "publication": publication, "focus": focus, **overview(snap),
+            return {"cohort": code, "publication": publication, "focus": focus, **overview(snap, thresholds),
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
+                    "thresholds": thresholds, "canvasCourseId": canvas_course_id,
                     "history": sorted(self.repo.list(pk, "PUB#"), key=lambda p: p["publishedAt"], reverse=True)}
         student = self.student(code, snap, bind=True)
         require(student is not None, 403, "Matrícula não localizada para sua conta nesta turma.")
@@ -544,13 +578,14 @@ class Portal:
             publications = publications[:11] + [publication]
         for p in publications:
             is_current = p["id"] == publication["id"]
-            entry = self.student_summary_entry(pk, p, student["id"], snap if is_current else None)
+            entry = self.student_summary_entry(pk, p, student["id"], thresholds, snap if is_current else None)
             if entry:
                 history.append({"publishedAt": p["publishedAt"], "current": is_current, **entry})
         return {"cohort": code, "publication": {"id": publication["id"], "publishedAt": publication["publishedAt"]},
                 "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                 "updateKind": cohort.get("updateKind", "publish"),
-                "student": summary(student, snap["activities"]), "history": history, "focus": focus}
+                "thresholds": thresholds, "canvasCourseId": canvas_course_id,
+                "student": summary(student, snap["activities"], thresholds), "history": history, "focus": focus}
 
 
 def authenticate(event):

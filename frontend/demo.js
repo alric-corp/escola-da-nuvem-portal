@@ -106,6 +106,7 @@ export function demoAPI(role) {
       return {
         cohort: "BRSA0267",
         updatedAt: publication.publishedAt,
+        thresholds: { kc: 70, lab: 95 },
         students: students.map(
           ({ name, kc, lab, total, completed, pending, status }) => ({
             name,
@@ -120,10 +121,12 @@ export function demoAPI(role) {
       };
     if (path.endsWith("/report"))
       return role !== "student"
-        ? { publication, students, activities, history: [publication] }
+        ? { publication, students, activities, history: [publication], thresholds: { kc: 70, lab: 95 }, canvasCourseId: "4436" }
         : {
             publication,
             student,
+            thresholds: { kc: 70, lab: 95 },
+            canvasCourseId: "4436",
             history: [
               {
                 publishedAt: publication.publishedAt,

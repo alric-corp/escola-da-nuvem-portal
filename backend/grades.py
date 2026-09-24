@@ -9,6 +9,9 @@ class ValidationError(ValueError):
     pass
 
 
+DEFAULT_THRESHOLDS = {"kc": 70, "lab": 95}
+
+
 def canvas_test_student(row):
     """Reconhece apenas nomes reservados com o formato de login da conta de teste.
 
@@ -32,7 +35,9 @@ def number(value, field):
     return result
 
 
-def summary(student, activities):
+def summary(student, activities, thresholds=None):
+    thresholds = thresholds or DEFAULT_THRESHOLDS
+    kc_threshold, lab_threshold = thresholds["kc"], thresholds["lab"]
     scores = {"kc": [], "lab": []}
     complete = pending = 0
     details = []
@@ -48,7 +53,8 @@ def summary(student, activities):
             complete += raw is not None
             pending += raw is None
         details.append({**activity, "state": state,
-                        "needsReview": state == "completed" and percent is not None and percent < (70 if activity["kind"] == "kc" else 95),
+                        "needsReview": state == "completed" and percent is not None
+                        and percent < (kc_threshold if activity["kind"] == "kc" else lab_threshold),
                         "score": None if value is None else float(value),
                         "percent": None if percent is None else round(float(percent), 2)})
     means = {k: sum(v) / len(v) if v else None for k, v in scores.items()}
@@ -57,9 +63,9 @@ def summary(student, activities):
         status = "graduated"
     elif kc is None or lab is None:
         status = "insufficient"
-    elif kc >= 70 and lab >= 95:
+    elif kc >= kc_threshold and lab >= lab_threshold:
         status = "ok"
-    elif kc < 70 and lab < 95:
+    elif kc < kc_threshold and lab < lab_threshold:
         status = "critical"
     else:
         status = "attention"
@@ -170,8 +176,8 @@ def parse_csv(text, active_ids=None):
     return {"activities": activities, "students": students, "warnings": warnings}
 
 
-def overview(snapshot):
-    rows = [summary(s, snapshot["activities"]) for s in snapshot["students"]]
+def overview(snapshot, thresholds=None):
+    rows = [summary(s, snapshot["activities"], thresholds) for s in snapshot["students"]]
     # completed + pending é o denominador natural para "% sem nota" e "% em revisão":
     # o mesmo universo (liberada e não dispensada) usado pela média do aluno em summary().
     stats = {a["id"]: {"completed": 0, "pending": 0, "needsReview": 0, "scores": []} for a in snapshot["activities"]}
