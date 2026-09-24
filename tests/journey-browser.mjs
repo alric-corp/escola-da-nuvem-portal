@@ -43,7 +43,7 @@ try {
   const personal = { kc: 10, lab: 0, pendingBefore: 2, pendingAfter: 1, removed: [],
     activities: [{ name: "KC", before: 60, after: 70, previousState: "completed", state: "completed" }] };
   await page.addInitScript(() => {
-    if (!sessionStorage.getItem("avanca.session")) sessionStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", refreshToken: "refresh", expires: Date.now() + 600000 }));
+    if (!localStorage.getItem("avanca.session")) localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", refreshToken: "refresh", expires: Date.now() + 600000 }));
   });
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api", authDomain: origin, userPoolClientId: "test" } }));
   await page.route("**/oauth2/token", (route) => {
@@ -97,9 +97,9 @@ try {
   await page.getByRole("heading", { name: "Minhas atividades", exact: true }).waitFor();
   assert.equal(await page.locator("#cohort").inputValue(), "BRSA0257");
   await page.evaluate(() => {
-    const auth = JSON.parse(sessionStorage.getItem("avanca.session"));
+    const auth = JSON.parse(localStorage.getItem("avanca.session"));
     auth.expires = Date.now() - 1;
-    sessionStorage.setItem("avanca.session", JSON.stringify(auth));
+    localStorage.setItem("avanca.session", JSON.stringify(auth));
   });
   await page.getByRole("button", { name: "Consultar atualização", exact: true }).click();
   await page.getByRole("heading", { name: "Minhas atividades", exact: true }).waitFor();

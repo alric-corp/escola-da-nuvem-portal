@@ -250,7 +250,7 @@ try {
   adminPage.on("pageerror", (err) => errors.push(err.message));
   adminPage.on("dialog", (dialog) => dialog.accept());
   await adminPage.addInitScript(() =>
-    sessionStorage.setItem(
+    localStorage.setItem(
       "avanca.session",
       JSON.stringify({
         accessToken: "test-only",
@@ -604,7 +604,7 @@ try {
   assert.equal(await guestPage.locator("tbody tr").count(), 0);
   assert.equal(classReads, 0);
   await guestPage.evaluate(() =>
-    sessionStorage.setItem(
+    localStorage.setItem(
       "avanca.session",
       JSON.stringify({
         accessToken: "test-only",
@@ -622,7 +622,7 @@ try {
   let showName = true;
   studentPage.on("pageerror", (err) => errors.push(err.message));
   await studentPage.addInitScript(() =>
-    sessionStorage.setItem(
+    localStorage.setItem(
       "avanca.session",
       JSON.stringify({
         accessToken: "test-only",

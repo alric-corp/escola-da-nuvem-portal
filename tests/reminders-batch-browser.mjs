@@ -35,7 +35,7 @@ try {
     { id: "3", name: "Carla Teste", email: "carla@example.test", kc: 100, lab: 100, total: 100, completed: 2, pending: 0, progress: 100, status: "ok" },
   ];
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
-  await page.addInitScript(() => sessionStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
+  await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
   await page.route("**/api/**", async (route) => {
     const request = route.request();

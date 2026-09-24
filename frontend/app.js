@@ -22,7 +22,7 @@ let draftOwner = "";
 
 function saveContext() {
   if (!state.me || demo) return;
-  sessionStorage.setItem("avanca.context", JSON.stringify({ owner: state.me.email, code: state.code,
+  localStorage.setItem("avanca.context", JSON.stringify({ owner: state.me.email, code: state.code,
     view: ["student-pending", "reminders-batch"].includes(state.view) ? "overview" : state.view,
     filter: state.filter, search: state.search, sort: state.sort, activityKind: state.activityKind, activityModule: state.activityModule }));
 }
@@ -288,7 +288,7 @@ async function boot() {
     }
     if (!wasSignedIn && !demo) {
       try {
-        const context = JSON.parse(sessionStorage.getItem("avanca.context") || "null");
+        const context = JSON.parse(localStorage.getItem("avanca.context") || "null");
         if (context?.owner === state.me.email) {
           for (const key of ["code", "view", "filter", "search", "sort", "activityKind", "activityModule"])
             if (typeof context[key] === "string") state[key] = context[key];
@@ -475,7 +475,7 @@ document.addEventListener("click", (event) => {
         if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
         drafts.clear();
         state.csv = "";
-        sessionStorage.removeItem("avanca.context");
+        localStorage.removeItem("avanca.context");
         if (demo) location.assign("./");
         else logout(config);
       }
@@ -704,7 +704,7 @@ async function start() {
     }
     const requestedCohort = new URLSearchParams(location.search).get("turma");
     if (requestedCohort && /^[A-Z0-9-]{3,32}$/.test(requestedCohort))
-      sessionStorage.setItem("avanca.pending-cohort", requestedCohort);
+      localStorage.setItem("avanca.pending-cohort", requestedCohort);
     await callback(config);
     api = async (path, options = {}) => {
       const auth = await validSession(config);
@@ -761,8 +761,8 @@ async function start() {
     };
     if (session() && config.apiUrl) {
       await boot();
-      const code = sessionStorage.getItem("avanca.pending-cohort");
-      sessionStorage.removeItem("avanca.pending-cohort");
+      const code = localStorage.getItem("avanca.pending-cohort");
+      localStorage.removeItem("avanca.pending-cohort");
       if (code && teacher()) await loadClassReport(code);
     } else {
       clearSession();

@@ -9,14 +9,14 @@ const b64 = (bytes) =>
 const random = () => b64(crypto.getRandomValues(new Uint8Array(32)));
 export function session() {
   try {
-    return JSON.parse(sessionStorage.getItem(key));
+    return JSON.parse(localStorage.getItem(key));
   } catch {
     return null;
   }
 }
 export function clearSession() {
-  sessionStorage.removeItem(key);
-  sessionStorage.removeItem(flowKey);
+  localStorage.removeItem(key);
+  localStorage.removeItem(flowKey);
 }
 export async function login(config) {
   if (!config.authDomain || !config.userPoolClientId)
@@ -29,7 +29,7 @@ export async function login(config) {
       await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
     ),
   );
-  sessionStorage.setItem(
+  localStorage.setItem(
     flowKey,
     JSON.stringify({ verifier, state, nonce, created: Date.now() }),
   );
@@ -50,8 +50,8 @@ export async function login(config) {
 export async function callback(config) {
   const params = new URLSearchParams(location.search);
   if (!params.has("code") && !params.has("error")) return;
-  const flow = JSON.parse(sessionStorage.getItem(flowKey) || "null");
-  sessionStorage.removeItem(flowKey);
+  const flow = JSON.parse(localStorage.getItem(flowKey) || "null");
+  localStorage.removeItem(flowKey);
   history.replaceState({}, "", location.pathname);
   if (
     !flow ||
@@ -91,7 +91,7 @@ export async function callback(config) {
     id.exp * 1000 <= Date.now()
   )
     throw new Error("Sessão inválida. Entre novamente.");
-  sessionStorage.setItem(
+  localStorage.setItem(
     key,
     JSON.stringify({
       accessToken: tokens.access_token,
@@ -127,7 +127,7 @@ export async function validSession(config) {
     const next = { accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token || current.refreshToken,
       expires: Date.now() + tokens.expires_in * 1000 };
-    sessionStorage.setItem(key, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(next));
     return next;
   })();
   try { return await refreshing; }

@@ -36,7 +36,7 @@ try {
     { id: "paused", name: "9-CF-KC - Não liberada", kind: "kc", active: false, completed: 0, pending: 0, needsReview: 0, average: null, points: "100" },
   ];
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
-  await page.addInitScript(() => sessionStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
+  await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
   await page.route("**/api/**", async (route) => {
     const endpoint = new URL(route.request().url()).pathname.slice(4);

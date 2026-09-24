@@ -48,7 +48,7 @@ O histórico mostra as últimas 12 publicações, sempre incluindo a atual. Para
 ## 6. Sessão
 
 - O access token é renovado automaticamente com o refresh token.
-- A turma, a tela e os filtros ficam em `sessionStorage`, associados ao e-mail da conta.
+- A turma, a tela e os filtros ficam em `localStorage`, associados ao e-mail da conta.
 - Se a sessão expira, o aluno volta para a página de entrada com o aviso "Sua sessão expirou".
 
 ## O que o aluno **não** tem hoje

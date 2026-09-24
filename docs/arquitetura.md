@@ -20,7 +20,7 @@ Navegador ──► CloudFront ──► S3 (frontend/dist)
 | Peça | Arquivo | Observações |
 | --- | --- | --- |
 | Frontend estático | `frontend/` → `scripts/build_frontend.py` → `frontend/dist` | Módulos ES sem bundler. `config.json` é gerado a partir do output do Terraform. |
-| Autenticação | `frontend/auth.js`, `infra/terraform/auth.tf` | Authorization code + PKCE, state e nonce. Access token de 15 min, refresh de 7 dias, ambos em `sessionStorage`. |
+| Autenticação | `frontend/auth.js`, `infra/terraform/auth.tf` | Authorization code + PKCE, state e nonce. Access token de 15 min, refresh de 7 dias, ambos em `localStorage`. |
 | API | `infra/terraform/api.tf` | HTTP API com throttling de 10 req/s (burst 20). Lambda de 512 MB, timeout de 29 s. |
 | Regras de negócio | `backend/portal.py` | Classe `Portal`, com `dispatch` por rota. |
 | Parser e cálculo | `backend/grades.py` | Não depende de AWS. Veja [regras-de-notas.md](regras-de-notas.md). |

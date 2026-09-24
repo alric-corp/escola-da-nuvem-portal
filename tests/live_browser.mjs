@@ -25,14 +25,14 @@ async function login(actor) {
     { timeout: 60000, waitUntil: "domcontentloaded" },
   );
   await page.waitForFunction(
-    () => !!sessionStorage.getItem("avanca.session"),
+    () => !!localStorage.getItem("avanca.session"),
     null,
     {
       timeout: 30000,
     },
   );
   const token = await page.evaluate(
-    () => JSON.parse(sessionStorage.getItem("avanca.session")).accessToken,
+    () => JSON.parse(localStorage.getItem("avanca.session")).accessToken,
   );
   return { page, bc, token };
 }

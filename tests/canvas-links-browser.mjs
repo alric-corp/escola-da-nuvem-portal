@@ -40,7 +40,7 @@ try {
   ].map((a) => ({ ...a, id: a.name }));
   const student = { id: "101", name: "Aluno de teste", email: "student@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 4, progress: 20, status: "attention", activities };
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
-  await page.addInitScript(() => sessionStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test-only", expires: Date.now() + 3600000 })));
+  await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test-only", expires: Date.now() + 3600000 })));
   // Recurso pausado no produto; exercitamos o catálogo em uma variante só de teste.
   await page.route("**/ui.js", async (route) => {
     const source = await readFile(path.join(root, "ui.js"), "utf8");

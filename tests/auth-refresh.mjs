@@ -3,11 +3,11 @@ import test from "node:test";
 import { validSession, clearSession, session } from "../frontend/auth.js";
 
 const data = new Map();
-globalThis.sessionStorage = { getItem: (k) => data.get(k) || null,
+globalThis.localStorage = { getItem: (k) => data.get(k) || null,
   setItem: (k, v) => data.set(k, v), removeItem: (k) => data.delete(k) };
 const config = { authDomain: "https://auth.example.test", userPoolClientId: "client" };
 const expired = { accessToken: "old", refreshToken: "refresh", expires: Date.now() - 1000 };
-const store = (value) => sessionStorage.setItem("avanca.session", JSON.stringify(value));
+const store = (value) => localStorage.setItem("avanca.session", JSON.stringify(value));
 
 test("renova uma única vez para chamadas simultâneas", async () => {
   store(expired);

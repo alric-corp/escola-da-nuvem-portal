@@ -42,6 +42,7 @@ Legenda de status: ⬜ a fazer · 🟨 em andamento · ✅ concluída
 | # | Tarefa | Área | Esforço | Status |
 | --- | --- | --- | --- | --- |
 | 20 | [Domínio próprio para o portal (students.escoladanuvem.org)](20-dominio-proprio.md) | Infra | P | 🟨 (aguardando DNS institucional) |
+| 21 | [Sessão caindo rápido após o login](21-sessao-em-localstorage.md) | Aluno/Frontend | P | ✅ |
 
 ## Estratégica
 

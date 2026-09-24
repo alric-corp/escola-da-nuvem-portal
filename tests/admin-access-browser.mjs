@@ -34,7 +34,7 @@ try {
   ];
   let rejectCalls = 0, unlinkCalls = 0, renameCalls = 0;
   let bound = true;
-  await page.addInitScript(() => sessionStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
+  await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await page.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
   await page.route("**/api/**", async (route) => {
     const request = route.request();
