@@ -469,6 +469,10 @@ tbody tr.graduated:hover { background-color: #d6e4ff !important; }
   background: rgba(0,0,0,0.06);
 }
 
+.action-btn.btn-remover:hover {
+  background: rgba(220,53,69,0.15);
+}
+
 /* ===================== ÁREA CÓPIA ===================== */
 #area-copia {
   background: #fff;

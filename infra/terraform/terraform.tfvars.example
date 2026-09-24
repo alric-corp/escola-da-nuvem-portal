@@ -1,0 +1,7 @@
+aws_account_id          = "123456789012" # Substitua pelo ID da sua conta pessoal
+aws_region              = "us-east-1"
+project_name            = "restart-portal"
+environment             = "prod"
+initial_cohort          = "BRSA0267"
+instructor_email_domain = "escoladanuvem.org"
+cognito_sender_email    = "portal@example.test" # Precisa ser verificado no SES antes do apply

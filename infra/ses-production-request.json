@@ -1,0 +1,7 @@
+{
+  "ProductionAccessEnabled": true,
+  "MailType": "TRANSACTIONAL",
+  "WebsiteURL": "https://d2bx9t870lzfvc.cloudfront.net",
+  "AdditionalContactEmailAddresses": ["tomas.alric@escoladanuvem.org"],
+  "ContactLanguage": "EN"
+}

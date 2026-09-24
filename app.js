@@ -389,6 +389,7 @@ function renderTable() {
           href="https://outlook.office.com/mail/deeplink/compose?to=${row.email}&subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(msg)}">
           ✉️
         </a>
+        <button class="action-btn btn-remover" title="Remover aluno">🗑️</button>
       </td>
     `;
 
@@ -398,6 +399,12 @@ function renderTable() {
     btnCopiar.addEventListener("click", function (e) {
       e.stopPropagation();
       copiar(this.dataset.msg, this.dataset.email);
+    });
+
+    const btnRemover = tr.querySelector(".btn-remover");
+    btnRemover.addEventListener("click", function (e) {
+      e.stopPropagation();
+      removerAluno(row);
     });
 
     tr.addEventListener("click", () => toggleDetalhe(tr, row));
@@ -410,6 +417,21 @@ function renderTable() {
   document.getElementById("count-yellow").innerText    = `🟡 ${yellow}`;
   document.getElementById("count-green").innerText     = `🟢 ${green}`;
   document.getElementById("count-graduated").innerText = `🎓 ${graduated}`;
+}
+
+// ===================== REMOVER ALUNO =====================
+function removerAluno(row) {
+  const confirmar = confirm(
+    `Remover ${row.name} da lista?\n\nEssa ação não pode ser desfeita (a menos que recarregue o CSV).`
+  );
+  if (!confirmar) return;
+
+  const idx = globalData.indexOf(row);
+  if (idx !== -1) {
+    globalData.splice(idx, 1);
+    renderTable();
+    toast("Aluno removido com sucesso! ✅");
+  }
 }
 
 // ===================== LINHA EXPANSÍVEL =====================

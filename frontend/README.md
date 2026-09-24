@@ -1,0 +1,205 @@
+# Escola da Nuvem · Portal AWS re/Start
+
+Portal estático em HTML, CSS e JavaScript modular, com API Python em Lambda. A ferramenta anterior permanece na raiz; este diretório contém a nova aplicação.
+
+## Identidade visual
+
+O portal usa o padrão técnico escuro da Escola da Nuvem. Os tokens estão no início de `styles.css`: fundo `#001633`, sidebar `#0A3157`, superfícies `#08284A` e `#0B2E54`, texto branco e secundário `#B9CBDA`, bordas `#1C557A`. Ciano `#00AFE8` identifica ações e links; turquesa `#00CBDD` aparece em hover e detalhes; verde-água `#00EBD2` fica reservado a estados positivos e destaques pontuais.
+
+Warning (`#F2B84B`) e danger (`#D96B78`) usam fundos escuros, sempre acompanhados por rótulos. A composição usa tipografia sem serifa, números/metadados monoespaçados e conexões geométricas em SVG/CSS. A logo fornecida pela Escola da Nuvem está em `frontend/logo.png`, preservada sem alterações, e aparece na entrada, no menu e no ícone da aba. O build inclui esse arquivo explicitamente.
+
+O Cognito usa Managed Login (versão 2), tema escuro e a mesma logo. As cores são definidas em `infra/terraform/cognito-branding.json`, aplicadas pelo Terraform. A autorização inclui `lang=pt-BR` para exibir o login em português. O user pool usa Essentials, plano já presente antes dessa personalização.
+
+## Responsividade em monitores grandes
+
+A tipografia usa `rem` e cresce gradualmente a partir de 1280 pixels de largura disponível no navegador. Com fonte padrão de 16px, o texto da tabela passa de cerca de 14px em 1280 para 17,5px em Full HD, 21px em QHD e 28px em 4K. Menu lateral, cards, controles, espaçamentos e largura útil acompanham essa escala. O layout compacto continua aplicado em tablets/celulares; não há detecção por modelo do monitor nem uso de CSS zoom/transform.
+
+Os testes de navegador cobrem 1366×768, 1920×1080, 2560×1440 e 3840×2160, além das verificações móveis existentes, conferindo crescimento da tipografia, uso da largura e ausência de transbordamento horizontal da página. A escala considera pixels CSS; zoom do navegador e escala do sistema influenciam a largura disponível.
+
+A tela inicial de entrada também considera a altura disponível: em desktops a partir de 900px, usa uma composição em três faixas (cabeçalho, conteúdo e rodapé), sem a antiga altura central mínima de 680px. Título, arte e espaçamentos se adaptam à altura da janela. Em janelas excepcionalmente pequenas ou com texto ampliado, o conteúdo pode rolar naturalmente, sem ser cortado. Os testes Retina usam fator 2 e incluem 1512×982, 1512×850 e 1512×755, verificando que login, cadastro e rodapé cabem na janela. Isso não altera a escala das páginas internas.
+
+## Ver a interface localmente
+
+Na raiz do repositório:
+
+```sh
+python3 -B scripts/build_frontend.py
+python3 -m http.server 8080 --bind 127.0.0.1 --directory frontend/dist
+```
+
+Acesse **http://localhost:8080/?demo=1**. A demonstração usa dados fictícios e permite alternar entre aluno e instrutor. Não acessa a AWS, não publica CSVs e não altera dados. Para ver a página de entrada, acesse a raiz sem `?demo=1`. Não abra `index.html` por `file://`: os módulos e a configuração precisam de HTTP.
+
+O build não precisa de Node/npm. Ele copia somente os arquivos web previstos para `frontend/dist`; nunca copia Terraform, CSVs ou arquivos de credenciais. A demonstração só é ativada em localhost/loopback para desenvolvimento; a entrada publicada exige login, sem acesso de convidado nem link de demonstração.
+
+## Implantar
+
+Siga [infra/README.md](../infra/README.md). Após aplicar a infraestrutura:
+
+```sh
+terraform -chdir=infra/terraform output -json frontend_config > portal-config.json
+python3 -B scripts/build_frontend.py --config portal-config.json
+```
+
+Publique `frontend/dist` no bucket web e invalide o cache conforme o guia. O login local é apenas a demonstração; o callback Cognito configurado é o endereço HTTPS do CloudFront. A primeira conta administradora deve ser confirmada e adicionada manualmente ao grupo `admin` do Cognito.
+
+## Fluxos implementados
+
+**Administrador:** criar turmas, consultar solicitações institucionais, aprovar/vincular instrutores, remover vínculos e operar as turmas. Administração global é uma concessão manual no Cognito.
+
+**Navegação:** o Painel do instrutor reúne a consulta identificada da turma, com ordenação por nome, quantidade de atividades sem nota e menor média; filtros por situação, e-mail ausente e atividades sem nota. Ao voltar dos detalhes, os filtros e a busca são preservados. O menu não repete a tela de Notas da turma; a rota antiga continua exclusiva para instrutores autorizados. Publicações da turma reúne o histórico; Lembretes configura o remetente; Turmas e acessos administra vínculos.
+
+**Instrutor:** visualizar suas turmas, importar CSV, revisar notas e atividades liberadas, publicar uma nova versão, consultar e restaurar publicações anteriores. A API consulta os vínculos no DynamoDB em todas as operações.
+
+**Aluno:** confirmar sua conta, visualizar somente suas notas e pendências, filtrar atividades e consultar a evolução das últimas 12 publicações. O primeiro vínculo usa o e-mail confirmado que aparece no CSV e passa a ser persistido por `sub` e ID Canvas. Uma segunda conta com o mesmo e-mail não assume um vínculo existente.
+
+**Consulta autenticada:** somente instrutores autorizados e administradores podem consultar nomes, médias de KC/Lab/geral, atividades realizadas e quantidade de pendências em **Notas da turma**. O link `/?turma=BRSA0267` exige login e o código sozinho não concede acesso. `GET /cohorts/{code}/class-report` exige access token Cognito com escopo `portal/access`; o backend verifica o vínculo de instrutor. A antiga rota `/guest/cohorts/{code}` foi removida. E-mails, IDs Canvas, atividades individuais e arquivos originais não fazem parte desse resumo.
+
+**Leitura das notas:** uma atividade sem nota registrada pode aguardar entrega ou correção; o CSV não comprova entrega. Notas vazias em atividades liberadas entram como zero na média. Zero registrado conta como avaliação; dispensa e atividade não liberada ficam fora do cálculo. “Médias na referência” indica KC ≥ 70% e LAB ≥ 95%, sem afirmar que todas as atividades têm nota. A ajuda de cálculo está disponível nos painéis pessoais.
+
+**Atualização e histórico:** a data de atualização fica destacada. Ao restaurar uma publicação, o portal distingue a data da restauração da data original das notas. O histórico pessoal mostra diferenças de médias em pontos percentuais e mudanças nas próprias atividades, comparadas à versão que estava vigente antes de cada publicação. A versão atual é incluída mesmo quando uma restauração aponta para uma publicação fora das 12 mais recentes. O histórico do instrutor mostra contagens de alterações; publicações antigas sem resumo são identificadas como tal.
+
+**Primeiro acesso e falhas:** uma conta confirmada sem turma recebe orientações para conferir o e-mail do Canvas, trocar de conta e procurar o instrutor. A interface não presume saber se o motivo é falta de matrícula ou primeira publicação. Erros de consulta têm mensagem persistente e nova tentativa; erros de pendências permanecem na própria tela.
+
+**Sessão e rascunhos:** o cliente renova o access token com o refresh token no endpoint OAuth do Cognito. O refresh fica em sessionStorage e é eliminado no logout. Turma, tela e filtros são associados ao e-mail da conta; notas e CSV não são gravados no armazenamento do navegador. Arquivos e prévias ficam em memória, por turma, durante a sessão da página. Fechar/recarregar com rascunho mostra o aviso do navegador; sair da conta pede confirmação de descarte. A renovação de sessão e a troca de turma preservam esse trabalho.
+
+Em **Meu desempenho**, o aluno vê até três próximos passos. O instrutor pode indicar até três atividades liberadas em **Foco da turma**, no painel do instrutor. Cada aluno vê apenas as indicações que estão sem nota ou abaixo da referência; atividades já na referência ou dispensadas não reaparecem como tarefa. Sem seleção do instrutor, o início mostra primeiro atividades sem nota, na ordem da publicação, depois sugestões de revisão. Os botões **Ver minhas pendências**, **Revisar resultados** e **Ver todas as atividades** abrem a lista completa com o filtro correspondente.
+
+**Minhas atividades** agrupa os itens por módulo, com seções expansíveis e contagens referentes ao filtro atual. Busca (sem distinção de acentos), tipo, situação e módulo podem ser combinados. A classificação usa título completo, tipo e curso confirmado no catálogo; itens desconhecidos ficam em **Outras atividades**. O módulo não depende da ativação dos links do Canvas, que permanece pausada.
+
+**Revisar resultados** inclui somente atividades avaliadas com percentual abaixo de 70% em KCs ou 95% em LABs. Zero registrado entra em revisão, não em “Sem nota”. A API calcula `needsReview` antes do arredondamento; o frontend mantém compatibilidade com relatórios antigos. O destaque é uma sugestão de estudo, não uma exigência de reenvio nem confirmação de que o Canvas permite outra tentativa. Dispensadas e não liberadas ficam fora da revisão.
+
+O foco é salvo por turma via `POST /cohorts/{code}/focus-activities`, somente por administrador ou instrutor vinculado. Exige publicação atual e versão do foco para evitar sobrescrever alterações concorrentes. Não altera notas, publicação ou data de atualização do CSV. IDs retirados ou não liberados são ignorados no relatório; as escolhas restantes sobrevivem às próximas publicações. Implantar API e a nova rota autenticada antes do frontend. Nenhum e-mail é enviado ao salvar o foco.
+
+A lista reflete o último CSV publicado; as entregas continuam no Canvas. Detalhes individuais são retornados apenas no relatório autenticado do próprio aluno. Testes adicionais: `node --test tests/student-journey.mjs` e `node tests/student-journey-browser.mjs` (Playwright), além de `backend/test_journey.py`.
+
+### Links das atividades no Canvas — pausados
+
+**Pausado a pedido do titular:** `canvasLinksEnabled = false` em `app.js`; os botões não são exibidos. Os catálogos e seus testes foram preservados.
+
+`frontend/canvas-links.js` contém os catálogos fornecidos pelo instrutor: curso Canvas **4436**, com 170 links de KCs e LABs, e curso **4413**, com 75 links. Os endereços são de **itens de módulo**; não são montados com os IDs de tarefas encontrados nos cabeçalhos do CSV. A correspondência usa título completo e tipo, tolerando acentos, pontuação, espaços e o sufixo numérico do CSV. Números iniciais iguais não bastam para associar títulos diferentes.
+
+O catálogo só é usado nas turmas explicitamente associadas em `cohortCanvasCourses`. As associações confirmadas são **BRSA0267 → 4436 (AWS re/Start 1)** e **BRSA0257 → 4413 (AWS re/Start 2)**. AWS re/Start 1 é o nome usado pelos instrutores e pela coordenação da Escola da Nuvem para o programa que aborda Linux, Redes, Python e outros tópicos. O nome do programa não substitui o código da turma: novas turmas precisam de confirmação do próprio curso Canvas e de seu catálogo de itens. Usar o código exato do portal, sem substituir automaticamente a letra O pelo número zero. Essa configuração é feita no código nesta versão. Atividades ausentes em um catálogo nunca usam links do outro curso.
+
+Quando o recurso for retomado, atividades pendentes com correspondência mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem no painel pessoal, em Minhas atividades e nas pendências consultadas pelo instrutor. Atividades não liberadas, dispensadas ou sem correspondência ficam sem botão. A demonstração local não direciona dados fictícios para um curso real. O clique não altera notas, status, matrícula ou progresso e não substitui o login/permissões do Canvas.
+
+No CSV local de 14/09 da BRSAO267, todas as 166 atividades reconhecidas têm correspondência no catálogo; não há links pendentes nesse CSV. Os quatro links restantes do catálogo são LABs de Python que não aparecem nesse CSV; eles não geram atividades nem afetam médias. Agenda, materiais, fóruns e Skill Builder estão fora desta primeira integração com os cards de notas.
+
+No CSV local de 14/09 da BRSAO257, os 75 links do curso 4413 correspondem a todas as 75 atividades reconhecidas, incluindo os KCs de certificação 195–207. Os sete materiais complementares enviados junto com esses KCs estão preservados em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades ou alterar notas. A lista de pendências fica na raiz em [links-canvas-pendentes.md](../links-canvas-pendentes.md).
+
+Validação específica, sem acesso à AWS ou ao Canvas:
+
+```sh
+node --test tests/canvas-links.mjs
+python3 -B scripts/build_frontend.py --config portal-config.json
+PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
+PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
+  node tests/canvas-links-browser.mjs
+```
+
+O teste específico dos links habilita o recurso apenas na resposta simulada de teste e usa as associações reais BRSA0267 → 4436 e BRSA0257 → 4413 com dados inteiramente fictícios e API simulada. Verifica aluno e instrutor, troca entre turmas sem manter links do curso anterior, destinos exatos, nomes acessíveis, foco de teclado e larguras de 320, 390 e 1440 pixels. Não valida a disponibilidade dos itens dentro de uma sessão real do Canvas.
+
+**Nome de exibição:** ajustes operacionais de nome podem ser registrados em `COHORT#<código>` / `PROFILE#<ID Canvas>`, com `canvasId` e `displayName`, sem mudar o e-mail ou a matrícula. O backend aplica o nome na prévia, na área pessoal, na lista do instrutor e na consulta da turma. Novos CSVs e restaurações preservam o ajuste; arquivos originais permanecem intactos. Essa configuração é administrada por acesso AWS autorizado, sem uma nova tela de edição nesta versão.
+
+**Cadastro institucional:** endereços cujo domínio é exatamente `escoladanuvem.org` podem solicitar acesso de instrutor. Endereços semelhantes ou subdomínios não recebem essa elegibilidade. O administrador escolhe as turmas; não há promoção automática por domínio.
+
+## Atividades sem nota e lembretes individuais
+
+A retomada dos lembretes foi implementada localmente em 24/09/2026, junto das melhorias de jornada. O Terraform usa `reminders_enabled` (padrão `true`) para configurar `REMINDERS_ENABLED`; `false` bloqueia o envio e permite consultar atividades sem chamar o SES. Essa alteração exige implantação da infraestrutura e do frontend; não foi aplicada à produção durante a implementação.
+
+O instrutor abre **Lembretes**, solicita a confirmação do próprio e-mail institucional e verifica novamente depois de confirmar no SES. Aprovar um instrutor não envia mais confirmação automaticamente. `GET /cohorts/{code}/reminder-settings` e `POST /cohorts/{code}/verify-sender` exigem autorização na turma e domínio institucional. O cliente não escolhe outro remetente.
+
+No painel, **Ver detalhes** abre as atividades sem nota e a prévia do lembrete. Remetente, destinatário, assunto e texto ficam visíveis antes de **Enviar e-mail para este aluno**, seguido da confirmação do destinatário. Publicar notas ou abrir a prévia nunca envia e-mail. Alunos sem e-mail e remetentes não confirmados ficam bloqueados.
+
+O backend monta a mensagem e confere novamente publicação, aluno e hash da prévia. Uma reserva transacional evita envios concorrentes ou repetidos por aluno/publicação. Falhas confirmadas permitem tentativa manual; resultados incertos ficam bloqueados para evitar duplicação. Zero registrado, dispensa e atividades não liberadas não entram na mensagem.
+
+O status inicial **aceito pelo serviço de envio** não significa entrega. Uma nova Lambda, invocada por tópico SNS autorizado, recebe eventos SES e grava `EMAIL#<messageId>/DELIVERY`. O painel informa entrega ao servidor destinatário (sem prometer leitura/caixa de entrada), atraso, devolução, rejeição e reclamação. Eventos duplicados ou fora de ordem não substituem uma falha por sucesso. O instrutor consulta o resultado em **Atualizar status do envio**.
+
+Veja [infra/SES.md](../infra/SES.md) para implantação e operação.
+
+## Sua rotina de domingo
+
+1. Exporte o CSV da turma no Canvas como instrutor.
+2. Entre no portal, escolha a turma e abra **Atualizar notas**.
+3. Selecione o arquivo e clique em **Conferir arquivo**.
+4. Confirme quais atividades estão liberadas. Se mudar a seleção, clique em **Atualizar prévia**.
+5. Confira **O que muda ao publicar**: alunos adicionados/removidos, cadastros, atividades, pontuação máxima e notas alteradas (até 100 detalhes). Se houver alunos removidos, confira o arquivo completo e marque a confirmação. A API exige essa confirmação antes de publicar.
+6. Clique em **Publicar atualização**. A comparação e a confirmação de remoção são refeitas quando uma nova prévia é gerada.
+
+Os alunos continuam vendo a versão anterior até a publicação terminar. Se outra pessoa publicar antes de você, a prévia fica desatualizada e precisa ser gerada novamente. A publicação é um snapshot, não uma mesclagem: o CSV precisa conter a turma completa. Em **Publicações da turma**, é possível restaurar uma versão anterior, com registro da operação.
+
+## Regras de importação e cálculo
+
+- CSV UTF-8 com separador vírgula, cabeçalhos únicos, campos `Student`, `ID` e `SIS Login ID`, e uma linha `Points Possible`.
+- Limites desta versão: 2 MB, 500 alunos e 200 atividades reconhecidas. IDs Canvas e e-mails preenchidos devem ser únicos na turma.
+- O aluno de teste do Canvas é excluído antes dos cálculos quando tem um nome reservado reconhecido (português/inglês), ID numérico, nenhum SIS User ID e login vazio ou hexadecimal de 40 caracteres. A prévia informa a linha excluída. Nome sozinho não provoca exclusão; alunos com e-mail válido continuam sendo importados e e-mails inválidos de outros registros continuam sendo rejeitados. As mensagens usam a linha física original do CSV.
+- Atividades são colunas numeradas que identificam `KC` ou `Lab`. Nomes e e-mails são tratados como texto na interface, sem interpretar HTML.
+- Cada nota é dividida pelo máximo da atividade em `Points Possible`. A média de cada categoria é aritmética sobre os percentuais das atividades liberadas.
+- Na primeira prévia, atividades com pelo menos cinco células preenchidas são sugeridas como liberadas. Para turmas menores, a sugestão usa o número de alunos. O instrutor confirma essa seleção em cada importação.
+- E-mail ausente (`SIS Login ID` vazio ou só espaços): o aluno e suas notas são preservados, com aviso da linha e identificação na prévia/painel do instrutor. O campo é armazenado como `null`, sem e-mail fictício. Novos vínculos exigem corrigir o e-mail no Canvas e republicar; vínculos existentes por ID Canvas são preservados. E-mails preenchidos malformados e IDs duplicados continuam bloqueando a importação.
+- Célula vazia em atividade liberada: pendência e zero no cálculo. Zero preenchido: realizada, com nota zero. `EX`: dispensada e excluída do cálculo/progresso. Atividade não liberada: não penaliza o aluno.
+- Sem atividades avaliáveis em uma categoria: indicador `—` e situação “Sem avaliação completa”. A média total usa as categorias disponíveis.
+- Referências: KC ≥ 70% e Lab ≥ 95%. A classificação usa valores não arredondados. `Graduated Final Points = 1` prevalece como graduado.
+- Valores negativos, não numéricos, não finitos ou acima do máximo são rejeitados. Esta versão não trata bônus acima de `Points Possible`. Valores decimais com vírgula são aceitos dentro de campos CSV entre aspas.
+
+## Organização e persistência
+
+| Local | Conteúdo |
+| --- | --- |
+| `frontend/app.js` | Telas, navegação e chamadas à API |
+| `frontend/auth.js` | Authorization code, PKCE, state/nonce e sessão |
+| `frontend/demo.js` | Dados fictícios, sem chamadas ao backend |
+| `backend/portal.py` | Autorização por turma e operações do portal |
+| `backend/grades.py` | Parser e regras acadêmicas |
+| `backend/repository.py` | DynamoDB, transações e snapshots S3 |
+| `infra/terraform/` | Recursos AWS, permissões e empacotamento da Lambda |
+
+No DynamoDB: `COHORT#.../METADATA` guarda a versão atual; `PUB#...` e `DRAFT#...` guardam os metadados de publicação; `USER#.../TEACH#...` e `STUDY#...` guardam vínculos; `OWNER#...` impede apropriação de matrícula por outra conta. Snapshots completos e arquivos de origem ficam privados em `cohorts/<turma>/<importação>/` no S3.
+
+O backend lê os snapshots e filtra o aluno antes de responder. O relatório pessoal nunca inclui outros alunos. O resumo da turma usa uma rota separada e autenticada, sem e-mails, IDs ou atividades individuais. Nenhuma resposta fornece uma URL de download do snapshot.
+
+## Testes
+
+Sem dependências adicionais:
+
+```sh
+python3 -B -m unittest discover -s backend -v
+node --check frontend/app.js
+node --check frontend/auth.js
+node --test tests/auth-refresh.mjs tests/canvas-links.mjs
+terraform -chdir=infra/terraform validate
+terraform -chdir=infra/terraform test
+```
+
+Persistência com boto3/Moto (nenhum recurso real):
+
+```sh
+python3 -m venv /private/tmp/avanca-aws-tests
+/private/tmp/avanca-aws-tests/bin/pip install 'moto[s3,dynamodb]==5.1.22' 'boto3==1.42.97'
+/private/tmp/avanca-aws-tests/bin/python -B -m unittest discover -s tests/integration -v
+```
+
+Interface com Playwright (instalação temporária, sem dependência no build):
+
+```sh
+npm install --prefix /private/tmp/avanca-browser --no-audit --no-fund playwright
+PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
+  node /private/tmp/avanca-browser/node_modules/playwright/cli.js install chromium --only-shell
+python3 -B scripts/build_frontend.py
+PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
+PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
+  node tests/browser.mjs
+PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
+PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
+  node tests/journey-browser.mjs
+```
+
+O teste de browser cobre navegação, filtros, celular, prévia/publicação com API simulada e tentativa de injeção HTML. Capturas são gravadas em `/private/tmp/avanca-preview/`. O fluxo real Cognito → API Gateway e as permissões IAM precisam ser verificados após o deploy.
+
+## Limites conhecidos desta primeira versão
+
+- Ainda não houve validação com um CSV real anonimizado da sua turma. Cabeçalhos adicionais ou regras específicas do seu Canvas podem exigir ajustes.
+- A descoberta de turmas do aluno faz leitura de metadados e snapshots no servidor. É adequada ao escopo inicial; muitas turmas/publicações exigirão índices de matrícula e consultas mais específicas.
+- CSVs, prévias e snapshots permanecem guardados; não existe expiração automática. A política de retenção precisa ser definida antes de acumular dados de muitas turmas.
+- Ainda não há tela para corrigir manualmente uma matrícula vinculada à conta errada. E-mails diferentes antes do primeiro vínculo devem ser corrigidos no Canvas e reimportados; correções de vínculos persistidos exigem intervenção administrativa nos registros.
+- Cadastro e recuperação usam o Cognito com SES e remetente noreply; lembretes usam o endereço institucional confirmado do instrutor.
+- Lembretes são individuais e dependem da confirmação explícita do instrutor; o portal não busca notas automaticamente no Canvas. A atualização é manual, pelo instrutor, e a data da publicação fica visível aos alunos.

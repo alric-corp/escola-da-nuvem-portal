@@ -1,0 +1,65 @@
+{
+  "categories": {
+    "global": {
+      "colorSchemeMode": "DARK",
+      "spacingDensity": "REGULAR",
+      "pageHeader": { "enabled": false },
+      "pageFooter": { "enabled": false }
+    },
+    "form": {
+      "displayGraphics": false,
+      "location": { "horizontal": "CENTER", "vertical": "CENTER" }
+    }
+  },
+  "componentClasses": {
+    "divider": { "darkMode": { "borderColor": "1c557aff" } },
+    "focusState": { "darkMode": { "borderColor": "00cbddff" } },
+    "input": {
+      "darkMode": {
+        "defaults": {
+          "backgroundColor": "001633ff",
+          "borderColor": "1c557aff"
+        },
+        "placeholderColor": "b9cbdaff"
+      }
+    },
+    "inputLabel": { "darkMode": { "textColor": "ffffffff" } },
+    "inputDescription": { "darkMode": { "textColor": "b9cbdaff" } },
+    "link": {
+      "darkMode": {
+        "defaults": { "textColor": "00afe8ff" },
+        "hover": { "textColor": "00cbddff" }
+      }
+    }
+  },
+  "components": {
+    "pageBackground": {
+      "darkMode": { "color": "001633ff" },
+      "image": { "enabled": false }
+    },
+    "form": {
+      "darkMode": { "backgroundColor": "08284aff", "borderColor": "1c557aff" },
+      "backgroundImage": { "enabled": false },
+      "logo": {
+        "enabled": true,
+        "formInclusion": "IN",
+        "location": "CENTER",
+        "position": "TOP"
+      }
+    },
+    "pageText": {
+      "darkMode": {
+        "bodyColor": "ffffffff",
+        "descriptionColor": "b9cbdaff",
+        "headingColor": "ffffffff"
+      }
+    },
+    "primaryButton": {
+      "darkMode": {
+        "defaults": { "backgroundColor": "00afe8ff", "textColor": "001633ff" },
+        "hover": { "backgroundColor": "00cbddff", "textColor": "001633ff" },
+        "active": { "backgroundColor": "00cbddff", "textColor": "001633ff" }
+      }
+    }
+  }
+}

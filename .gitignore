@@ -1,0 +1,22 @@
+# Terraform: estado, planos e configuração local
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+backend.hcl
+crash.log
+crash.*.log
+infra/terraform/.build/
+portal-config.json
+
+# Dados de alunos e credenciais não pertencem ao Git
+*.csv
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.DS_Store
+frontend/dist/
