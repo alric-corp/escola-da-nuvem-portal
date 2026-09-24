@@ -40,3 +40,16 @@ test("início limita três atividades e respeita foco, dispensa e notas já na r
   assert.deepEqual(nextActivities(activities,["ok","exempt","missing"]),[]);
   assert.deepEqual(nextActivities([]),[]);
 });
+
+test("sem foco, sugere primeiro as atividades liberadas mais recentemente", () => {
+  const activities = [
+    {id:"antiga",kind:"kc",state:"pending",releasedAt:"2026-09-01T12:00:00Z"},
+    {id:"sem-data",kind:"kc",state:"pending"},
+    {id:"recente",kind:"lab",state:"pending",releasedAt:"2026-09-20T12:00:00Z"},
+    {id:"media",kind:"lab",state:"pending",releasedAt:"2026-09-10T12:00:00Z"},
+    {id:"revisar",kind:"kc",state:"completed",percent:10,releasedAt:"2026-09-21T12:00:00Z"},
+  ];
+  // Pendências vêm antes das revisões, mesmo que a revisão seja mais recente.
+  assert.deepEqual(nextActivities(activities).map(a=>a.id),["recente","media","antiga"]);
+  assert.deepEqual(nextActivities(activities.slice(0,2)).map(a=>a.id),["antiga","sem-data"]);
+});

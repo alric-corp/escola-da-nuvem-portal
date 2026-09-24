@@ -52,8 +52,12 @@ class Repository:
                 return sorted(items, key=lambda c: c["code"])
             args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
 
-    def put(self, pk, sk, data, absent=False):
+    def put(self, pk, sk, data, absent=False, ttl_days=None):
         args = {"Item": {"PK": pk, "SK": sk, "data": self._encode(data)}}
+        if ttl_days:
+            # Atributo de TTL da tabela (storage.tf); o DynamoDB apaga o item depois dessa data.
+            import time
+            args["Item"]["expiresAt"] = int(time.time()) + ttl_days * 86400
         if absent:
             args["ConditionExpression"] = "attribute_not_exists(PK)"
         try:
@@ -92,10 +96,19 @@ class Repository:
         except self.db.exceptions.TransactionCanceledException:
             raise Conflict() from None
 
-    def snapshot(self, key, value=None, raw=False):
+    def snapshot(self, key, value=None, raw=False, status=None):
         if value is not None:
             body = value if raw else json.dumps(value, ensure_ascii=False)
-            self.s3.put_object(Bucket=self.bucket, Key=key, Body=body.encode("utf-8"),
-                               ContentType="text/csv; charset=utf-8" if raw else "application/json", ServerSideEncryption="AES256")
+            args = {"Bucket": self.bucket, "Key": key, "Body": body.encode("utf-8"),
+                    "ContentType": "text/csv; charset=utf-8" if raw else "application/json",
+                    "ServerSideEncryption": "AES256"}
+            if status:
+                args["Tagging"] = "portal-status=" + status
+            self.s3.put_object(**args)
             return
         return json.loads(self.s3.get_object(Bucket=self.bucket, Key=key)["Body"].read())
+
+    def mark(self, key, status):
+        """Marca o arquivo para a regra de ciclo de vida do S3 (rascunho expira; publicado fica)."""
+        self.s3.put_object_tagging(Bucket=self.bucket, Key=key,
+                                   Tagging={"TagSet": [{"Key": "portal-status", "Value": status}]})

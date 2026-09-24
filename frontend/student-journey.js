@@ -50,7 +50,11 @@ export function needsReview(activity) {
 export function nextActivities(activities, focusIds = []) {
   const actionable = (a) => a.state === "pending" || needsReview(a);
   if (focusIds.length) return focusIds.map((id) => activities.find((a) => a.id === id)).filter((a) => a && actionable(a)).slice(0, 3);
-  return [...activities.filter((a) => a.state === "pending"), ...activities.filter(needsReview)].slice(0, 3);
+  // Liberadas mais recentemente primeiro; sem data (publicação antiga), mantém a ordem da publicação.
+  const recentFirst = (list) => list.map((a, i) => [a, i])
+    .sort(([a, i], [b, j]) => (b.releasedAt || "").localeCompare(a.releasedAt || "") || i - j)
+    .map(([a]) => a);
+  return [...recentFirst(activities.filter((a) => a.state === "pending")), ...recentFirst(activities.filter(needsReview))].slice(0, 3);
 }
 
 export function groupActivities(cohort, activities, courseId) {

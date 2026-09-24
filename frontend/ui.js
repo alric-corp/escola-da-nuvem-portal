@@ -9,6 +9,9 @@ export const e = (value) =>
         c
       ],
   );
+// Busca sem distinção de maiúsculas e acentos ("Joao" encontra "João").
+export const normalize = (value) =>
+  String(value ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR");
 export const percent = (value) =>
   value == null
     ? "—"

@@ -66,6 +66,19 @@ class ReminderTests(unittest.TestCase):
             self.assertEqual(err.exception.status, 403)
             self.assertEqual(self.mailer.sent, [])
 
+    def test_preview_includes_full_student_detail_for_instructor(self):
+        self.publish(kc="7", lab="")  # KC com nota (70%), LAB sem nota
+        preview = self.preview()
+        self.assertEqual([a["state"] for a in preview["allActivities"]], ["completed", "pending"])
+        self.assertEqual(preview["summary"]["kc"], 70)
+        self.assertEqual(preview["summary"]["pending"], 1)
+        self.assertEqual(preview["thresholds"], {"kc": 70, "lab": 95})
+        self.assertEqual(len(preview["history"]), 2)  # publicação do setUp e esta
+        self.assertTrue(preview["history"][0]["current"])
+        self.assertEqual(len(preview["activities"]), 1)  # a lista do lembrete continua só com pendências
+        with patch.dict("os.environ", {"REMINDERS_ENABLED": "false"}):
+            self.assertEqual(len(self.preview()["allActivities"]), 2)
+
     def test_preview_contains_only_pending_activities_and_no_send(self):
         preview = self.preview()
         self.assertEqual(len(preview["activities"]), 2)

@@ -53,6 +53,45 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "private" {
   }
 }
 
+# Retenção (todo/13): a prévia marca seus arquivos com portal-status=draft e a publicação
+# troca para published (backend/portal.py). Arquivos sem tag (anteriores a esta regra) não
+# são afetados. Com versionamento, a expiração cria um marcador de exclusão; a versão antiga
+# do rascunho some no dia seguinte, e a de qualquer outro arquivo em 90 dias.
+resource "aws_s3_bucket_lifecycle_configuration" "imports" {
+  bucket     = aws_s3_bucket.imports.id
+  depends_on = [aws_s3_bucket_versioning.private]
+  rule {
+    id     = "rascunhos-nao-publicados"
+    status = "Enabled"
+    filter {
+      tag {
+        key   = "portal-status"
+        value = "draft"
+      }
+    }
+    expiration {
+      days = 30
+    }
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+  rule {
+    id     = "versoes-antigas"
+    status = "Enabled"
+    filter {}
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+    expiration {
+      expired_object_delete_marker = true
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "imports" {
   bucket = aws_s3_bucket.imports.id
   policy = jsonencode({
@@ -81,6 +120,11 @@ resource "aws_dynamodb_table" "portal" {
   }
   point_in_time_recovery {
     enabled = true
+  }
+  # Prévias (DRAFT#) não publicadas expiram; a publicação regrava o item sem esse atributo.
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
   }
   server_side_encryption {
     enabled = true

@@ -1,6 +1,6 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink, cohortCanvasCourses } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, percent, personalChanges, state, studentBadge, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, normalize, percent, personalChanges, state, studentBadge, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
   const s = state.report.student;
@@ -19,7 +19,7 @@ export function studentPage(name) {
   ${next.length ? next.map(activityCard).join("") : `<p class="empty compact">${focus.length ? "Você já tem notas na referência nas atividades indicadas ou está dispensado delas. Consulte as demais atividades abaixo." : s.activities.some((a) => ["pending", "completed"].includes(a.state)) ? "As atividades avaliadas estão na referência. Continue acompanhando as próximas liberações." : "Ainda não há atividades para entrega ou revisão nesta publicação."}</p>`}
   <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${studentBadge(s, thresholds)}${gradingHelp(thresholds)}</div>
   <section class="metrics" aria-label="Indicadores de desempenho">${metric("Média em KCs", percent(s.kc), pendingKc ? `Referência: ${thresholds.kc}% ou mais · ${pendingKc} sem nota conta(m) como 0%` : `Referência: ${thresholds.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), pendingLab ? `Referência: ${thresholds.lab}% ou mais · ${pendingLab} sem nota conta(m) como 0%` : `Referência: ${thresholds.lab}% ou mais`)}${metric("Atividades com nota", s.completed, "Das atividades já liberadas")}${metric("Sem nota", s.pending, "Seu próximo ponto de partida", "metric-warning")}</section>
-<section class="panel"><h2>O que mudou nas suas notas</h2>${personalChanges(state.report.history?.find((r) => r.current)?.changes)}<button class="text-link" data-view="history">Ver meu histórico</button></section><section class="panel"><span class="eyebrow">A CADA PUBLICAÇÃO</span><h2>Seu aprendizado evolui</h2>${evolution()}<p class="small">Média de KCs e Labs em cada publicação. Atividades novas podem mudar a média.</p></section>`;
+<section class="panel"><h2>O que mudou nas suas notas</h2>${personalChanges(state.report.history?.find((r) => r.current)?.changes)}<button class="text-link" data-view="history">Ver meu histórico</button></section><section class="panel"><span class="eyebrow">A CADA PUBLICAÇÃO</span><h2>Seu aprendizado evolui</h2>${evolution()}<p class="small">Média de KCs e de LABs em cada publicação. Atividades novas podem mudar a média.</p></section>`;
 }
 
 export function activityCard(a) {
@@ -32,7 +32,21 @@ export function evolution() {
   const rows = [...(state.report.history || [])].reverse().slice(-8);
   if (!rows.length)
     return '<div class="empty compact">A evolução aparecerá após a primeira publicação.</div>';
-  return `<div class="chart" role="img" aria-label="Médias nas últimas publicações; valores detalhados em Meu histórico">${rows.map((r) => `<div class="chart-column"><span>${percent(r.total)}</span><div class="chart-track"><i style="height:${Math.max(0, Math.min(100, r.total || 0))}%"></i></div><small>${new Date(r.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</small></div>`).join("")}</div>`;
+  const t = state.report.thresholds || { kc: 70, lab: 95 };
+  const W = 360, H = 180, left = 30, right = 10, top = 10, bottom = 24;
+  const pw = W - left - right, ph = H - top - bottom;
+  const x = (i) => (left + (rows.length === 1 ? pw / 2 : (i * pw) / (rows.length - 1))).toFixed(1);
+  const y = (v) => (top + ph - (Math.max(0, Math.min(100, v)) / 100) * ph).toFixed(1);
+  const series = (key) => {
+    const points = rows.map((r, i) => (r[key] == null ? null : [x(i), y(r[key])])).filter(Boolean);
+    if (!points.length) return "";
+    return `<path class="evo-line evo-${key}" d="M${points.map((pt) => pt.join(" ")).join(" L")}"/>${points.map(([cx, cy]) => `<circle class="evo-dot evo-${key}" cx="${cx}" cy="${cy}" r="3"/>`).join("")}`;
+  };
+  const reference = (key, label) =>
+    `<line class="evo-ref evo-${key}" x1="${left}" x2="${W - right}" y1="${y(t[key])}" y2="${y(t[key])}"/><text class="evo-ref-label evo-${key}" x="${W - right}" y="${(y(t[key]) - 3).toFixed(1)}" text-anchor="end">${label} ${t[key]}%</text>`;
+  const grid = [0, 50, 100].map((v) => `<line class="evo-grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text class="evo-axis" x="${left - 4}" y="${(Number(y(v)) + 3).toFixed(1)}" text-anchor="end">${v}%</text>`).join("");
+  const dates = rows.map((r, i) => `<text class="evo-axis" x="${x(i)}" y="${H - 6}" text-anchor="middle">${new Date(r.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</text>`).join("");
+  return `<figure class="evolution"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Médias de KCs e LABs nas últimas ${rows.length} publicações, com as referências da turma; valores detalhados em Meu histórico">${grid}${reference("kc", "KC")}${reference("lab", "LAB")}${series("kc")}${series("lab")}${dates}</svg><figcaption class="evolution-legend"><span class="evo-key evo-kc">KCs</span><span class="evo-key evo-lab">LABs</span><span class="evo-key evo-ref-key">referência da turma</span></figcaption></figure>`;
 }
 
 export function activitiesPage() {
@@ -44,7 +58,7 @@ export function activitiesPage() {
       (state.filter === "all" || (state.filter === "review" ? needsReview(a) : a.state === state.filter)) &&
       (state.activityKind === "all" || a.kind === state.activityKind) &&
       (state.activityModule === "all" || activityModule(state.code, a, courseId) === state.activityModule) &&
-      a.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR").includes(state.search.normalize("NFD").replace(/[̀-ͯ]/g, "").toLocaleLowerCase("pt-BR")),
+      normalize(a.name).includes(normalize(state.search)),
   );
   return `${heading("APRENDER E COLOCAR EM PRÁTICA", "Minhas atividades", "Notas registradas e atividades que ainda serão liberadas.")}${updateInfo()}${gradingHelp(thresholds)}
   <section class="panel"><div class="table-tools"><label for="activity-kind">Tipo de atividade <select id="activity-kind">${[

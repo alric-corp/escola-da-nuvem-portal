@@ -1,4 +1,5 @@
-import { date, demo, e, errorPanel, heading, state } from "../ui.js";
+import { badge, date, demo, e, errorPanel, heading, metric, percent, state } from "../ui.js";
+import { groupActivities, needsReview } from "../student-journey.js";
 import { activityCard } from "./student.js";
 
 export function senderPage() {
@@ -15,7 +16,7 @@ export function pendingPage() {
   const title = heading(
     "ACOMPANHAMENTO DO ALUNO",
     p ? `Pendências de ${e(p.student.name)}` : "Pendências do aluno",
-    "Confira as atividades da última publicação e ofereça apoio ao aluno.",
+    "Pendências, notas, módulos e histórico do aluno na última publicação.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
   );
   if (state.pendingError) return title + errorPanel(state.pendingError, "retry-pending");
@@ -29,7 +30,17 @@ export function pendingPage() {
       const items = p.activities.filter((a) => a.kind === kind);
       return `<section aria-label="${label}"><h3>${label} (${items.length})</h3>${items.length ? items.map(activityCard).join("") : '<p class="small">Nenhuma pendência nesta categoria.</p>'}</section>`;
     })
-    .join("")}</div></section>${reminderPreview(p)}`;
+    .join("")}</div></section>${reminderPreview(p)}${studentDetail(p)}`;
+}
+
+// Detalhe completo do aluno para a conversa de acompanhamento (todo/10), somente leitura.
+function studentDetail(p) {
+  if (!p.summary || !p.allActivities) return "";
+  const s = p.summary, t = p.thresholds || { kc: 70, lab: 95 };
+  const groups = groupActivities(state.code, p.allActivities, p.canvasCourseId);
+  return `<section class="metrics" aria-label="Desempenho do aluno">${metric("Média em KCs", percent(s.kc), `Referência: ${t.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), `Referência: ${t.lab}% ou mais`)}${metric("Com nota", percent(s.progress), `${s.completed} atividade(s) · ${s.pending} sem nota`)}${metric("Situação", badge(s.status), "Critério da turma")}</section>
+  <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${groups.map(([name, items], i) => `<details class="activity-module" ${i === 0 ? "open" : ""}><summary><strong>${e(name)}</strong><span>${items.filter((a) => a.state === "completed").length} com nota · ${items.filter((a) => a.state === "pending").length} sem nota · ${items.filter(needsReview).length} para revisar</span></summary>${items.map(activityCard).join("")}</details>`).join("")}</section>
+  ${p.history?.length ? `<section class="panel"><h2>Histórico do aluno</h2><div class="table-scroll"><table><thead><tr><th>Publicação</th><th>KCs</th><th>Labs</th><th>Média geral</th></tr></thead><tbody>${p.history.map((h) => `<tr><td>${date(h.publishedAt)}${h.current ? " · atual" : ""}</td><td>${percent(h.kc)}</td><td>${percent(h.lab)}</td><td>${percent(h.total)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
 }
 
 const skipLabels = {
@@ -71,5 +82,5 @@ export function reminderPreview(p) {
     complained: "O destinatário marcou a mensagem como indesejada. Não reenvie.",
     rejected: "Mensagem rejeitada pelo serviço de e-mail.", delayed: "Entrega atrasada. Aguarde e consulte novamente." };
   const allowed = !demo && p.ses?.ready && p.student.email && p.activities.length && (!status || status === "failed");
-  return `<section class="panel reminder-panel"><h2>Prévia do lembrete</h2><dl><dt>De</dt><dd>${e(p.message.from)}</dd><dt>Para</dt><dd>${e(p.message.to || "E-mail ausente no Canvas")}</dd><dt>Assunto</dt><dd>${e(p.message.subject)}</dd></dl><pre class="email-preview">${e(p.message.text)}</pre><p role="status">${e(status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio." : p.ses?.reason || "Verifique seu remetente.")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminder" ${allowed ? "" : "disabled"}>Enviar e-mail para este aluno</button><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
+  return `<section class="panel reminder-panel"><h2>Prévia do lembrete</h2><dl><dt>De</dt><dd>${e(p.message.from)}</dd><dt>Para</dt><dd>${e(p.message.to || "E-mail ausente no Canvas")}</dd><dt>Assunto</dt><dd>${e(p.message.subject)}</dd></dl><pre class="email-preview">${e(p.message.text)}</pre><p role="status">${e(status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio." : p.ses?.reason || "Verifique seu remetente.")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminder" ${allowed ? "" : "disabled"}>Enviar e-mail para este aluno</button><button class="button secondary" data-action="copy-reminder">Copiar mensagem</button><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
 }

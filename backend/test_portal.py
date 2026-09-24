@@ -37,15 +37,21 @@ class MemoryRepository:
     def __init__(self):
         self.items = {}
         self.files = {}
+        self.tags = {}
+        self.ttl = {}
         self.fail_transaction = False
 
     def get(self, pk, sk):
         return copy.deepcopy(self.items.get((pk, sk)))
 
-    def put(self, pk, sk, data, absent=False):
+    def put(self, pk, sk, data, absent=False, ttl_days=None):
         if absent and (pk, sk) in self.items:
             raise Conflict()
         self.items[pk, sk] = copy.deepcopy(data)
+        if ttl_days:
+            self.ttl[pk, sk] = ttl_days
+        else:
+            self.ttl.pop((pk, sk), None)
 
     def list(self, pk, prefix=""):
         return [copy.deepcopy(v) for (p, s), v in self.items.items() if p == pk and s.startswith(prefix)]
@@ -62,10 +68,16 @@ class MemoryRepository:
             else:
                 self.put(p, s, data)
 
-    def snapshot(self, key, value=None, raw=False):
+    def snapshot(self, key, value=None, raw=False, status=None):
         if value is not None:
             self.files[key] = copy.deepcopy(value)
+            if status:
+                self.tags[key] = status
+            return None
         return copy.deepcopy(self.files[key])
+
+    def mark(self, key, status):
+        self.tags[key] = status
 
 
 class NoopMailer:
@@ -390,6 +402,45 @@ class PortalTests(unittest.TestCase):
         audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0]["action"], "display-name")
+
+    def test_draft_files_expire_unless_published(self):
+        draft = self.call(self.admin, "preview", {"csv": canvas_csv()})["draft"]
+        folder = draft["snapshot"].rsplit("/", 1)[0]
+        self.assertEqual(self.repo.tags[folder + "/source.csv"], "draft")
+        self.assertEqual(self.repo.tags[folder + "/snapshot.json"], "draft")
+        self.assertEqual(self.repo.ttl["COHORT#BRSA0267", "DRAFT#" + draft["id"]], 30)
+        self.call(self.admin, "publish", {"draftId": draft["id"]})
+        self.assertEqual(self.repo.tags[folder + "/source.csv"], "published")
+        self.assertEqual(self.repo.tags[folder + "/snapshot.json"], "published")
+        self.assertNotIn(("COHORT#BRSA0267", "DRAFT#" + draft["id"]), self.repo.ttl)
+
+    def test_old_draft_cannot_be_published(self):
+        draft = self.call(self.admin, "preview", {"csv": canvas_csv()})["draft"]
+        stored = self.repo.get("COHORT#BRSA0267", "DRAFT#" + draft["id"])
+        self.repo.items["COHORT#BRSA0267", "DRAFT#" + draft["id"]] = {**stored, "createdAt": "2020-01-01T00:00:00+00:00"}
+        with self.assertRaises(APIError) as err:
+            self.call(self.admin, "publish", {"draftId": draft["id"]})
+        self.assertEqual(err.exception.status, 409)
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "METADATA")["current"])
+
+    def test_release_date_is_kept_across_publications_and_new_ones_get_their_own(self):
+        csv_one = sparse_lab_csv(lab_filled=6)  # KC e LAB liberados
+        first = self.publish(csv_one)
+        kc_date = first["releasedAt"]["001 KC (1)"]
+        second = self.publish(sparse_lab_csv(lab_filled=6, extra_activity=True))
+        self.assertEqual(second["releasedAt"]["001 KC (1)"], kc_date)
+        self.assertEqual(second["releasedAt"]["003 Lab (3)"], second["publishedAt"])
+        report = self.call(self.admin, "report", method="GET")
+        by_id = {a["id"]: a for a in report["activities"]}
+        self.assertEqual(by_id["001 KC (1)"]["releasedAt"], kc_date)
+        self.assertNotIn("releasedAt", report["history"][0])  # lista de publicações não carrega o mapa
+
+    def test_legacy_publication_without_release_map_uses_its_date(self):
+        first = self.publish(sparse_lab_csv(lab_filled=6))
+        legacy = {k: v for k, v in self.repo.get("COHORT#BRSA0267", "PUB#" + first["id"]).items() if k != "releasedAt"}
+        self.repo.put("COHORT#BRSA0267", "PUB#" + first["id"], legacy)
+        second = self.publish(sparse_lab_csv(lab_filled=6))
+        self.assertEqual(second["releasedAt"]["001 KC (1)"], first["publishedAt"])
 
     def test_settings_update_thresholds_and_canvas_course_id_and_audit(self):
         self.publish()

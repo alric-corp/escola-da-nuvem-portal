@@ -2,7 +2,7 @@
 
 Cada arquivo descreve uma tarefa: problema, proposta e critérios de aceite. Quando uma tarefa for concluída, marque-a aqui e atualize a documentação em [../docs/](../docs/README.md).
 
-Legenda de status: ⬜ a fazer · 🟨 em andamento · ✅ concluída
+Legenda de status: ⬜ a fazer · 🟨 em andamento · ⏸️ aguardando decisão · ✅ concluída
 
 ## Prioridade alta
 
@@ -30,12 +30,12 @@ Legenda de status: ⬜ a fazer · 🟨 em andamento · ✅ concluída
 
 | # | Tarefa | Área | Esforço | Status |
 | --- | --- | --- | --- | --- |
-| 10 | [Detalhe completo do aluno para o instrutor](10-detalhe-do-aluno-para-instrutor.md) | Instrutor | P | ⬜ |
-| 13 | [Política de retenção de rascunhos e arquivos](13-retencao-de-dados.md) | Infra | P | ⬜ |
-| 15 | [Avisar o aluno quando houver notas novas](15-aviso-de-nova-publicacao.md) | Aluno | M | ⬜ |
-| 16 | [Priorizar atividades recentes e melhorar a evolução](16-proximos-passos-e-evolucao.md) | Aluno | P | ⬜ |
-| 18 | [Recuperar funções da ferramenta antiga (exportar CSV)](18-exportar-csv.md) | Instrutor | P | ⬜ |
-| 19 | [Organização do repositório e robustez do frontend](19-organizacao-e-robustez-do-codigo.md) | Manutenção | P–M | ⬜ |
+| 10 | [Detalhe completo do aluno para o instrutor](10-detalhe-do-aluno-para-instrutor.md) | Instrutor | P | ✅ |
+| 13 | [Política de retenção de rascunhos e arquivos](13-retencao-de-dados.md) | Infra | P | ✅ |
+| 15 | [Avisar o aluno quando houver notas novas](15-aviso-de-nova-publicacao.md) | Aluno | M | ⏸️ (aguardando coordenação) |
+| 16 | [Priorizar atividades recentes e melhorar a evolução](16-proximos-passos-e-evolucao.md) | Aluno | P | ✅ |
+| 18 | [Recuperar funções da ferramenta antiga (exportar CSV)](18-exportar-csv.md) | Instrutor | P | ✅ |
+| 19 | [Organização do repositório e robustez do frontend](19-organizacao-e-robustez-do-codigo.md) | Manutenção | P–M | ✅ |
 
 ## Fora da lista original
 

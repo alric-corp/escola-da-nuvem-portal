@@ -168,6 +168,21 @@ class AWSPersistenceTests(unittest.TestCase):
         other = Portal(Repository(), {"sub": "s2", "email": "aluno@example.test", "groups": []})
         self.assertEqual(other.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["id"], "101")
 
+    def test_draft_retention_tags_and_ttl_on_real_services(self):
+        s3 = boto3.client("s3", region_name="us-east-1")
+        db = boto3.client("dynamodb", region_name="us-east-1")
+        tag = lambda key: {t["Key"]: t["Value"] for t in s3.get_object_tagging(Bucket="portal-imports-test", Key=key)["TagSet"]}
+        draft = self.call("preview", {"csv": canvas_csv()})["draft"]
+        folder = draft["snapshot"].rsplit("/", 1)[0]
+        self.assertEqual(tag(folder + "/source.csv"), {"portal-status": "draft"})
+        item = db.get_item(TableName="portal-test", Key={"PK": {"S": "COHORT#BRSA0267"}, "SK": {"S": "DRAFT#" + draft["id"]}})["Item"]
+        self.assertIn("expiresAt", item)
+        self.call("publish", {"draftId": draft["id"]})
+        self.assertEqual(tag(folder + "/source.csv"), {"portal-status": "published"})
+        self.assertEqual(tag(folder + "/snapshot.json"), {"portal-status": "published"})
+        item = db.get_item(TableName="portal-test", Key={"PK": {"S": "COHORT#BRSA0267"}, "SK": {"S": "DRAFT#" + draft["id"]}})["Item"]
+        self.assertNotIn("expiresAt", item)
+
     def test_class_report_is_instructor_only_after_new_csv(self):
         draft = self.call("preview", {"csv": canvas_csv()})["draft"]
         self.call("publish", {"draftId": draft["id"]})

@@ -6,7 +6,7 @@
   "scripts": {
     "build": "python3 scripts/build_frontend.py",
     "test": "node --test tests/auth-refresh.mjs tests/canvas-links.mjs tests/student-journey.mjs",
-    "test:browser": "npm run build --silent && node --test tests/browser.mjs tests/journey-browser.mjs tests/student-journey-browser.mjs tests/canvas-links-browser.mjs tests/rate-limit-browser.mjs tests/reminders-batch-browser.mjs tests/activity-overview-browser.mjs tests/admin-access-browser.mjs"
+    "test:browser": "npm run build --silent && node --test tests/browser.mjs tests/journey-browser.mjs tests/student-journey-browser.mjs tests/canvas-links-browser.mjs tests/rate-limit-browser.mjs tests/reminders-batch-browser.mjs tests/activity-overview-browser.mjs tests/admin-access-browser.mjs tests/instructor-tools-browser.mjs"
   },
   "devDependencies": {
     "playwright": "1.63.0"

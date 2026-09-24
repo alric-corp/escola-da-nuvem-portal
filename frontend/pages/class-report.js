@@ -1,4 +1,4 @@
-import { $, badge, date, e, heading, icon, labels, metric, percent, sessionContext, state } from "../ui.js";
+import { $, badge, date, e, heading, icon, labels, metric, normalize, percent, sessionContext, state } from "../ui.js";
 
 export function renderClassReport() {
   const classReport = state.classReport;
@@ -6,9 +6,7 @@ export function renderClassReport() {
   const filtered = rows.filter(
     (s) =>
       (state.classFilter === "all" || s.status === state.classFilter) &&
-      s.name
-        .toLocaleLowerCase("pt-BR")
-        .includes(state.classSearch.toLocaleLowerCase("pt-BR")),
+      normalize(s.name).includes(normalize(state.classSearch)),
   );
   if (state.classFilter === "all")
     filtered.sort((a, b) =>

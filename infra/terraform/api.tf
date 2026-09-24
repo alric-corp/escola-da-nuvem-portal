@@ -130,7 +130,7 @@ resource "aws_iam_role_policy" "portal_data" {
       },
       {
         Effect   = "Allow"
-        Action   = ["s3:GetObject", "s3:PutObject"]
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging"]
         Resource = "${aws_s3_bucket.imports.arn}/cohorts/*"
       }
     ]

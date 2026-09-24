@@ -123,4 +123,26 @@ run "private_storage_and_authenticated_api" {
     condition     = aws_lambda_permission.auth_trigger.principal == "cognito-idp.amazonaws.com" && aws_lambda_permission.auth_trigger.source_arn == aws_cognito_user_pool.portal.arn
     error_message = "Só o user pool do portal pode invocar o gatilho de pré-geração de token."
   }
+
+  assert {
+    condition     = aws_dynamodb_table.portal.ttl[0].enabled && aws_dynamodb_table.portal.ttl[0].attribute_name == "expiresAt"
+    error_message = "Prévias não publicadas (DRAFT#) precisam expirar pelo TTL da tabela."
+  }
+
+  assert {
+    condition = anytrue([
+      for r in aws_s3_bucket_lifecycle_configuration.imports.rule :
+      r.expiration[0].days == 30 && r.filter[0].tag[0].value == "draft"
+      if length(r.filter[0].tag) > 0
+    ])
+    error_message = "Arquivos de prévia marcados como rascunho devem expirar em 30 dias."
+  }
+
+  assert {
+    condition = anytrue([
+      for r in aws_s3_bucket_lifecycle_configuration.imports.rule :
+      r.noncurrent_version_expiration[0].noncurrent_days == 90 if length(r.filter[0].tag) == 0
+    ])
+    error_message = "Versões não correntes do bucket de importações devem expirar em 90 dias."
+  }
 }

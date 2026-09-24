@@ -1,6 +1,6 @@
 # 15 · Avisar o aluno quando houver notas novas
 
-**Prioridade:** baixa · **Esforço:** médio · **Área:** aluno
+**Status:** ⏸️ aguardando decisão da coordenação (2026-09-24) · **Prioridade:** baixa · **Esforço:** médio · **Área:** aluno
 
 ## Problema
 O aluno só descobre uma publicação nova se entrar no portal.
@@ -12,3 +12,6 @@ O aluno só descobre uma publicação nova se entrar no portal.
 
 ## Atenção
 Hoje "publicar nunca envia e-mail" é uma garantia documentada. Mudar isso exige decisão da coordenação e atualização da documentação.
+
+## Decisão
+Adiada pelo titular: a garantia documentada "publicar nunca envia e-mail" continua valendo até a coordenação decidir mudar isso.

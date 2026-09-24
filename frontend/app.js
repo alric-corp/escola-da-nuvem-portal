@@ -3,7 +3,7 @@ import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, roleLabel
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";
-import { teacherPage } from "./pages/teacher.js";
+import { filteredStudents, studentsCsv, teacherPage } from "./pages/teacher.js";
 import { activityOverviewPage } from "./pages/activities-overview.js";
 import { batchPage, pendingPage, senderPage } from "./pages/reminders.js";
 import { historyPage } from "./pages/history.js";
@@ -320,6 +320,130 @@ async function busy(element, fn) {
   }
 }
 
+// Ações dos botões com data-action. Cada uma recebe o botão clicado; erros lançados
+// viram aviso para o usuário via busy().
+const actions = {
+  "retry-boot": () => boot(),
+  "refresh-report": () => loadReport(),
+  "retry-pending": () => loadPending(state.pendingStudentId),
+  "retry-batch-preview": () => loadBatchPreview(),
+  "reminders-batch": async (button) => {
+    state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
+    state.view = "reminders-batch";
+    state.batchIds = (button.dataset.ids || "").split(",").filter(Boolean);
+    await loadBatchPreview();
+  },
+  "send-reminders-batch": async () => {
+    const code = state.code, p = state.batchPreview;
+    const eligible = p.recipients.filter((r) => !r.skip);
+    if (!eligible.length || !confirm(`Enviar lembrete para ${eligible.length} aluno(s)?`)) return;
+    const result = await api(`/cohorts/${code}/send-reminders`, { method: "POST", body: {
+      studentIds: state.batchIds, expectedPublicationId: p.publicationId } });
+    if (state.code === code && state.view === "reminders-batch") {
+      state.batchResults = result.results;
+      render();
+    }
+    notice("Envio em lote concluído. Confira o resultado por aluno.");
+  },
+  "clear-filters": () => {
+    Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name" });
+    render();
+  },
+  "export-csv": () => {
+    const rows = filteredStudents();
+    const url = URL.createObjectURL(new Blob([studentsCsv(rows)], { type: "text/csv;charset=utf-8" }));
+    const link = Object.assign(document.createElement("a"), {
+      href: url, download: `${state.code}-alunos-${new Date().toISOString().slice(0, 10)}.csv` });
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notice(`CSV exportado com ${rows.length} aluno(s).`);
+  },
+  "copy-reminder": async () => {
+    const message = state.pendingPreview?.message;
+    if (!message) return;
+    try {
+      await navigator.clipboard.writeText(`${message.subject}\n\n${message.text}`);
+    } catch {
+      throw new Error("Não foi possível copiar. Selecione o texto da prévia e copie manualmente.");
+    }
+    notice("Mensagem copiada.");
+  },
+  "refresh-sender": () => loadSender(),
+  "verify-sender": async () => {
+    const code = state.code;
+    const sender = await api(`/cohorts/${code}/verify-sender`, { method: "POST", body: {} });
+    if (code === state.code) { state.sender = sender; render(); }
+    notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
+  },
+  "send-reminder": async () => {
+    const code = state.code, p = state.pendingPreview;
+    if (!p?.message || !confirm(`Enviar este lembrete para ${p.message.to}, usando ${p.message.from}?`)) return;
+    try {
+      await api(`/cohorts/${code}/send-reminder`, { method: "POST", body: {
+        studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash } });
+      notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
+    } finally {
+      if (state.code === code && state.pendingStudentId === p.student.id && state.view === "student-pending") await loadPending(p.student.id);
+    }
+  },
+  login: () => login(config),
+  "class-grades": () => loadClassReport(state.code),
+  "class-refresh": () => loadClassReport(state.classReport.cohort),
+  "class-exit": async () => {
+    state.classReport = null;
+    history.replaceState({}, "", location.pathname);
+    state.view = "overview";
+    if (state.me) await boot();
+    else render();
+  },
+  logout: () => signOut(),
+  "switch-account": () => signOut(),
+  "demo-role": async () => {
+    demoRole = demoRole === "student" ? "instructor" : "student";
+    api = (await import("./demo.js")).demoAPI(demoRole);
+    state.view = "overview";
+    state.filter = "all";
+    state.search = "";
+    await boot();
+  },
+  request: async () => {
+    await api("/access-request", { method: "POST", body: {} });
+    await boot();
+    notice("Solicitação enviada ao administrador.");
+  },
+  "refresh-requests": () => loadAccess(),
+  publish: async () => {
+    const code = state.code, preview = state.preview;
+    if (!preview || state.dirty) return;
+    if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
+      throw new Error("Confira e confirme os alunos removidos antes de publicar.");
+    if (!confirm(`Publicar as notas para ${state.preview.count} alunos da ${state.code}?`)) return;
+    await api(`/cohorts/${code}/publish`, {
+      method: "POST",
+      body: { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved },
+    });
+    drafts.delete(code);
+    if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return; }
+    state.preview = null;
+    state.csv = "";
+    state.filename = "";
+    state.view = "overview";
+    await boot();
+    notice("Atualização publicada. Os alunos já podem consultar.");
+  },
+};
+
+function signOut() {
+  if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
+  drafts.clear();
+  state.csv = "";
+  localStorage.removeItem("avanca.context");
+  if (demo) location.assign("./");
+  else logout(config);
+}
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
@@ -415,109 +539,7 @@ document.addEventListener("click", (event) => {
       await boot();
       notice("Publicação restaurada.");
     });
-  if (action)
-    busy(button, async () => {
-      if (action === "retry-boot") await boot();
-      if (action === "refresh-report") await loadReport();
-      if (action === "retry-pending") await loadPending(state.pendingStudentId);
-      if (action === "retry-batch-preview") await loadBatchPreview();
-      if (action === "reminders-batch") {
-        state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
-        state.view = "reminders-batch";
-        state.batchIds = (button.dataset.ids || "").split(",").filter(Boolean);
-        await loadBatchPreview();
-      }
-      if (action === "send-reminders-batch") {
-        const code = state.code, p = state.batchPreview;
-        const eligible = p.recipients.filter((r) => !r.skip);
-        if (!eligible.length || !confirm(`Enviar lembrete para ${eligible.length} aluno(s)?`)) return;
-        const result = await api(`/cohorts/${code}/send-reminders`, { method: "POST", body: {
-          studentIds: state.batchIds, expectedPublicationId: p.publicationId } });
-        if (state.code === code && state.view === "reminders-batch") {
-          state.batchResults = result.results;
-          render();
-        }
-        notice("Envio em lote concluído. Confira o resultado por aluno.");
-      }
-      if (action === "clear-filters") {
-        Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name" });
-        render();
-      }
-      if (action === "refresh-sender") await loadSender();
-      if (action === "verify-sender") {
-        const code = state.code;
-        const sender = await api(`/cohorts/${code}/verify-sender`, { method: "POST", body: {} });
-        if (code === state.code) { state.sender = sender; render(); }
-        notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
-      }
-      if (action === "send-reminder") {
-        const code = state.code, p = state.pendingPreview;
-        if (!p?.message || !confirm(`Enviar este lembrete para ${p.message.to}, usando ${p.message.from}?`)) return;
-        try {
-          await api(`/cohorts/${code}/send-reminder`, { method: "POST", body: {
-            studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash } });
-          notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
-        } finally {
-          if (state.code === code && state.pendingStudentId === p.student.id && state.view === "student-pending") await loadPending(p.student.id);
-        }
-      }
-      if (action === "login") await login(config);
-      if (action === "class-grades") await loadClassReport(state.code);
-      if (action === "class-refresh") await loadClassReport(state.classReport.cohort);
-      if (action === "class-exit") {
-        state.classReport = null;
-        history.replaceState({}, "", location.pathname);
-        state.view = "overview";
-        if (state.me) await boot();
-        else render();
-      }
-      if (action === "logout" || action === "switch-account") {
-        if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
-        drafts.clear();
-        state.csv = "";
-        localStorage.removeItem("avanca.context");
-        if (demo) location.assign("./");
-        else logout(config);
-      }
-      if (action === "demo-role") {
-        demoRole = demoRole === "student" ? "instructor" : "student";
-        api = (await import("./demo.js")).demoAPI(demoRole);
-        state.view = "overview";
-        state.filter = "all";
-        state.search = "";
-        await boot();
-      }
-      if (action === "request") {
-        await api("/access-request", { method: "POST", body: {} });
-        await boot();
-        notice("Solicitação enviada ao administrador.");
-      }
-      if (action === "refresh-requests") await loadAccess();
-      if (action === "publish") {
-        const code = state.code, preview = state.preview;
-        if (!preview || state.dirty) return;
-        if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
-          throw new Error("Confira e confirme os alunos removidos antes de publicar.");
-        if (
-          !confirm(
-            `Publicar as notas para ${state.preview.count} alunos da ${state.code}?`,
-          )
-        )
-          return;
-        await api(`/cohorts/${code}/publish`, {
-          method: "POST",
-          body: { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved },
-        });
-        drafts.delete(code);
-        if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return; }
-        state.preview = null;
-        state.csv = "";
-        state.filename = "";
-        state.view = "overview";
-        await boot();
-        notice("Atualização publicada. Os alunos já podem consultar.");
-      }
-    });
+  if (action && actions[action]) busy(button, () => actions[action](button));
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
@@ -749,7 +771,10 @@ async function start() {
           setTimeout(resolve, 400 * 2 ** attempt + Math.random() * 200),
         );
       }
-      const data = await res.json().catch(() => ({}));
+      // O gateway pode devolver HTML ou corpo vazio (ex.: 502/504); só a API responde JSON.
+      const data = (res.headers.get("content-type") || "").includes("application/json")
+        ? await res.json().catch(() => ({}))
+        : {};
       if (!res.ok) {
         if (res.status === 401) {
           saveContext();
@@ -762,6 +787,10 @@ async function start() {
         if (res.status === 429)
           throw new Error(
             "O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.",
+          );
+        if ([502, 503, 504].includes(res.status) && !data.error)
+          throw new Error(
+            "O portal está temporariamente indisponível. Tente novamente em instantes.",
           );
         throw new Error(
           data.error || "Não foi possível completar a solicitação.",

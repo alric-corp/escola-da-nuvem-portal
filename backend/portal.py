@@ -30,10 +30,21 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+DRAFT_TTL_DAYS = 30
+
+
 def cohort_thresholds(cohort):
     """Limites de referência (%) da turma; 70/95 se a turma não tiver configurado os seus."""
     thresholds = cohort.get("thresholds") or {}
     return {"kc": thresholds.get("kc", 70), "lab": thresholds.get("lab", 95)}
+
+
+def released_at(publication, snapshot):
+    """Anota em cada atividade quando ela foi liberada (todo/16), se a publicação tiver o mapa.
+    Publicações anteriores ao recurso não têm o mapa: as atividades ficam sem a data."""
+    dates = (publication or {}).get("releasedAt") or {}
+    return {**snapshot, "activities": [{**a, "releasedAt": dates.get(a["id"])} if a["active"] else a
+                                       for a in snapshot["activities"]]}
 
 
 def display_snapshot(repo, code, snapshot):
@@ -106,6 +117,19 @@ class Portal:
         prior = next((s for s in previous["students"] if s["id"] == student_id), None)
         return {"kc": s["kc"], "lab": s["lab"], "total": s["total"],
                 "changes": student_changes(prior, previous["activities"], own, old["activities"], thresholds)}
+
+    def student_history(self, pk, publication, snap, student_id, thresholds):
+        """Médias do aluno nas últimas 12 publicações (a atual incluída), mais recentes primeiro."""
+        history = []
+        publications = sorted(self.repo.list(pk, "PUB#"), key=lambda p: p["publishedAt"], reverse=True)[:12]
+        if not any(p["id"] == publication["id"] for p in publications):
+            publications = publications[:11] + [publication]
+        for p in publications:
+            is_current = p["id"] == publication["id"]
+            entry = self.student_summary_entry(pk, p, student_id, thresholds, snap if is_current else None)
+            if entry:
+                history.append({"publishedAt": p["publishedAt"], "current": is_current, **entry})
+        return history
 
     def cohort(self, code):
         require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)), 400, "Código de turma inválido.")
@@ -284,11 +308,17 @@ class Portal:
         raw_student = next((s for s in snap["students"] if s["id"] == body["studentId"]), None)
         require(raw_student is not None, 404, "Aluno não encontrado nesta publicação.")
         student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
+        # Detalhe completo para o instrutor (todo/10): resumo, todas as atividades e histórico.
+        detail = {"summary": {k: student[k] for k in ("kc", "lab", "total", "progress", "completed", "pending", "status")},
+                  "allActivities": student["activities"], "thresholds": cohort_thresholds(cohort),
+                  "canvasCourseId": cohort.get("canvasCourseId")} if operation == "pending-preview" else {}
+        if operation == "pending-preview":
+            detail["history"] = self.student_history(pk, publication, snap, raw_student["id"], detail["thresholds"])
         if not reminders_enabled:
             return {"student": {k: student[k] for k in ("id", "name", "email")},
                     "activities": [a for a in student["activities"] if a["state"] == "pending"],
                     "publicationId": publication["id"], "publishedAt": publication["publishedAt"],
-                    "remindersEnabled": False}
+                    "remindersEnabled": False, **detail}
         message, digest, pending = message_for(code, student, publication, self.user["email"])
         sk = "REMINDER#" + publication["id"] + "#" + student["id"]
         previous = self.repo.get(pk, sk)
@@ -303,7 +333,8 @@ class Portal:
             return {"student": {k: student[k] for k in ("id", "name", "email")},
                     "activities": pending, "publicationId": publication["id"],
                     "publishedAt": publication["publishedAt"], "message": message,
-                    "previewHash": digest, "delivery": delivery, "ses": readiness, "remindersEnabled": True}
+                    "previewHash": digest, "delivery": delivery, "ses": readiness, "remindersEnabled": True,
+                    **detail}
         require(body["publicationId"] == publication["id"] and body["previewHash"] == digest,
                 409, "As notas ou a mensagem mudaram. Abra uma nova prévia antes de enviar.")
         require(student["email"] and pending, 400, "O aluno precisa ter e-mail no Canvas e atividades pendentes.")
@@ -505,12 +536,13 @@ class Portal:
                     activity["active"] = True
         draft_id = uuid.uuid4().hex
         key = f"cohorts/{code}/{draft_id}"
-        self.repo.snapshot(key + "/source.csv", body["csv"], raw=True)
-        self.repo.snapshot(key + "/snapshot.json", snapshot)
+        # Rascunho não publicado expira em DRAFT_TTL_DAYS (tag no S3 + TTL no DynamoDB; ver todo/13).
+        self.repo.snapshot(key + "/source.csv", body["csv"], raw=True, status="draft")
+        self.repo.snapshot(key + "/snapshot.json", snapshot, status="draft")
         draft = {"id": draft_id, "cohort": code, "createdBy": self.uid, "createdAt": now(),
                  "base": cohort.get("current"), "snapshot": key + "/snapshot.json", "status": "draft",
                  "filename": str(body.get("filename", "notas.csv"))[:150]}
-        self.repo.put(pk, "DRAFT#" + draft_id, draft, absent=True)
+        self.repo.put(pk, "DRAFT#" + draft_id, draft, absent=True, ttl_days=DRAFT_TTL_DAYS)
         return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot), cohort_thresholds(cohort)),
                 "changes": snapshot_changes(before, snapshot)}
 
@@ -520,6 +552,9 @@ class Portal:
         require(draft is not None and draft["createdBy"] == self.uid, 404, "Prévia não encontrada para sua conta.")
         require(draft["status"] == "draft" and draft["base"] == cohort.get("current"), 409,
                 "A turma foi atualizada ou esta prévia já foi publicada. Gere uma nova prévia.")
+        # Um dia de folga antes da expiração no S3, para nunca publicar lendo arquivo já apagado.
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(draft["createdAt"])
+        require(age.days < DRAFT_TTL_DAYS - 1, 409, "Esta prévia expirou. Confira o arquivo de novo para gerar outra.")
         snap = self.snapshot(draft)
         before = self.snapshot(self.publication(cohort["code"], cohort["current"])) if cohort.get("current") else None
         changes = snapshot_changes(before, snap)
@@ -530,8 +565,22 @@ class Portal:
         # que _report não precise reler dezenas de snapshots a cada carregamento do histórico.
         history_key = draft["snapshot"].rsplit("/", 1)[0] + "/history.json"
         self.repo.snapshot(history_key, student_history(before, snap, cohort_thresholds(cohort)))
-        publication = {**draft, "status": "published", "publishedAt": now(), "publishedBy": self.uid,
-                       "changes": change_counts(changes), "history": history_key}
+        # Antes de efetivar: se a publicação falhar depois disso, os arquivos só ficam guardados a
+        # mais; o contrário (publicar e não desmarcar) apagaria dados publicados em 30 dias.
+        folder = draft["snapshot"].rsplit("/", 1)[0]
+        for name in ("source.csv", "snapshot.json"):
+            self.repo.mark(folder + "/" + name, "published")
+        published_at = now()
+        previous_pub = self.publication(cohort["code"], cohort["current"]) if cohort.get("current") else None
+        previous_dates = (previous_pub or {}).get("releasedAt") or {}
+        previously_active = {a["id"] for a in before["activities"] if a["active"]} if before else set()
+        # Atividade já liberada antes mantém a data original; sem mapa (publicação antiga), a
+        # melhor estimativa é a data daquela publicação. Atividade nova recebe a data de agora.
+        released = {a["id"]: previous_dates.get(a["id"])
+                    or (previous_pub["publishedAt"] if a["id"] in previously_active else published_at)
+                    for a in snap["activities"] if a["active"]}
+        publication = {**draft, "status": "published", "publishedAt": published_at, "publishedBy": self.uid,
+                       "changes": change_counts(changes), "history": history_key, "releasedAt": released}
         next_cohort = {k: v for k, v in cohort.items() if not k.startswith("_")}
         next_cohort.update(current=draft["id"], updatedAt=publication["publishedAt"], updateKind="publish")
         self.repo.transaction([
@@ -558,7 +607,7 @@ class Portal:
             return {"cohort": code, "publication": None, "students": [], "history": [],
                     "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId")}
         publication = self.publication(code, cohort["current"])
-        snap = display_snapshot(self.repo, code, self.snapshot(publication))
+        snap = released_at(publication, display_snapshot(self.repo, code, self.snapshot(publication)))
         focus = self.repo.get(pk, "FOCUS") or {"activityIds": [], "version": None}
         active = {a["id"] for a in snap["activities"] if a["active"]}
         focus = {"activityIds": [i for i in focus["activityIds"] if i in active], "version": focus.get("version")}
@@ -569,18 +618,11 @@ class Portal:
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
                     "thresholds": thresholds, "canvasCourseId": canvas_course_id,
-                    "history": sorted(self.repo.list(pk, "PUB#"), key=lambda p: p["publishedAt"], reverse=True)}
+                    "history": sorted(({k: v for k, v in p.items() if k != "releasedAt"} for p in self.repo.list(pk, "PUB#")),
+                                     key=lambda p: p["publishedAt"], reverse=True)}
         student = self.student(code, snap, bind=True)
         require(student is not None, 403, "Matrícula não localizada para sua conta nesta turma.")
-        history = []
-        publications = sorted(self.repo.list(pk, "PUB#"), key=lambda p: p["publishedAt"], reverse=True)[:12]
-        if not any(p["id"] == publication["id"] for p in publications):
-            publications = publications[:11] + [publication]
-        for p in publications:
-            is_current = p["id"] == publication["id"]
-            entry = self.student_summary_entry(pk, p, student["id"], thresholds, snap if is_current else None)
-            if entry:
-                history.append({"publishedAt": p["publishedAt"], "current": is_current, **entry})
+        history = self.student_history(pk, publication, snap, student["id"], thresholds)
         return {"cohort": code, "publication": {"id": publication["id"], "publishedAt": publication["publishedAt"]},
                 "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                 "updateKind": cohort.get("updateKind", "publish"),
