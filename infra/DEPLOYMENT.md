@@ -128,3 +128,13 @@ Navegador validado em 1366×768, 1920×1080, 2560×1440 e 3840×2160, além do c
 A entrada passou a usar altura disponível da janela em vez da área central mínima fixa de 680px. Título, arte, logo e espaçamentos respondem à altura, mantendo login, instruções de cadastro e rodapé visíveis nas dimensões testadas. As páginas internas preservam a escala anterior.
 
 Testes locais de navegador em Retina (fator 2): 1512×982, 1512×850, 1512×755, 1440×780, 1280×650, 1024×640, 1800×1050 e 3024×1964, sem rolagem da entrada ou corte dos elementos essenciais. A suíte de navegação e celular também passou. Publicação restrita a `styles.css`, com invalidação desse caminho no CloudFront; sem alteração de notas ou infraestrutura.
+
+## Limpeza de contas não confirmadas (24/09/2026)
+
+A pedido do titular, as **26 contas `UNCONFIRMED`** do user pool foram apagadas (`admin-delete-user`), para esses alunos refazerem o cadastro do zero: 23 com e-mail presente nas publicações atuais (9 da BRSA0267 e 14 da BRSA0257) e 3 com e-mail que não bate com nenhum aluno das duas turmas no Canvas (esses precisam se cadastrar com o e-mail do Canvas para ver as notas). Antes de apagar, foi conferido que:
+
+- nenhuma delas tinha item `USER#`, pedido de instrutor (`REQUESTS`) ou grupo no Cognito (conta não confirmada nunca consegue entrar);
+- o Cognito já envia pela identidade de domínio `escoladanuvem.org` com DKIM e MAIL FROM em `SUCCESS` (a falha de DMARC registrada em `infra/SES.md` está resolvida), e a lista de supressão do SES estava vazia;
+- a lista foi relida no momento da exclusão e só contas ainda `UNCONFIRMED` foram apagadas.
+
+Resultado: pool com 34 contas, todas `CONFIRMED` e com e-mail verificado.
