@@ -63,3 +63,12 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
 - Simulação sem gravar nada do que a primeira publicação automática faria (contra as publicações de 17/09 e 21/09):
   - BRSA0267: 304 notas alteradas, 13 atividades novas liberadas, sai 1 conta (a conta de teste citada acima; ela tem conta vinculada no portal).
   - BRSA0257: 110 notas alteradas, 4 atividades novas liberadas, ninguém entra ou sai.
+
+## Ativação (2026-09-24)
+- `canvas_sync_enabled = true` aplicado: agendamento `cron(0 6,18 * * ? *)` em `America/Sao_Paulo` **ligado**; alarme `restart-portal-prod-canvas-sync-falhou` avisa `tomas.alric@escoladanuvem.org`.
+- As duas turmas foram configuradas com atualização automática (BRSA0267 → 4436, BRSA0257 → 4413, limites 70/95 mantidos).
+- Primeira execução, acompanhada: as duas turmas publicaram (`updateKind=canvas`, `publishedBy=system:canvas-sync`).
+  - BRSA0267: 305 notas alteradas, 13 atividades liberadas e a saída da conta de teste (60 → 59 alunos).
+  - BRSA0257: 115 notas alteradas e 4 atividades liberadas.
+- Segunda execução: `unchanged` nas duas, sem publicação nova. Relatório de aluna vinculada conferido; alarme em OK.
+- Desde a ativação, um conflito de gravação em uma turma (edição simultânea) é registrado como falha dela no `SYNC` e não interrompe as outras.

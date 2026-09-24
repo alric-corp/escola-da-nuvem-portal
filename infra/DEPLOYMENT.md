@@ -138,3 +138,11 @@ A pedido do titular, as **26 contas `UNCONFIRMED`** do user pool foram apagadas 
 - a lista foi relida no momento da exclusão e só contas ainda `UNCONFIRMED` foram apagadas.
 
 Resultado: pool com 34 contas, todas `CONFIRMED` e com e-mail verificado.
+
+## Normalização do formato dos registros no DynamoDB (24/09/2026)
+
+Os controles de concorrência de `Repository.transaction` comparam o `data` gravado com `json.dumps(..., sort_keys=True)`. Registros gravados antes dessa mudança tinham as chaves fora de ordem, então qualquer operação que os atualizasse falhava com `Conflict`. Isso afetava publicar, restaurar, configurar turma, aprovar ou revogar instrutor e desvincular aluno. Com autorização do titular, **47 dos 99 itens** foram regravados com as mesmas chaves e valores, só com as chaves em ordem. Cada escrita foi condicionada ao valor antigo. Resultado: 0 falhas e nenhum registro fora de ordem.
+
+## Atualização automática pelo Canvas ligada (24/09/2026)
+
+Ver [todo/17](../todo/17-integracao-api-canvas.md#ativação-2026-09-24). O agendamento roda às 6h e às 18h (horário de Brasília), e as duas turmas estão com `autoSync`. A primeira execução publicou nas duas turmas; a segunda não encontrou mudanças. O token pessoal expira em 22/12/2026.

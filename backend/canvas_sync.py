@@ -11,7 +11,7 @@ import os
 from canvas import CanvasClient, CanvasError, course_csv
 from portal import APIError, sync_from_canvas
 from grades import ValidationError
-from repository import Repository
+from repository import Conflict, Repository
 
 logging.getLogger().setLevel(logging.INFO)
 
@@ -40,9 +40,11 @@ def run(repo, client):
         try:
             csv_text, count = course_csv(client, course)
             results[code] = sync_from_canvas(repo, code, csv_text, count)["status"]
-        except (CanvasError, APIError, ValidationError) as err:
-            message = err.message if isinstance(err, APIError) else str(err)
-            if isinstance(err, CanvasError):
+        except (CanvasError, APIError, ValidationError, Conflict) as err:
+            message = (err.message if isinstance(err, APIError) else
+                       "Os dados da turma mudaram durante a atualização; tenta de novo na próxima execução."
+                       if isinstance(err, Conflict) else str(err))
+            if isinstance(err, (CanvasError, Conflict)):
                 repo.put("COHORT#" + code, "SYNC", {"status": "failed", "message": message, "at": _now()})
             results[code] = "failed"
             failures.append(f"{code}: {message}")

@@ -48,7 +48,7 @@ Legenda de status: ⬜ a fazer · 🟨 em andamento · ⏸️ aguardando decisã
 
 | # | Tarefa | Área | Esforço | Status |
 | --- | --- | --- | --- | --- |
-| 17 | [Importar notas pela API do Canvas](17-integracao-api-canvas.md) | Instrutor/Backend | G | 🟨 (implementado; falta token e ligar) |
+| 17 | [Importar notas pela API do Canvas](17-integracao-api-canvas.md) | Instrutor/Backend | G | ✅ (ativo desde 24/09; 6h e 18h) |
 
 ## Dependências
 

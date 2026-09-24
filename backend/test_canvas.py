@@ -161,6 +161,23 @@ class SyncTests(unittest.TestCase):
 
 
 class RunTests(unittest.TestCase):
+    def test_write_conflict_in_one_cohort_does_not_stop_the_others(self):
+        repo = MemoryRepository()
+        repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        repo.put("COHORT#TURMAB", "METADATA", {"code": "TURMAB", "current": None, "canvasCourseId": "4413", "autoSync": True})
+        client = CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course(), "4413": course()}))
+        original = repo.transaction
+        def conflict_on_a(writes):
+            if any(pk == "COHORT#TURMAA" and sk == "METADATA" for pk, sk, _, _ in writes):
+                from repository import Conflict
+                raise Conflict()
+            return original(writes)
+        with patch.object(repo, "transaction", side_effect=conflict_on_a):
+            results, failures = run(repo, client)
+        self.assertEqual(results, {"TURMAA": "failed", "TURMAB": "published"})
+        self.assertIn("mudaram durante a atualização", failures[0])
+        self.assertEqual(repo.get("COHORT#TURMAA", "SYNC")["status"], "failed")
+
     def test_only_opted_in_cohorts_run_and_one_failure_does_not_stop_the_others(self):
         repo = MemoryRepository()
         repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": True})
