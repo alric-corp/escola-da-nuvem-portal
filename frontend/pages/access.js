@@ -1,5 +1,48 @@
 import { e, heading, icon, state } from "../ui.js";
 
+const requestStatusLabels = { pending: "Aguardando aprovação", approved: "Aprovada", rejected: "Recusada" };
+
+function requestsSection() {
+  const filtered = state.requests.filter((r) => state.requestsFilter === "all" || r.status === state.requestsFilter);
+  return `<section class="panel"><div class="panel-title"><div><span class="eyebrow">EQUIPE DE INSTRUÇÃO</span><h2>Solicitações de acesso</h2></div><div class="table-tools"><select id="requests-filter" aria-label="Filtrar solicitações">${[
+    ["pending", "Pendentes"],
+    ["approved", "Aprovadas"],
+    ["rejected", "Recusadas"],
+    ["all", "Todas"],
+  ]
+    .map(([value, label]) => `<option value="${value}" ${state.requestsFilter === value ? "selected" : ""}>${label}</option>`)
+    .join("")}</select><button class="text-link" data-action="refresh-requests">Atualizar ${icon("arrow", 16)}</button></div></div>${
+    filtered.length
+      ? filtered
+          .map((r) =>
+            r.status === "pending"
+              ? `<form class="approve-form" data-user="${e(r.userId)}"><div><strong>${e(r.email)}</strong><small>Aguardando aprovação</small></div><label class="sr-only" for="approve-${e(r.userId)}">Turma para ${e(r.email)}</label><select id="approve-${e(r.userId)}" name="cohort">${state.cohorts.map((c) => `<option value="${e(c.code)}">${e(c.code)}</option>`).join("")}</select><button class="button secondary" ${!state.cohorts.length ? "disabled" : ""}>Vincular à turma</button><button class="button secondary" type="button" data-reject="${e(r.userId)}">Recusar</button></form>`
+              : `<div class="approve-form"><div><strong>${e(r.email)}</strong><small>${e(requestStatusLabels[r.status] || r.status)}</small></div></div>`,
+          )
+          .join("")
+      : '<p class="empty compact">Nenhuma solicitação neste filtro.</p>'
+  }</section>`;
+}
+
+function studentRow(s) {
+  if (state.editingStudentId === s.id)
+    return `<tr><td colspan="4"><form class="approve-form" data-edit-name-form="${e(s.id)}"><label class="sr-only" for="edit-name-${e(s.id)}">Nome de exibição para ${e(s.name)}</label><input id="edit-name-${e(s.id)}" name="displayName" value="${e(s.name)}" maxlength="100" required><button class="button primary" type="submit">Salvar</button><button class="button secondary" type="button" data-cancel-edit-name>Cancelar</button></form></td></tr>`;
+  return `<tr><td><strong>${e(s.name)}</strong><small>ID ${e(s.id)}</small></td><td>${e(s.email || "Ausente no Canvas")}</td><td>${s.bound ? e(s.boundEmail || "Vínculo sem e-mail registrado") : "Sem vínculo"}</td><td><button class="button secondary" data-start-edit-name="${e(s.id)}">Editar nome</button>${s.bound ? `<button class="button secondary" data-unlink="${e(s.id)}">Desvincular</button>` : ""}</td></tr>`;
+}
+
+function studentsSection() {
+  if (!state.code) return `<section class="panel"><h2>Alunos vinculados</h2><p class="small">Selecione uma turma para buscar alunos.</p></section>`;
+  return `<section class="panel"><h2>Alunos vinculados da ${e(state.code)}</h2><form id="student-search-form" class="stack-form"><label class="sr-only" for="student-query">Buscar aluno</label><input id="student-query" name="query" placeholder="Nome, e-mail ou ID Canvas" value="${e(state.studentQuery)}"><button class="button primary" type="submit" ${state.studentSearchLoading ? "disabled" : ""}>Buscar</button></form>${
+    state.studentSearchError
+      ? `<p role="alert">${e(state.studentSearchError)}</p>`
+      : state.studentResults
+        ? state.studentResults.length
+          ? `<div class="table-scroll"><table><thead><tr><th>Aluno</th><th>E-mail no Canvas</th><th>Conta vinculada</th><th>Ações</th></tr></thead><tbody>${state.studentResults.map(studentRow).join("")}</tbody></table></div>`
+          : '<p class="empty compact">Nenhum aluno encontrado com esses termos.</p>'
+        : '<p class="small">Busque por nome, e-mail do Canvas ou ID para ver e corrigir vínculos.</p>'
+  }</section>`;
+}
+
 export function accessPage() {
   const title = heading(
     "ADMINISTRAÇÃO DO PORTAL",
@@ -12,6 +55,7 @@ export function accessPage() {
     return `${title}<section class="panel empty" role="alert"><h2>Não foi possível carregar os acessos</h2><p>${e(state.accessError)}</p><button class="button primary" data-action="refresh-requests">Tentar novamente</button></section>`;
   return `${title}
   <div class="two-columns"><section class="panel"><h2>Criar uma turma</h2><form id="cohort-form" class="stack-form"><label>Código da turma<input name="code" placeholder="BRSA0268" required pattern="[A-Za-z0-9-]{3,32}" maxlength="32"></label><label>Nome da turma<input name="name" placeholder="AWS re/Start · nova turma" required maxlength="100"></label><button class="button primary">Criar turma ${icon("arrow")}</button></form></section><section class="panel"><h2>Como funciona o acesso</h2><p>Instrutores solicitam acesso com o e-mail institucional confirmado. Você aprova cada pessoa e escolhe as turmas que ela pode acompanhar.</p><p>Alunos são reconhecidos pelo e-mail do Canvas no primeiro acesso. O vínculo passa a usar o ID do aluno e a conta confirmada.</p></section></div>
-  <section class="panel"><div class="panel-title"><div><span class="eyebrow">EQUIPE DE INSTRUÇÃO</span><h2>Solicitações de acesso</h2></div><button class="text-link" data-action="refresh-requests">Atualizar ${icon("arrow", 16)}</button></div>${state.requests.length ? state.requests.map((r) => `<form class="approve-form" data-user="${e(r.userId)}"><div><strong>${e(r.email)}</strong><small>${r.status === "approved" ? "Solicitação já aprovada · consulte os vínculos abaixo" : "Aguardando aprovação"}</small></div><label class="sr-only" for="approve-${e(r.userId)}">Turma para ${e(r.email)}</label><select id="approve-${e(r.userId)}" name="cohort">${state.cohorts.map((c) => `<option value="${e(c.code)}">${e(c.code)}</option>`).join("")}</select><button class="button secondary" ${!state.cohorts.length ? "disabled" : ""}>Vincular à turma</button></form>`).join("") : '<p class="empty compact">Nenhuma solicitação por enquanto.</p>'}</section>
-  <section class="panel"><h2>Instrutores da ${e(state.code || "turma selecionada")}</h2>${state.instructors.length ? state.instructors.map((i) => `<div class="approve-form"><div><strong>${e(i.email)}</strong><small>Acesso à turma ${e(i.code)}</small></div><button class="button secondary" data-revoke="${e(i.userId)}">Remover acesso</button></div>`).join("") : '<p class="small">Nenhum instrutor vinculado. Administradores têm acesso global.</p>'}</section>`;
+  ${requestsSection()}
+  <section class="panel"><h2>Instrutores da ${e(state.code || "turma selecionada")}</h2>${state.instructors.length ? state.instructors.map((i) => `<div class="approve-form"><div><strong>${e(i.email)}</strong><small>Acesso à turma ${e(i.code)}</small></div><button class="button secondary" data-revoke="${e(i.userId)}">Remover acesso</button></div>`).join("") : '<p class="small">Nenhum instrutor vinculado. Administradores têm acesso global.</p>'}</section>
+  ${studentsSection()}`;
 }

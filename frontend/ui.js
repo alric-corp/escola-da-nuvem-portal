@@ -33,6 +33,20 @@ export const labels = {
 };
 export const badge = (status) =>
   `<span class="badge ${e(status)}">${e(labels[status] || status)}</span>`;
+// Rótulo do aluno para attention/critical: "Crítico" soa punitivo para quem não fez nada
+// de errado (atividade liberada sem nota já conta como 0%). O instrutor continua vendo
+// badge(s.status) com os rótulos originais.
+export function studentStatusLabel(s) {
+  if (s.status !== "attention" && s.status !== "critical") return labels[s.status] || s.status;
+  const kcBelow = s.kc != null && s.kc < 70;
+  const labBelow = s.lab != null && s.lab < 95;
+  if (kcBelow && labBelow) return "Foque em KCs e LABs";
+  if (labBelow) return "Foque nos LABs";
+  if (kcBelow) return "Foque nos KCs";
+  return labels[s.status];
+}
+export const studentBadge = (s) =>
+  `<span class="badge ${e(s.status)}">${e(studentStatusLabel(s))}</span>`;
 export const icon = (name, size = 20) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
     {
@@ -75,6 +89,9 @@ export let state = {
   view: "overview",
   activityKind: "all",
   activityModule: "all",
+  activityOverviewKind: "all",
+  activityOverviewModule: "all",
+  activityOverviewSort: "name",
   focusDraft: null,
   filter: "all",
   search: "",
@@ -86,8 +103,18 @@ export let state = {
   dirty: false,
   accessLoading: false,
   accessError: "",
+  requestsFilter: "pending",
+  studentQuery: "",
+  studentResults: null,
+  studentSearchError: "",
+  studentSearchLoading: false,
+  editingStudentId: null,
   pendingPreview: null,
   pendingStudentId: "",
+  batchIds: [],
+  batchPreview: null,
+  batchError: "",
+  batchResults: null,
   classReport: null,
   classFilter: "all",
   classSearch: "",
@@ -134,6 +161,8 @@ export function pageLabel() {
       overview: teacher() ? "Painel do instrutor" : "Meu desempenho",
       activities: "Minhas atividades",
       "student-pending": "Pendências do aluno",
+      "reminders-batch": "Lembretes em lote",
+      "activity-overview": "Visão por atividade",
       history: teacher() ? "Publicações da turma" : "Meu histórico",
       import: "Atualizar notas",
       access: "Turmas e acessos",

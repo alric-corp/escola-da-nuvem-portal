@@ -4,7 +4,8 @@ import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";
 import { teacherPage } from "./pages/teacher.js";
-import { pendingPage, senderPage } from "./pages/reminders.js";
+import { activityOverviewPage } from "./pages/activities-overview.js";
+import { batchPage, pendingPage, senderPage } from "./pages/reminders.js";
 import { historyPage } from "./pages/history.js";
 import { importPage } from "./pages/import.js";
 import { accessPage } from "./pages/access.js";
@@ -22,7 +23,7 @@ let draftOwner = "";
 function saveContext() {
   if (!state.me || demo) return;
   sessionStorage.setItem("avanca.context", JSON.stringify({ owner: state.me.email, code: state.code,
-    view: state.view === "student-pending" ? "overview" : state.view,
+    view: ["student-pending", "reminders-batch"].includes(state.view) ? "overview" : state.view,
     filter: state.filter, search: state.search, sort: state.sort, activityKind: state.activityKind, activityModule: state.activityModule }));
 }
 function saveDraft() {
@@ -115,6 +116,8 @@ function content(name) {
   if (state.view === "reminders" && teacher()) return senderPage();
   if (state.view === "import" && teacher()) return importPage();
   if (state.view === "student-pending" && teacher()) return pendingPage();
+  if (state.view === "reminders-batch" && teacher()) return batchPage();
+  if (state.view === "activity-overview" && teacher()) return activityOverviewPage();
   if (state.reportError) return errorPanel(state.reportError, "refresh-report");
   if (!state.report)
     return '<section class="panel empty" role="status">Carregando sua turma…</section>';
@@ -127,7 +130,7 @@ function content(name) {
 
 async function loadPending(studentId) {
   const code = state.code;
-  if (state.view !== "student-pending") state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
+  if (!["student-pending", "reminders-batch"].includes(state.view)) state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
   state.pendingError = "";
   state.view = "student-pending";
   state.pendingStudentId = studentId;
@@ -156,6 +159,29 @@ async function loadPending(studentId) {
       render();
     }
     throw err;
+  }
+}
+
+async function loadBatchPreview() {
+  const code = state.code;
+  state.batchError = "";
+  state.batchPreview = null;
+  state.batchResults = null;
+  render();
+  try {
+    const preview = await api(`/cohorts/${code}/pending-preview-batch`, {
+      method: "POST",
+      body: { studentIds: state.batchIds },
+    });
+    if (state.code === code && state.view === "reminders-batch") {
+      state.batchPreview = preview;
+      render();
+    }
+  } catch (err) {
+    if (state.code === code && state.view === "reminders-batch") {
+      state.batchError = err.message;
+      render();
+    }
   }
 }
 
@@ -222,6 +248,34 @@ async function loadAccess() {
     }
   }
 }
+async function searchStudents(query) {
+  const code = state.code;
+  state.studentQuery = query;
+  state.studentSearchError = "";
+  state.studentSearchLoading = true;
+  render();
+  try {
+    const result = await api(`/cohorts/${code}/students-search`, {
+      method: "POST",
+      body: { query },
+    });
+    if (state.code === code) {
+      state.studentResults = result.results;
+      state.editingStudentId = null;
+    }
+  } catch (err) {
+    if (state.code === code) {
+      state.studentSearchError = err.message;
+      state.studentResults = null;
+    }
+  } finally {
+    if (state.code === code) {
+      state.studentSearchLoading = false;
+      render();
+    }
+  }
+}
+
 async function boot() {
   state.bootError = "";
   try {
@@ -272,8 +326,24 @@ document.addEventListener("click", (event) => {
   const action = button.dataset.action;
   if (button.dataset.studentPending)
     return busy(button, () => loadPending(button.dataset.studentPending));
+  if (button.dataset.addFocus) {
+    const current = state.focusDraft || state.report.focus?.activityIds || [];
+    if (current.length < 3 && !current.includes(button.dataset.addFocus)) {
+      state.focusDraft = [...current, button.dataset.addFocus];
+      render();
+    }
+    return;
+  }
+  if (button.dataset.removeFocus) {
+    const current = state.focusDraft || state.report.focus?.activityIds || [];
+    state.focusDraft = current.filter((id) => id !== button.dataset.removeFocus);
+    render();
+    return;
+  }
   if (button.dataset.view) {
-    const returning = state.view === "student-pending" && button.dataset.view === "overview";
+    const returning = ["student-pending", "reminders-batch", "activity-overview"].includes(state.view) && button.dataset.view === "overview";
+    if (state.view === "overview" && button.dataset.view === "activity-overview")
+      state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
     state.view = button.dataset.view;
     state.search = "";
     state.activityKind = "all";
@@ -303,6 +373,30 @@ document.addEventListener("click", (event) => {
       await loadAccess();
       notice("Acesso removido.");
     });
+  if (button.dataset.reject)
+    return busy(button, async () => {
+      if (!confirm("Recusar esta solicitação de acesso?")) return;
+      await api(`/requests/${button.dataset.reject}/reject`, { method: "POST", body: {} });
+      await loadAccess();
+      notice("Solicitação recusada.");
+    });
+  if (button.dataset.unlink)
+    return busy(button, async () => {
+      if (!confirm("Desvincular este aluno? Ele poderá se vincular de novo pelo e-mail no próximo acesso.")) return;
+      await api(`/cohorts/${state.code}/unlink-student`, { method: "POST", body: { canvasId: button.dataset.unlink } });
+      await searchStudents(state.studentQuery);
+      notice("Aluno desvinculado.");
+    });
+  if (button.dataset.startEditName) {
+    state.editingStudentId = button.dataset.startEditName;
+    render();
+    return;
+  }
+  if (button.hasAttribute("data-cancel-edit-name")) {
+    state.editingStudentId = null;
+    render();
+    return;
+  }
   if (button.dataset.restore)
     return busy(button, async () => {
       if (
@@ -326,6 +420,25 @@ document.addEventListener("click", (event) => {
       if (action === "retry-boot") await boot();
       if (action === "refresh-report") await loadReport();
       if (action === "retry-pending") await loadPending(state.pendingStudentId);
+      if (action === "retry-batch-preview") await loadBatchPreview();
+      if (action === "reminders-batch") {
+        state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
+        state.view = "reminders-batch";
+        state.batchIds = (button.dataset.ids || "").split(",").filter(Boolean);
+        await loadBatchPreview();
+      }
+      if (action === "send-reminders-batch") {
+        const code = state.code, p = state.batchPreview;
+        const eligible = p.recipients.filter((r) => !r.skip);
+        if (!eligible.length || !confirm(`Enviar lembrete para ${eligible.length} aluno(s)?`)) return;
+        const result = await api(`/cohorts/${code}/send-reminders`, { method: "POST", body: {
+          studentIds: state.batchIds, expectedPublicationId: p.publicationId } });
+        if (state.code === code && state.view === "reminders-batch") {
+          state.batchResults = result.results;
+          render();
+        }
+        notice("Envio em lote concluído. Confira o resultado por aluno.");
+      }
       if (action === "clear-filters") {
         Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name" });
         render();
@@ -421,9 +534,16 @@ document.addEventListener("change", (event) => {
       state.search = "";
       state.activityModule = "all";
       state.activityKind = "all";
+      state.activityOverviewModule = "all";
+      state.activityOverviewKind = "all";
+      state.activityOverviewSort = "name";
       state.focusDraft = null;
       state.filter = "all";
       state.sort = "name";
+      state.studentQuery = "";
+      state.studentResults = null;
+      state.studentSearchError = "";
+      state.editingStudentId = null;
       if (state.view === "access" && admin()) await loadAccess();
       else {
         state.view = "overview";
@@ -436,9 +556,13 @@ document.addEventListener("change", (event) => {
     state.classFilter = target.value;
     render();
   }
-  if (target.matches("[data-focus-slot]")) {
-    state.focusDraft = Array.from(document.querySelectorAll("[data-focus-slot]"), (input) => input.value);
+  if (target.id === "requests-filter") {
+    state.requestsFilter = target.value;
+    render();
   }
+  if (target.id === "activity-overview-kind") { state.activityOverviewKind = target.value; render(); }
+  if (target.id === "activity-overview-module") { state.activityOverviewModule = target.value; render(); }
+  if (target.id === "activity-overview-sort") { state.activityOverviewSort = target.value; render(); }
   if (target.id === "activity-module") { state.activityModule = target.value; render(); }
   if (target.id === "activity-kind") {
     state.activityKind = target.value;
@@ -500,8 +624,7 @@ document.addEventListener("submit", (event) => {
     async () => {
       if (form.id === "focus-form") {
         const code = state.code;
-        const ids = Array.from(form.querySelectorAll("[data-focus-slot]"), (input) => input.value).filter(Boolean);
-        if (new Set(ids).size !== ids.length) throw new Error("Escolha atividades diferentes para o foco da turma.");
+        const ids = state.focusDraft || state.report.focus?.activityIds || [];
         const result = await api(`/cohorts/${code}/focus-activities`, { method: "POST", body: {
           activityIds: ids, expectedCurrent: state.report.publication.id, expectedVersion: state.report.focus?.version || null,
         } });
@@ -543,6 +666,19 @@ document.addEventListener("submit", (event) => {
         });
         await boot();
         notice("Turma criada.");
+      } else if (form.id === "student-search-form") {
+        const query = new FormData(form).get("query").trim();
+        if (!query) throw new Error("Digite ao menos um caractere para buscar.");
+        await searchStudents(query);
+      } else if (form.dataset.editNameForm) {
+        const displayName = new FormData(form).get("displayName").trim();
+        if (!displayName) throw new Error("Informe um nome.");
+        await api(`/cohorts/${state.code}/display-name`, {
+          method: "POST",
+          body: { canvasId: form.dataset.editNameForm, displayName },
+        });
+        await searchStudents(state.studentQuery);
+        notice("Nome atualizado.");
       } else if (form.classList.contains("approve-form")) {
         const code = new FormData(form).get("cohort");
         await api(`/cohorts/${code}/instructors`, {
@@ -581,17 +717,29 @@ async function start() {
         landing();
         throw new Error("Sua sessão expirou. Entre novamente.");
       }
-      const res = await fetch(config.apiUrl + path, {
-        method: options.method || "GET",
-        headers: {
-          Authorization: `Bearer ${auth.accessToken}`,
-          ...(options.body ? { "Content-Type": "application/json" } : {}),
-        },
-        body: options.body ? JSON.stringify(options.body) : undefined,
-        cache: "no-store",
-        signal: AbortSignal.timeout(35000),
-      });
-      const data = await res.json();
+      const method = options.method || "GET";
+      // Só GET é repetido: reenviar um POST automaticamente arrisca duplicar uma ação
+      // (publicar notas, enviar lembrete). Espera crescente com variação para não sincronizar
+      // clientes que foram limitados juntos (ex.: uma turma inteira abrindo o portal).
+      const attempts = method === "GET" ? 4 : 1;
+      let res;
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        res = await fetch(config.apiUrl + path, {
+          method,
+          headers: {
+            Authorization: `Bearer ${auth.accessToken}`,
+            ...(options.body ? { "Content-Type": "application/json" } : {}),
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined,
+          cache: "no-store",
+          signal: AbortSignal.timeout(35000),
+        });
+        if (res.status !== 429 || attempt === attempts - 1) break;
+        await new Promise((resolve) =>
+          setTimeout(resolve, 400 * 2 ** attempt + Math.random() * 200),
+        );
+      }
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
           saveContext();
@@ -601,6 +749,10 @@ async function start() {
           state.report = null;
           landing();
         }
+        if (res.status === 429)
+          throw new Error(
+            "O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.",
+          );
         throw new Error(
           data.error || "Não foi possível completar a solicitação.",
         );

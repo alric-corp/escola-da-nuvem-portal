@@ -32,6 +32,33 @@ export function pendingPage() {
     .join("")}</div></section>${reminderPreview(p)}`;
 }
 
+const skipLabels = {
+  "no-email": "Sem e-mail no Canvas",
+  "no-pending": "Sem atividades sem nota",
+  "already-sent": "Já contatado nesta publicação",
+  "not-found": "Não encontrado nesta publicação",
+  "publication-changed": "Notas atualizadas durante o envio",
+};
+const resultLabels = { sent: "Enviado", failed: "Falhou", skipped: "Pulado" };
+
+export function batchPage() {
+  const title = heading(
+    "ACOMPANHAMENTO DA TURMA",
+    "Lembretes em lote",
+    "Revise a lista e a prévia antes de enviar. Cada aluno recebe uma mensagem individual, com suas próprias pendências.",
+    '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
+  );
+  if (state.batchError) return title + errorPanel(state.batchError, "retry-batch-preview");
+  if (state.batchResults) {
+    const counts = state.batchResults.reduce((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {});
+    return `${title}<section class="panel"><h2>Resultado do envio</h2><p>${counts.sent || 0} enviado(s) · ${counts.skipped || 0} pulado(s) · ${counts.failed || 0} com falha.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Resultado</th></tr></thead><tbody>${state.batchResults.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${resultLabels[r.status] || r.status}${r.reason ? ` · ${e(skipLabels[r.reason] || r.reason)}` : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
+  }
+  const p = state.batchPreview;
+  if (!p) return `${title}<section class="panel" role="status">Consultando destinatários…</section>`;
+  const eligible = p.recipients.filter((r) => !r.skip);
+  return `${title}<section class="panel"><h2>Destinatários</h2><p>${eligible.length} de ${p.recipients.length} aluno(s) vão receber um lembrete agora. Os demais aparecem com o motivo por que serão pulados.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Sem nota</th><th>Situação</th></tr></thead><tbody>${p.recipients.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${r.pending}</td><td>${r.skip ? e(skipLabels[r.skip] || r.skip) : "Será enviado"}</td></tr>`).join("")}</tbody></table></div></section>${p.sample ? `<section class="panel reminder-panel"><h2>Exemplo de mensagem</h2><p class="small">Cada aluno recebe uma versão com suas próprias pendências; este é só um exemplo.</p><dl><dt>De</dt><dd>${e(p.sample.from)}</dd><dt>Assunto</dt><dd>${e(p.sample.subject)}</dd></dl><pre class="email-preview">${e(p.sample.text)}</pre><p role="status">${e(p.ses?.reason || "")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminders-batch" ${eligible.length && p.ses?.ready ? "" : "disabled"}>Enviar para ${eligible.length} aluno(s)</button></section>` : '<section class="panel"><p>Nenhum aluno elegível para receber o lembrete agora.</p></section>'}`;
+}
+
 export function reminderPreview(p) {
   if (!p.message) return '<section class="panel"><h2>Lembrete por e-mail</h2><p>O envio está desativado nesta instalação. Você pode consultar as atividades acima.</p></section>';
   const status = p.delivery?.status;

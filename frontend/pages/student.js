@@ -1,10 +1,12 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink, cohortCanvasCourses } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, percent, personalChanges, state, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, percent, personalChanges, state, studentBadge, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
   const s = state.report.student;
   const pending = s.activities.filter((a) => a.state === "pending");
+  const pendingKc = pending.filter((a) => a.kind === "kc").length;
+  const pendingLab = pending.filter((a) => a.kind === "lab").length;
   const review = s.activities.filter(needsReview);
   const focus = state.report.focus?.activityIds || [];
   const next = nextActivities(s.activities, focus);
@@ -14,8 +16,8 @@ export function studentPage(name) {
   <div class="next-summary"><button class="button secondary" data-view="activities" data-pending="all">Ver minhas pendências · ${pending.length}</button><button class="button secondary" data-view="activities" data-activity-filter="review">Revisar resultados · ${review.length}</button></div>
   <p class="small">Sem nota pode significar entrega ou correção pendente. Se já entregou no Canvas, aguarde a próxima atualização.</p>
   ${next.length ? next.map(activityCard).join("") : `<p class="empty compact">${focus.length ? "Você já tem notas na referência nas atividades indicadas ou está dispensado delas. Consulte as demais atividades abaixo." : s.activities.some((a) => ["pending", "completed"].includes(a.state)) ? "As atividades avaliadas estão na referência. Continue acompanhando as próximas liberações." : "Ainda não há atividades para entrega ou revisão nesta publicação."}</p>`}
-  <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${badge(s.status)}${gradingHelp()}</div>
-  <section class="metrics" aria-label="Indicadores de desempenho">${metric("Média em KCs", percent(s.kc), "Referência: 70% ou mais", "metric-primary")}${metric("Média em Labs", percent(s.lab), "Referência: 95% ou mais")}${metric("Atividades com nota", s.completed, "Das atividades já liberadas")}${metric("Sem nota", s.pending, "Seu próximo ponto de partida", "metric-warning")}</section>
+  <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${studentBadge(s)}${gradingHelp()}</div>
+  <section class="metrics" aria-label="Indicadores de desempenho">${metric("Média em KCs", percent(s.kc), pendingKc ? `Referência: 70% ou mais · ${pendingKc} sem nota conta(m) como 0%` : "Referência: 70% ou mais", "metric-primary")}${metric("Média em Labs", percent(s.lab), pendingLab ? `Referência: 95% ou mais · ${pendingLab} sem nota conta(m) como 0%` : "Referência: 95% ou mais")}${metric("Atividades com nota", s.completed, "Das atividades já liberadas")}${metric("Sem nota", s.pending, "Seu próximo ponto de partida", "metric-warning")}</section>
 <section class="panel"><h2>O que mudou nas suas notas</h2>${personalChanges(state.report.history?.find((r) => r.current)?.changes)}<button class="text-link" data-view="history">Ver meu histórico</button></section><section class="panel"><span class="eyebrow">A CADA PUBLICAÇÃO</span><h2>Seu aprendizado evolui</h2>${evolution()}<p class="small">Média de KCs e Labs em cada publicação. Atividades novas podem mudar a média.</p></section>`;
 }
 
