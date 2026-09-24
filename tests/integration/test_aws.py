@@ -98,6 +98,76 @@ class AWSPersistenceTests(unittest.TestCase):
         self.assertFalse(instructor.can_teach("BRSA0267"))
         self.assertEqual(self.repo.list("COHORT#BRSA0267", "TEACH#"), [])
 
+    def test_cohorts_listing_skips_snapshot_once_student_is_bound(self):
+        draft = self.call("preview", {"csv": canvas_csv()})["draft"]
+        self.call("publish", {"draftId": draft["id"]})
+        student = Portal(self.repo, {"sub": "s1", "email": "aluno@example.test", "groups": []})
+        # Primeiro acesso: sem vínculo STUDY# ainda, precisa ler o snapshot para achar pelo e-mail.
+        with patch.object(self.repo.s3, "get_object", wraps=self.repo.s3.get_object) as get_object:
+            first = student.dispatch("GET", "/cohorts", {})
+            self.assertEqual([c["code"] for c in first["cohorts"]], ["BRSA0267"])
+            self.assertTrue(get_object.called)
+        # A rota de relatório é quem grava o vínculo (bind=True).
+        student.dispatch("GET", "/cohorts/BRSA0267/report", {})
+        self.assertEqual(self.repo.get("USER#s1", "STUDY#BRSA0267")["canvasId"], "101")
+        with patch.object(self.repo.s3, "get_object", wraps=self.repo.s3.get_object) as get_object:
+            second = student.dispatch("GET", "/cohorts", {})
+            self.assertEqual([c["code"] for c in second["cohorts"]], ["BRSA0267"])
+            get_object.assert_not_called()
+
+    def test_student_report_history_uses_compact_summary_and_falls_back_for_legacy_publications(self):
+        first = self.call("preview", {"csv": canvas_csv(kc="7", lab="50")})["draft"]
+        self.call("publish", {"draftId": first["id"]})
+        second = self.call("preview", {"csv": canvas_csv(kc="9", lab="80")})["draft"]
+        self.call("publish", {"draftId": second["id"]})
+        third = self.call("preview", {"csv": canvas_csv(kc="10", lab="95")})["draft"]
+        self.call("publish", {"draftId": third["id"]})
+        student = Portal(self.repo, {"sub": "s1", "email": "aluno@example.test", "groups": []})
+
+        with patch.object(self.repo.s3, "get_object", wraps=self.repo.s3.get_object) as get_object:
+            report = student.dispatch("GET", "/cohorts/BRSA0267/report", {})
+            full_snapshots_read = [c for c in get_object.call_args_list if c.kwargs["Key"].endswith("/snapshot.json")]
+            # Só a publicação atual precisa do snapshot completo; as outras vêm do resumo
+            # compacto (history.json), gravado no publish (ver todo/06).
+            self.assertEqual(len(full_snapshots_read), 1)
+
+        self.assertEqual(len(report["history"]), 3)
+        self.assertEqual([round(h["kc"]) for h in report["history"]], [100, 90, 70])
+        self.assertTrue(report["history"][0]["current"])
+        self.assertEqual(report["history"][0]["changes"]["kc"], 10)
+        self.assertEqual(report["history"][1]["changes"]["kc"], 20)
+        self.assertIsNone(report["history"][2]["changes"])  # primeira publicação, sem base
+
+        # Publicações anteriores a este recurso não têm "history": simula removendo a chave
+        # e confirma que o resultado (cálculo sob demanda) é idêntico ao do resumo compacto.
+        legacy = {k: v for k, v in self.repo.get("COHORT#BRSA0267", "PUB#" + second["id"]).items() if k != "history"}
+        self.repo.put("COHORT#BRSA0267", "PUB#" + second["id"], legacy)
+        fallback_report = student.dispatch("GET", "/cohorts/BRSA0267/report", {})
+        self.assertEqual(fallback_report["history"], report["history"])
+
+    def test_unlink_student_and_display_name_use_real_transactions(self):
+        draft = self.call("preview", {"csv": canvas_csv()})["draft"]
+        self.call("publish", {"draftId": draft["id"]})
+        student = Portal(self.repo, {"sub": "s1", "email": "aluno@example.test", "groups": []})
+        student.dispatch("GET", "/cohorts/BRSA0267/report", {})
+        self.assertEqual(self.repo.get("USER#s1", "STUDY#BRSA0267")["canvasId"], "101")
+
+        found = self.call("students-search", {"query": "aluno@example.test"})["results"]
+        self.assertEqual(found, [{"id": "101", "name": "Marina Costa", "email": "aluno@example.test",
+                                  "bound": True, "boundEmail": "aluno@example.test", "boundAt": found[0]["boundAt"]}])
+
+        self.call("display-name", {"canvasId": "101", "displayName": "Apelido"})
+        self.assertEqual(Portal(Repository(), self.admin.user).dispatch(
+            "GET", "/cohorts/BRSA0267/report", {})["students"][0]["name"], "Apelido")
+
+        self.call("unlink-student", {"canvasId": "101"})
+        self.assertIsNone(self.repo.get("USER#s1", "STUDY#BRSA0267"))
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
+        self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUDIT#")), 2)
+
+        other = Portal(Repository(), {"sub": "s2", "email": "aluno@example.test", "groups": []})
+        self.assertEqual(other.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["id"], "101")
+
     def test_class_report_is_instructor_only_after_new_csv(self):
         draft = self.call("preview", {"csv": canvas_csv()})["draft"]
         self.call("publish", {"draftId": draft["id"]})

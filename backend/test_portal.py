@@ -340,6 +340,70 @@ class PortalTests(unittest.TestCase):
             self.assertEqual(handler(event, None)["statusCode"], 404)
 
 
+    def test_students_search_finds_by_name_email_or_canvas_id_and_shows_binding(self):
+        self.publish()
+        self.call(self.student, "report", method="GET")
+        for query in ("marina", "aluno@example.test", "101"):
+            with self.subTest(query=query):
+                result = self.call(self.admin, "students-search", {"query": query})["results"]
+                self.assertEqual(len(result), 1)
+                row = result[0]
+                self.assertEqual(row["id"], "101")
+                self.assertTrue(row["bound"])
+                self.assertEqual(row["boundEmail"], "aluno@example.test")
+        self.assertEqual(self.call(self.admin, "students-search", {"query": "não existe"})["results"], [])
+
+    def test_students_search_and_admin_actions_require_admin(self):
+        self.publish()
+        for actor in (self.student, self.instructor):
+            for op, body in (("students-search", {"query": "a"}), ("unlink-student", {"canvasId": "101"}),
+                              ("display-name", {"canvasId": "101", "displayName": "X"})):
+                with self.subTest(actor=actor.uid, op=op), self.assertRaises(APIError) as err:
+                    self.call(actor, op, body)
+                self.assertEqual(err.exception.status, 403)
+
+    def test_unlink_student_allows_rebinding_by_email(self):
+        self.publish()
+        self.call(self.student, "report", method="GET")
+        self.assertIsNotNone(self.repo.get("USER#student", "STUDY#BRSA0267"))
+        self.call(self.admin, "unlink-student", {"canvasId": "101"})
+        self.assertIsNone(self.repo.get("USER#student", "STUDY#BRSA0267"))
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0]["action"], "unlink-student")
+        other = Portal(self.repo, {"sub": "student2", "email": "aluno@example.test", "groups": []}, mailer=self.mailer)
+        self.assertEqual(self.call(other, "report", method="GET")["student"]["id"], "101")
+
+    def test_unlink_student_requires_existing_binding(self):
+        self.publish()
+        with self.assertRaises(APIError) as err:
+            self.call(self.admin, "unlink-student", {"canvasId": "101"})
+        self.assertEqual(err.exception.status, 404)
+
+    def test_display_name_updates_and_audits(self):
+        self.publish()
+        result = self.call(self.admin, "display-name", {"canvasId": "101", "displayName": "Apelido"})
+        self.assertEqual(result, {"canvasId": "101", "displayName": "Apelido"})
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "PROFILE#101"), {"canvasId": "101", "displayName": "Apelido"})
+        self.assertEqual(self.call(self.admin, "report", method="GET")["students"][0]["name"], "Apelido")
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        self.assertEqual(len(audits), 1)
+        self.assertEqual(audits[0]["action"], "display-name")
+
+    def test_reject_request_only_pending_and_admin_only(self):
+        self.instructor.dispatch("POST", "/access-request", {})
+        with self.assertRaises(APIError) as err:
+            self.instructor.dispatch("POST", "/requests/teacher/reject", {})
+        self.assertEqual(err.exception.status, 403)
+        result = self.admin.dispatch("POST", "/requests/teacher/reject", {})
+        self.assertEqual(result["status"], "rejected")
+        self.assertEqual(self.repo.get("REQUESTS", "teacher")["status"], "rejected")
+        with self.assertRaises(APIError) as err:
+            self.admin.dispatch("POST", "/requests/teacher/reject", {})
+        self.assertEqual(err.exception.status, 409)
+
+
 class AuthenticationTests(unittest.TestCase):
     def event(self):
         return {"headers": {"authorization": "Bearer secret"}, "requestContext": {"authorizer": {"jwt": {"claims": {
@@ -356,6 +420,25 @@ class AuthenticationTests(unittest.TestCase):
             urlopen.return_value.__enter__.return_value = io.StringIO(json.dumps(info))
             with self.assertRaises(APIError):
                 authenticate(self.event())
+
+    @patch("urllib.request.urlopen")
+    def test_email_claim_from_access_token_skips_userinfo(self, urlopen):
+        event = self.event()
+        event["requestContext"]["authorizer"]["jwt"]["claims"].update(
+            {"email": "Aluno@Example.TEST", "email_verified": "true"})
+        user = authenticate(event)
+        self.assertEqual(user["email"], "aluno@example.test")
+        urlopen.assert_not_called()
+
+    @patch("urllib.request.urlopen")
+    def test_unverified_email_claim_rejected_without_calling_userinfo(self, urlopen):
+        event = self.event()
+        event["requestContext"]["authorizer"]["jwt"]["claims"].update(
+            {"email": "aluno@example.test", "email_verified": "false"})
+        with self.assertRaises(APIError) as err:
+            authenticate(event)
+        self.assertEqual(err.exception.status, 403)
+        urlopen.assert_not_called()
 
 
 if __name__ == "__main__":

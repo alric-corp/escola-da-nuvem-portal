@@ -141,6 +141,7 @@ class ReminderJourneyTests(unittest.TestCase):
     setUp = test_reminders.ReminderTests.setUp
     call = test_reminders.ReminderTests.call
     publish = test_reminders.ReminderTests.publish
+    publish_csv = test_reminders.ReminderTests.publish_csv
     preview = test_reminders.ReminderTests.preview
     payload = test_reminders.ReminderTests.payload
 

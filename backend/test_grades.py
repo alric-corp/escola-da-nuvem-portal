@@ -2,7 +2,7 @@ import csv
 import io
 import unittest
 
-from grades import ValidationError, parse_csv, summary
+from grades import ValidationError, overview, parse_csv, summary
 
 
 def canvas_csv(kc="7", lab="50", email="aluno@example.test", student_id="101", extra=None):
@@ -46,6 +46,20 @@ class GradesTests(unittest.TestCase):
         self.assertIsNone(result["total"])
         self.assertEqual(result["status"], "insufficient")
         self.assertEqual([a["state"] for a in result["activities"]], ["exempt", "unreleased"])
+
+    def test_overview_aggregates_per_activity_across_students(self):
+        csv = canvas_csv(kc="9", lab="50", extra=["Segundo Aluno", "202", "segundo@example.test", "", "98", "0"])
+        snapshot = parse_csv(csv, ["001 KC (123)", "002 Lab (456)"])
+        by_id = {a["id"]: a for a in overview(snapshot)["activities"]}
+        kc, lab = by_id["001 KC (123)"], by_id["002 Lab (456)"]
+        self.assertEqual((kc["completed"], kc["pending"], kc["needsReview"], kc["average"]), (1, 1, 0, 90))
+        self.assertEqual((lab["completed"], lab["pending"], lab["needsReview"], lab["average"]), (2, 0, 1, 74))
+
+    def test_overview_activity_with_no_grades_yet_has_no_average(self):
+        snapshot = parse_csv(canvas_csv(kc="", lab=""), ["001 KC (123)", "002 Lab (456)"])
+        by_id = {a["id"]: a for a in overview(snapshot)["activities"]}
+        self.assertEqual((by_id["001 KC (123)"]["completed"], by_id["001 KC (123)"]["pending"]), (0, 1))
+        self.assertIsNone(by_id["001 KC (123)"]["average"])
 
     def test_blank_lines_and_bom_are_ignored(self):
         self.assertEqual(len(parse_csv("\ufeff" + canvas_csv() + "\n\n")["students"]), 1)

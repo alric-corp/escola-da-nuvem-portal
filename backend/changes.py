@@ -41,6 +41,21 @@ def change_counts(changes):
             for key, value in changes.items() if key != "gradeDetails"}
 
 
+def student_history(before, snapshot):
+    """Resumo por aluno (médias e comparação com a publicação anterior), gravado uma vez
+    na publicação para que o relatório do aluno não precise reler snapshots antigos."""
+    before = before or {"students": [], "activities": []}
+    prior_by_id = {s["id"]: s for s in before["students"]}
+    result = {}
+    for student in snapshot["students"]:
+        s = summary(student, snapshot["activities"])
+        result[student["id"]] = {
+            "kc": s["kc"], "lab": s["lab"], "total": s["total"],
+            "changes": student_changes(prior_by_id.get(student["id"]), before["activities"], student, snapshot["activities"]),
+        }
+    return result
+
+
 def student_changes(before_student, before_activities, student, activities):
     if before_student is None:
         return None

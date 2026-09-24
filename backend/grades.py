@@ -172,7 +172,26 @@ def parse_csv(text, active_ids=None):
 
 def overview(snapshot):
     rows = [summary(s, snapshot["activities"]) for s in snapshot["students"]]
-    return {"activities": snapshot["activities"],
+    # completed + pending é o denominador natural para "% sem nota" e "% em revisão":
+    # o mesmo universo (liberada e não dispensada) usado pela média do aluno em summary().
+    stats = {a["id"]: {"completed": 0, "pending": 0, "needsReview": 0, "scores": []} for a in snapshot["activities"]}
+    for row in rows:
+        for detail in row["activities"]:
+            st = stats[detail["id"]]
+            if detail["state"] == "completed":
+                st["completed"] += 1
+                if detail["percent"] is not None:
+                    st["scores"].append(detail["percent"])
+                if detail["needsReview"]:
+                    st["needsReview"] += 1
+            elif detail["state"] == "pending":
+                st["pending"] += 1
+    activities = [{**a, "completed": stats[a["id"]]["completed"], "pending": stats[a["id"]]["pending"],
+                  "needsReview": stats[a["id"]]["needsReview"],
+                  "average": round(sum(stats[a["id"]]["scores"]) / len(stats[a["id"]]["scores"]), 2)
+                  if stats[a["id"]]["scores"] else None}
+                 for a in snapshot["activities"]]
+    return {"activities": activities,
             "warnings": snapshot.get("warnings", []),
             "students": [{k: v for k, v in s.items() if k != "activities"} for s in rows],
             "count": len(rows)}

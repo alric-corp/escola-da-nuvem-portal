@@ -28,7 +28,7 @@ class Mailer:
 
 class ReminderTests(unittest.TestCase):
     def setUp(self):
-        env = patch.dict("os.environ", {"REMINDERS_ENABLED": "true"})
+        env = patch.dict("os.environ", {"REMINDERS_ENABLED": "true", "REMINDER_BATCH_DELAY_SECONDS": "0"})
         env.start()
         self.addCleanup(env.stop)
         self.repo = MemoryRepository()
@@ -42,7 +42,10 @@ class ReminderTests(unittest.TestCase):
         return (actor or self.admin).dispatch("POST", "/cohorts/BRSA0267/" + op, body)
 
     def publish(self, kc="", lab="", email="aluno@example.test"):
-        draft = self.call("preview", {"csv": canvas_csv(kc=kc, lab=lab, email=email), "activeIds": ["001 KC (123)", "002 Lab (456)"]})
+        return self.publish_csv(canvas_csv(kc=kc, lab=lab, email=email))
+
+    def publish_csv(self, csv):
+        draft = self.call("preview", {"csv": csv, "activeIds": ["001 KC (123)", "002 Lab (456)"]})
         return self.call("publish", {"draftId": draft["draft"]["id"]})
 
     def preview(self):
@@ -147,6 +150,82 @@ class ReminderTests(unittest.TestCase):
         self.repo.fail_transaction = True
         with self.assertRaises(Conflict): self.call("send-reminder", body)
         self.assertEqual(self.mailer.sent, [])
+
+    def test_batch_preview_reports_skip_reasons_and_a_sample_message(self):
+        self.publish_csv(canvas_csv(kc="", lab="", email="aluno@example.test",
+                                 extra=["Sem Email", "202", "", "", "", "0"]))
+        # 101 (aluno@example.test): pendente, elegível. 202 (Sem Email): sem e-mail.
+        self.call("send-reminder", self.payload())  # 101 já recebeu nesta publicação.
+        preview = self.call("pending-preview-batch", {"studentIds": ["101", "202", "999"]})
+        by_id = {r["id"]: r for r in preview["recipients"]}
+        self.assertEqual(by_id["101"]["skip"], "already-sent")
+        self.assertEqual(by_id["202"]["skip"], "no-email")
+        self.assertEqual(by_id["999"]["skip"], "not-found")
+        self.assertIsNone(preview["sample"])  # ninguém elegível para amostra
+        self.assertEqual(len(self.mailer.sent), 1)  # só o send-reminder individual acima
+
+    def test_batch_send_reports_per_student_outcome_and_never_duplicates(self):
+        self.publish_csv(canvas_csv(kc="", lab="", email="aluno@example.test",
+                                 extra=["Segundo Aluno", "202", "segundo@example.test", "", "", "0"]))
+        preview = self.call("pending-preview-batch", {"studentIds": ["101", "202"]})
+        self.assertIsNotNone(preview["sample"])
+        result = self.call("send-reminders", {"studentIds": ["101", "202"],
+                                              "expectedPublicationId": preview["publicationId"]})
+        self.assertEqual({r["id"]: r["status"] for r in result["results"]}, {"101": "sent", "202": "sent"})
+        self.assertEqual({m["to"] for m in self.mailer.sent}, {"aluno@example.test", "segundo@example.test"})
+        # Reenviar para os mesmos dois é bloqueado (mesma publicação, já enviado) — não duplica.
+        again = self.call("send-reminders", {"studentIds": ["101", "202"],
+                                             "expectedPublicationId": preview["publicationId"]})
+        self.assertEqual({r["status"] for r in again["results"]}, {"skipped"})
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_batch_send_skips_ineligible_without_blocking_the_rest(self):
+        self.publish_csv(canvas_csv(kc="", lab="", email="aluno@example.test",
+                                 extra=["Sem Email", "202", "", "", "", "0"]))
+        result = self.call("send-reminders", {"studentIds": ["101", "202", "999"],
+                                              "expectedPublicationId": self.repo.get("COHORT#BRSA0267", "METADATA")["current"]})
+        by_id = {r["id"]: r for r in result["results"]}
+        self.assertEqual(by_id["101"]["status"], "sent")
+        self.assertEqual(by_id["202"]["reason"], "no-email")
+        self.assertEqual(by_id["999"]["reason"], "not-found")
+        self.assertEqual(len(self.mailer.sent), 1)
+
+    def test_batch_requires_institutional_reminders_enabled_and_valid_ids(self):
+        instructor = Portal(self.repo, {"sub": "other", "email": "other@escoladanuvem.org", "groups": ["instructor"]}, mailer=self.mailer)
+        for actor in (self.student, instructor):
+            with self.assertRaises(APIError) as err:
+                self.call("pending-preview-batch", {"studentIds": ["101"]}, actor)
+            self.assertEqual(err.exception.status, 403)
+        with patch.dict("os.environ", {"REMINDERS_ENABLED": "false"}):
+            with self.assertRaises(APIError) as err:
+                self.call("pending-preview-batch", {"studentIds": ["101"]})
+            self.assertEqual(err.exception.status, 403)
+        for ids in ([], ["101", "101"], ["x"] * 201, [1]):
+            with self.assertRaises(APIError) as err:
+                self.call("pending-preview-batch", {"studentIds": ids})
+            self.assertEqual(err.exception.status, 400)
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_batch_send_stops_remaining_students_when_publication_changes_mid_batch(self):
+        from repository import Conflict
+        self.publish_csv(canvas_csv(kc="", lab="", email="aluno@example.test",
+                                 extra=["Segundo Aluno", "202", "segundo@example.test", "", "", "0"]))
+        publication_id = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+        original = self.repo.transaction
+        calls = {"n": 0}
+
+        def flaky(writes):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise Conflict()
+            return original(writes)
+
+        with patch.object(self.repo, "transaction", side_effect=flaky):
+            result = self.call("send-reminders", {"studentIds": ["101", "202"],
+                                                   "expectedPublicationId": publication_id})
+        self.assertEqual(result["results"][0]["status"], "sent")
+        self.assertEqual(result["results"][1], {"id": "202", "name": "Segundo Aluno", "status": "skipped", "reason": "publication-changed"})
+        self.assertEqual(len(self.mailer.sent), 1)
 
     def test_crash_after_acceptance_does_not_allow_duplicate(self):
         body = self.payload()

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -12,7 +13,7 @@ from grades import ValidationError, overview, parse_csv, summary
 from identity import groups_from_claim, response
 from repository import Conflict, Repository
 from reminders import SESMailer, SendFailure, message_for
-from changes import snapshot_changes, change_counts, student_changes
+from changes import snapshot_changes, change_counts, student_changes, student_history
 
 
 class APIError(Exception):
@@ -71,6 +72,33 @@ class Portal:
             self.cache[key] = self.repo.snapshot(key)
         return self.cache[key]
 
+    def history(self, publication):
+        """Resumo por aluno da publicação, se já foi gravado no momento do publish (ver
+        _publish); None para publicações antigas, anteriores a esse resumo existir."""
+        key = publication.get("history")
+        if not key:
+            return None
+        if key not in self.cache:
+            self.cache[key] = self.repo.snapshot(key)
+        return self.cache[key]
+
+    def student_summary_entry(self, pk, publication, student_id, current_snap=None):
+        hist = self.history(publication)
+        if hist is not None:
+            return hist.get(student_id)
+        # Fallback só para publicações anteriores ao resumo compacto (ver _publish):
+        # recalcula a partir dos snapshots completos, como antes desta otimização.
+        old = current_snap if current_snap is not None else self.snapshot(publication)
+        own = next((s for s in old["students"] if s["id"] == student_id), None)
+        if not own:
+            return None
+        s = summary(own, old["activities"])
+        base = self.repo.get(pk, "PUB#" + publication["base"]) if publication.get("base") else None
+        previous = self.snapshot(base) if base else {"students": [], "activities": []}
+        prior = next((s for s in previous["students"] if s["id"] == student_id), None)
+        return {"kc": s["kc"], "lab": s["lab"], "total": s["total"],
+                "changes": student_changes(prior, previous["activities"], own, old["activities"])}
+
     def cohort(self, code):
         require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)), 400, "Código de turma inválido.")
         c = self.repo.get("COHORT#" + code, "METADATA")
@@ -96,7 +124,8 @@ class Portal:
                 return None
             if bind:
                 self.repo.transaction([
-                    ("COHORT#" + code, "OWNER#" + student["id"], {"userId": self.uid}, owner),
+                    ("COHORT#" + code, "OWNER#" + student["id"],
+                     {"userId": self.uid, "email": self.user["email"], "at": now()}, owner),
                     (self.upk, "STUDY#" + code, {"code": code, "canvasId": student["id"]}, None),
                 ])
         return student
@@ -122,12 +151,28 @@ class Portal:
         if path == "/requests" and method == "GET":
             require(self.admin)
             return {"requests": self.repo.list("REQUESTS")}
+        reject_match = re.fullmatch(r"/requests/([^/]+)/reject", path)
+        if reject_match and method == "POST":
+            require(self.admin)
+            require(not body, 400, "A recusa não usa corpo na requisição.")
+            uid = reject_match.group(1)
+            request = self.repo.get("REQUESTS", uid)
+            require(request is not None and request["status"] == "pending", 409,
+                    "Só é possível recusar solicitações pendentes.")
+            updated = {**request, "status": "rejected", "rejectedBy": self.uid, "rejectedAt": now()}
+            self.repo.put("REQUESTS", uid, updated)
+            return updated
         if path == "/cohorts" and method == "GET":
+            # Vínculo (STUDY#/TEACH#) já indica a turma sem reler o snapshot do S3 a cada
+            # login. Sem vínculo (primeiro acesso, ou CSV publicado sem e-mail até então),
+            # cai no fallback por e-mail, que ainda precisa do snapshot atual.
+            bound = {b["code"] for b in self.repo.list(self.upk, "STUDY#")}
+            teaching = {t["code"] for t in self.repo.list(self.upk, "TEACH#")}
             result = []
             for cohort in self.repo.cohorts():
                 code = cohort["code"]
-                teach = self.can_teach(code)
-                if not teach:
+                teach = self.admin or code in teaching
+                if not teach and code not in bound:
                     if not cohort.get("current"):
                         continue
                     snap = self.snapshot(self.publication(code, cohort["current"]))
@@ -155,6 +200,8 @@ class Portal:
             return self._reminder_settings(operation, method, teach, body)
         if operation in ("pending-preview", "send-reminder") and method == "POST":
             return self._reminder_flow(operation, code, cohort, pk, teach, body)
+        if operation in ("pending-preview-batch", "send-reminders") and method == "POST":
+            return self._reminder_batch(operation, code, cohort, pk, teach, body)
         if operation == "class-report" and method == "GET":
             require(teach, 403, "Você não tem acesso a esta turma.")
             return class_report(self.repo, code)
@@ -165,6 +212,12 @@ class Portal:
             return self._approve_instructor(code, pk, body)
         if operation == "revoke-instructor" and method == "POST":
             return self._revoke_instructor(code, pk, body)
+        if operation == "students-search" and method == "POST":
+            return self._students_search(code, cohort, pk, body)
+        if operation == "unlink-student" and method == "POST":
+            return self._unlink_student(code, pk, body)
+        if operation == "display-name" and method == "POST":
+            return self._set_display_name(pk, body)
         if operation == "preview" and method == "POST":
             return self._preview(code, cohort, pk, teach, body)
         if operation == "publish" and method == "POST":
@@ -260,6 +313,78 @@ class Portal:
         self.repo.put(pk, sk, record)
         return {"delivery": record}
 
+    def _reminder_batch(self, operation, code, cohort, pk, teach, body):
+        require(teach)
+        require(os.environ.get("REMINDERS_ENABLED", "false").lower() == "true", 403,
+                "O envio de e-mails de apoio está desabilitado.")
+        require(self.user["email"].rsplit("@", 1)[-1] == self.domain, 403,
+                "Use seu e-mail institucional para enviar lembretes.")
+        expected_keys = {"studentIds"} if operation == "pending-preview-batch" else {"studentIds", "expectedPublicationId"}
+        require(set(body) == expected_keys, 400, "Solicitação de lembrete em lote inválida.")
+        ids = body.get("studentIds")
+        require(isinstance(ids, list) and 1 <= len(ids) <= 200 and len(set(ids)) == len(ids)
+                and all(isinstance(i, str) for i in ids), 400, "Selecione até 200 alunos, sem repetição.")
+        require(cohort.get("current"), 409, "Publique as notas antes de consultar pendências.")
+        publication = self.publication(code, cohort["current"])
+        snap = display_snapshot(self.repo, code, self.snapshot(publication))
+        by_id = {s["id"]: s for s in snap["students"]}
+        mailer = self.mailer or SESMailer()
+        readiness = mailer.readiness(self.user["email"])
+        candidates = []
+        for sid in ids:
+            raw_student = by_id.get(sid)
+            if raw_student is None:
+                candidates.append({"id": sid, "name": None, "email": None, "pending": 0, "skip": "not-found"})
+                continue
+            student = summary(raw_student, snap["activities"])
+            pending = [a for a in student["activities"] if a["state"] == "pending"]
+            sk = "REMINDER#" + publication["id"] + "#" + student["id"]
+            previous = self.repo.get(pk, sk)
+            skip = ("no-email" if not student["email"] else
+                    "no-pending" if not pending else
+                    "already-sent" if previous and previous["status"] != "failed" else None)
+            candidates.append({"id": student["id"], "name": student["name"], "email": student["email"],
+                                "pending": len(pending), "skip": skip,
+                                "_student": student, "_previous": previous})
+        if operation == "pending-preview-batch":
+            sample_candidate = next((c for c in candidates if not c["skip"]), None)
+            sample = message_for(code, sample_candidate["_student"], publication, self.user["email"])[0] if sample_candidate else None
+            return {"publicationId": publication["id"], "publishedAt": publication["publishedAt"],
+                    "ses": readiness, "sample": sample,
+                    "recipients": [{k: v for k, v in c.items() if not k.startswith("_")} for c in candidates]}
+        require(body["expectedPublicationId"] == publication["id"], 409,
+                "As notas foram atualizadas. Consulte a prévia de novo antes de enviar.")
+        require(readiness["ready"], 409, readiness["reason"])
+        results, stopped = [], False
+        for i, c in enumerate(candidates):
+            if stopped or c["skip"]:
+                results.append({"id": c["id"], "name": c["name"], "status": "skipped",
+                                "reason": "publication-changed" if stopped else c["skip"]})
+                continue
+            message, _, _ = message_for(code, c["_student"], publication, self.user["email"])
+            sk = "REMINDER#" + publication["id"] + "#" + c["id"]
+            record = {"studentId": c["id"], "publicationId": publication["id"],
+                      "by": self.uid, "at": now(), "status": "sending"}
+            try:
+                self.repo.transaction([(pk, "METADATA", cohort, cohort), (pk, sk, record, c["_previous"])])
+            except Conflict:
+                stopped = True
+                results.append({"id": c["id"], "name": c["name"], "status": "skipped", "reason": "publication-changed"})
+                continue
+            try:
+                message_id = mailer.send(message)
+            except SendFailure as err:
+                record["status"] = "unknown" if err.uncertain else "failed"
+                self.repo.put(pk, sk, record)
+                results.append({"id": c["id"], "name": c["name"], "status": "failed"})
+                continue
+            record.update(status="sent", messageId=message_id)
+            self.repo.put(pk, sk, record)
+            results.append({"id": c["id"], "name": c["name"], "status": "sent"})
+            if i < len(candidates) - 1:
+                time.sleep(float(os.environ.get("REMINDER_BATCH_DELAY_SECONDS", "0.25")))
+        return {"publicationId": publication["id"], "results": results}
+
     def _approve_instructor(self, code, pk, body):
         require(self.admin)
         uid = str(body.get("userId", ""))
@@ -284,6 +409,56 @@ class Portal:
             (pk, "TEACH#" + uid, None, self.repo.get(pk, "TEACH#" + uid)),
         ])
         return {"revoked": True}
+
+    def _students_search(self, code, cohort, pk, body):
+        require(self.admin)
+        require(set(body) == {"query"}, 400, "Solicitação de busca inválida.")
+        query = str(body["query"]).strip().lower()
+        require(1 <= len(query) <= 100, 400, "Digite ao menos um caractere para buscar.")
+        require(cohort.get("current"), 409, "Publique as notas antes de buscar alunos.")
+        publication = self.publication(code, cohort["current"])
+        snap = display_snapshot(self.repo, code, self.snapshot(publication))
+        results = []
+        for student in snap["students"]:
+            haystacks = (student["name"], student["email"] or "", student["id"])
+            if not any(query in h.lower() for h in haystacks):
+                continue
+            owner = self.repo.get(pk, "OWNER#" + student["id"])
+            results.append({"id": student["id"], "name": student["name"], "email": student["email"],
+                            "bound": owner is not None,
+                            "boundEmail": owner.get("email") if owner else None,
+                            "boundAt": owner.get("at") if owner else None})
+            if len(results) >= 25:
+                break
+        return {"results": results}
+
+    def _unlink_student(self, code, pk, body):
+        require(self.admin)
+        require(set(body) == {"canvasId"}, 400, "Solicitação inválida.")
+        canvas_id = str(body["canvasId"])
+        owner = self.repo.get(pk, "OWNER#" + canvas_id)
+        require(owner is not None, 404, "Este aluno não está vinculado a nenhuma conta.")
+        self.repo.transaction([
+            (pk, "OWNER#" + canvas_id, None, owner),
+            ("USER#" + owner["userId"], "STUDY#" + code, None, self.repo.get("USER#" + owner["userId"], "STUDY#" + code)),
+            (pk, "AUDIT#" + uuid.uuid4().hex,
+             {"action": "unlink-student", "canvasId": canvas_id, "unlinkedUser": owner["userId"], "by": self.uid, "at": now()}, None),
+        ])
+        return {"unlinked": True}
+
+    def _set_display_name(self, pk, body):
+        require(self.admin)
+        require(set(body) == {"canvasId", "displayName"}, 400, "Solicitação inválida.")
+        canvas_id = str(body["canvasId"])
+        display_name = str(body["displayName"]).strip()
+        require(1 <= len(display_name) <= 100, 400, "Informe um nome entre 1 e 100 caracteres.")
+        previous = self.repo.get(pk, "PROFILE#" + canvas_id)
+        self.repo.transaction([
+            (pk, "PROFILE#" + canvas_id, {"canvasId": canvas_id, "displayName": display_name}, previous),
+            (pk, "AUDIT#" + uuid.uuid4().hex,
+             {"action": "display-name", "canvasId": canvas_id, "displayName": display_name, "by": self.uid, "at": now()}, None),
+        ])
+        return {"canvasId": canvas_id, "displayName": display_name}
 
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
@@ -321,8 +496,12 @@ class Portal:
         require(not changes["studentsRemoved"] or body.get("acknowledgeRemoved") is True, 400,
                 "Confirme a remoção de alunos antes de publicar o arquivo completo da turma.")
         require(any(a["active"] for a in snap["activities"]), 400, "Libere ao menos uma atividade antes de publicar.")
+        # Resumo por aluno gravado agora, com o que já está em memória (snap e before), para
+        # que _report não precise reler dezenas de snapshots a cada carregamento do histórico.
+        history_key = draft["snapshot"].rsplit("/", 1)[0] + "/history.json"
+        self.repo.snapshot(history_key, student_history(before, snap))
         publication = {**draft, "status": "published", "publishedAt": now(), "publishedBy": self.uid,
-                       "changes": change_counts(changes)}
+                       "changes": change_counts(changes), "history": history_key}
         next_cohort = {k: v for k, v in cohort.items() if not k.startswith("_")}
         next_cohort.update(current=draft["id"], updatedAt=publication["publishedAt"], updateKind="publish")
         self.repo.transaction([
@@ -364,16 +543,10 @@ class Portal:
         if not any(p["id"] == publication["id"] for p in publications):
             publications = publications[:11] + [publication]
         for p in publications:
-            old = self.snapshot(p)
-            own = next((s for s in old["students"] if s["id"] == student["id"]), None)
-            if own:
-                s = summary(own, old["activities"])
-                base = self.repo.get(pk, "PUB#" + p["base"]) if p.get("base") else None
-                previous = self.snapshot(base) if base else {"students": [], "activities": []}
-                prior = next((s for s in previous["students"] if s["id"] == student["id"]), None)
-                history.append({"publishedAt": p["publishedAt"], "kc": s["kc"], "lab": s["lab"], "total": s["total"],
-                                "current": p["id"] == publication["id"],
-                                "changes": student_changes(prior, previous["activities"], own, old["activities"])})
+            is_current = p["id"] == publication["id"]
+            entry = self.student_summary_entry(pk, p, student["id"], snap if is_current else None)
+            if entry:
+                history.append({"publishedAt": p["publishedAt"], "current": is_current, **entry})
         return {"cohort": code, "publication": {"id": publication["id"], "publishedAt": publication["publishedAt"]},
                 "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                 "updateKind": cohort.get("updateKind", "publish"),
@@ -384,18 +557,28 @@ def authenticate(event):
     claims = event.get("requestContext", {}).get("authorizer", {}).get("jwt", {}).get("claims", {})
     require(claims.get("sub") and claims.get("token_use") == "access", 401, "Entre novamente para continuar.")
     require("portal/access" in claims.get("scope", "").split(), 403, "Sessão sem permissão para o portal.")
-    token = next((v for k, v in event.get("headers", {}).items() if k.lower() == "authorization"), "")
-    require(token.lower().startswith("bearer "), 401, "Sessão inválida.")
-    request = urllib.request.Request(os.environ["AUTH_DOMAIN"] + "/oauth2/userInfo", headers={"Authorization": token})
-    try:
-        with urllib.request.urlopen(request, timeout=5) as result:
-            info = json.load(result)
-    except urllib.error.HTTPError as e:
-        raise APIError(401 if e.code in (400, 401, 403) else 503, "Não foi possível validar a sessão. Entre novamente.") from None
-    except (urllib.error.URLError, TimeoutError):
-        raise APIError(503, "Autenticação temporariamente indisponível.") from None
-    require(info.get("sub") == claims["sub"] and info.get("email_verified") in (True, "true"), 403, "Confirme seu e-mail antes de acessar o portal.")
-    email = str(info.get("email", "")).strip().lower()
+    # O gatilho Cognito "pre token generation" (infra/terraform/auth-trigger.tf) inclui email e
+    # email_verified no access token. Tokens emitidos antes do gatilho (ou durante uma eventual
+    # falha dele) não têm a claim "email"; nesse caso, e só nesse caso, caímos de volta no
+    # /oauth2/userInfo. Fora essa transição, nenhuma requisição chama o Cognito.
+    if "email" in claims:
+        email = str(claims.get("email", "")).strip().lower()
+        verified = claims.get("email_verified") in (True, "true")
+    else:
+        token = next((v for k, v in event.get("headers", {}).items() if k.lower() == "authorization"), "")
+        require(token.lower().startswith("bearer "), 401, "Sessão inválida.")
+        request = urllib.request.Request(os.environ["AUTH_DOMAIN"] + "/oauth2/userInfo", headers={"Authorization": token})
+        try:
+            with urllib.request.urlopen(request, timeout=5) as result:
+                info = json.load(result)
+        except urllib.error.HTTPError as e:
+            raise APIError(401 if e.code in (400, 401, 403) else 503, "Não foi possível validar a sessão. Entre novamente.") from None
+        except (urllib.error.URLError, TimeoutError):
+            raise APIError(503, "Autenticação temporariamente indisponível.") from None
+        require(info.get("sub") == claims["sub"], 403, "Sessão inválida.")
+        email = str(info.get("email", "")).strip().lower()
+        verified = info.get("email_verified") in (True, "true")
+    require(verified, 403, "Confirme seu e-mail antes de acessar o portal.")
     require(bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)), 403, "E-mail da conta inválido.")
     return {"sub": claims["sub"], "email": email, "groups": groups_from_claim(claims.get("cognito:groups", []))}
 
