@@ -1,6 +1,5 @@
-import { badge, date, demo, e, errorPanel, heading, metric, percent, state } from "../ui.js";
-import { groupActivities, needsReview } from "../student-journey.js";
-import { activityCard } from "./student.js";
+import { badge, date, demo, e, errorPanel, heading, metric, percent, plural, state } from "../ui.js";
+import { activityCard, activityGroups } from "./student.js";
 
 export function senderPage() {
   const title = heading("APOIO AO ALUNO", "Lembretes por e-mail", "Confirme seu remetente e revise cada mensagem antes de enviar.");
@@ -37,9 +36,8 @@ export function pendingPage() {
 function studentDetail(p) {
   if (!p.summary || !p.allActivities) return "";
   const s = p.summary, t = p.thresholds || { kc: 70, lab: 95 };
-  const groups = groupActivities(p.allActivities);
-  return `<section class="metrics" aria-label="Desempenho do aluno">${metric("Média em KCs", percent(s.kc), `Referência: ${t.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), `Referência: ${t.lab}% ou mais`)}${metric("Com nota", percent(s.progress), `${s.completed} atividade(s) · ${s.pending} sem nota`)}${metric("Situação", badge(s.status), "Critério da turma")}</section>
-  <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${groups.map(([name, items], i) => `<details class="activity-module" ${i === 0 ? "open" : ""}><summary><strong>${e(name)}</strong><span>${items.filter((a) => a.state === "completed").length} com nota · ${items.filter((a) => a.state === "pending").length} sem nota · ${items.filter(needsReview).length} para revisar</span></summary>${items.map(activityCard).join("")}</details>`).join("")}</section>
+  return `<section class="metrics" aria-label="Desempenho do aluno">${metric("Média em KCs", percent(s.kc), `Referência: ${t.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), `Referência: ${t.lab}% ou mais`)}${metric("Com nota", percent(s.progress), `${plural(s.completed, "atividade", "atividades")} · ${s.pending} sem nota`)}${metric("Situação", badge(s.status), "Critério da turma")}</section>
+  <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${activityGroups(p.allActivities, false)}</section>
   ${p.history?.length ? `<section class="panel"><h2>Histórico do aluno</h2><div class="table-scroll"><table><thead><tr><th>Publicação</th><th>KCs</th><th>Labs</th><th>Média geral</th></tr></thead><tbody>${p.history.map((h) => `<tr><td>${date(h.publishedAt)}${h.current ? " · atual" : ""}</td><td>${percent(h.kc)}</td><td>${percent(h.lab)}</td><td>${percent(h.total)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
 }
 
@@ -62,12 +60,12 @@ export function batchPage() {
   if (state.batchError) return title + errorPanel(state.batchError, "retry-batch-preview");
   if (state.batchResults) {
     const counts = state.batchResults.reduce((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {});
-    return `${title}<section class="panel"><h2>Resultado do envio</h2><p>${counts.sent || 0} enviado(s) · ${counts.skipped || 0} pulado(s) · ${counts.failed || 0} com falha.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Resultado</th></tr></thead><tbody>${state.batchResults.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${resultLabels[r.status] || r.status}${r.reason ? ` · ${e(skipLabels[r.reason] || r.reason)}` : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
+    return `${title}<section class="panel"><h2>Resultado do envio</h2><p>${plural(counts.sent || 0, "enviado", "enviados")} · ${plural(counts.skipped || 0, "pulado", "pulados")} · ${counts.failed || 0} com falha.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Resultado</th></tr></thead><tbody>${state.batchResults.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${resultLabels[r.status] || r.status}${r.reason ? ` · ${e(skipLabels[r.reason] || r.reason)}` : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
   }
   const p = state.batchPreview;
   if (!p) return `${title}<section class="panel" role="status">Consultando destinatários…</section>`;
   const eligible = p.recipients.filter((r) => !r.skip);
-  return `${title}<section class="panel"><h2>Destinatários</h2><p>${eligible.length} de ${p.recipients.length} aluno(s) vão receber um lembrete agora. Os demais aparecem com o motivo por que serão pulados.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Sem nota</th><th>Situação</th></tr></thead><tbody>${p.recipients.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${r.pending}</td><td>${r.skip ? e(skipLabels[r.skip] || r.skip) : "Será enviado"}</td></tr>`).join("")}</tbody></table></div></section>${p.sample ? `<section class="panel reminder-panel"><h2>Exemplo de mensagem</h2><p class="small">Cada aluno recebe uma versão com suas próprias pendências; este é só um exemplo.</p><dl><dt>De</dt><dd>${e(p.sample.from)}</dd><dt>Assunto</dt><dd>${e(p.sample.subject)}</dd></dl><pre class="email-preview">${e(p.sample.text)}</pre><p role="status">${e(p.ses?.reason || "")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminders-batch" ${eligible.length && p.ses?.ready ? "" : "disabled"}>Enviar para ${eligible.length} aluno(s)</button></section>` : '<section class="panel"><p>Nenhum aluno elegível para receber o lembrete agora.</p></section>'}`;
+  return `${title}<section class="panel"><h2>Destinatários</h2><p>${eligible.length} de ${plural(p.recipients.length, "aluno", "alunos")} ${eligible.length === 1 ? "vai" : "vão"} receber um lembrete agora. Os demais aparecem com o motivo por que serão pulados.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Sem nota</th><th>Situação</th></tr></thead><tbody>${p.recipients.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${r.pending}</td><td>${r.skip ? e(skipLabels[r.skip] || r.skip) : "Será enviado"}</td></tr>`).join("")}</tbody></table></div></section>${p.sample ? `<section class="panel reminder-panel"><h2>Exemplo de mensagem</h2><p class="small">Cada aluno recebe uma versão com suas próprias pendências; este é só um exemplo.</p><dl><dt>De</dt><dd>${e(p.sample.from)}</dd><dt>Assunto</dt><dd>${e(p.sample.subject)}</dd></dl><pre class="email-preview">${e(p.sample.text)}</pre><p role="status">${e(p.ses?.reason || "")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminders-batch" ${eligible.length && p.ses?.ready ? "" : "disabled"}>Enviar para ${plural(eligible.length, "aluno", "alunos")}</button></section>` : '<section class="panel"><p>Nenhum aluno elegível para receber o lembrete agora.</p></section>'}`;
 }
 
 export function reminderPreview(p) {

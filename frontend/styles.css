@@ -2497,3 +2497,82 @@ details ul, .onboarding ol { padding-left: 24px; }
   .sidebar nav .nav-item { padding: 6px 0; font-size: .625rem; }
   .nav-short { overflow-wrap: normal; }
 }
+
+/* Cabeçalho do módulo: progresso compacto e só os avisos que pedem ação. */
+.activity-module summary .module-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; color: var(--text-secondary); font-size: .875rem; }
+.module-progress { display: inline-flex; align-items: center; gap: 8px; }
+.module-progress i { display: inline-block; width: 72px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.module-progress b { display: block; height: 100%; background: var(--primary); }
+.activity-module summary .badge { font-size: .75rem; }
+.module-count { color: var(--text-secondary); }
+
+/* Filtros de "Minhas atividades": rótulos sempre acima do campo e contagem alinhada. */
+.table-tools.activity-filters { align-items: flex-end; justify-content: flex-start; }
+.activity-filters > label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 14rem; max-width: 22rem; }
+.activity-filters > label select { width: 100%; }
+.activity-filters > .count-chip { margin-left: auto; align-self: flex-end; }
+@media (max-width: 600px) {
+  .activity-filters > label { max-width: none; }
+  .activity-filters > .count-chip { margin-left: 0; }
+}
+
+/* Barra de ferramentas da lista de alunos: busca flexível, botões sem quebrar linha sozinhos. */
+.table-tools.student-tools { justify-content: flex-start; align-items: center; }
+.student-tools > input[type="search"] { flex: 1 1 14rem; min-width: 0; }
+.student-tools > select { flex: 0 1 13rem; }
+.student-tools > .button { flex: 0 0 auto; }
+@media (max-width: 900px) {
+  .student-tools > input[type="search"], .student-tools > select { flex-basis: 100%; }
+  .student-tools > .button { flex: 1 1 0; }
+}
+
+/* Cartões do painel do instrutor como atalhos de filtro. */
+.metrics.metrics-filters { grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
+.metric-filter { width: 100%; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: border-color .15s; }
+.metric-filter:hover { border-color: var(--primary); }
+.metric-filter.active { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.metric-neutral > strong { color: var(--text-primary); }
+#students-heading:focus { outline: none; }
+#students-heading:focus-visible { outline: 3px solid var(--primary-hover); outline-offset: 3px; }
+@media (max-width: 760px) {
+  .metrics.metrics-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Histórico (aluno e instrutor) abaixo de 1024px: cada publicação vira um card, sem rolagem
+   lateral (no tablet a tabela não cabe ao lado do menu lateral). */
+@media (max-width: 1023px) {
+  .history-table { overflow: visible; }
+  .history-table table, .history-table tbody { display: block; white-space: normal; }
+  .history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+  .history-table tbody { display: grid; gap: 10px; }
+  .history-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "date status" "kc lab" "file file" "changes changes" "action action";
+    gap: 10px 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+  }
+  .history-table td { display: block; padding: 0; border: 0; min-width: 0; overflow-wrap: anywhere; }
+  .history-table .h-date { grid-area: date; color: var(--text-primary); font-weight: 650; }
+  .history-table .h-status { grid-area: status; justify-self: end; }
+  .history-table .h-kc { grid-area: kc; }
+  .history-table .h-lab { grid-area: lab; }
+  .history-table .h-file { grid-area: file; }
+  .history-table .h-changes { grid-area: changes; }
+  .history-table .h-action { grid-area: action; }
+  .history-table .h-action:empty, .history-table .h-action:not(:has(button)) { display: none; }
+  .history-table .h-action .button { width: 100%; }
+  .history-table .h-kc, .history-table .h-lab { font-size: 1.125rem; color: var(--text-primary); }
+  .history-table [data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-size: .75rem; color: var(--text-secondary); }
+}
+#students-heading { scroll-margin-top: 16px; }
+/* A regra antiga ".activity-module summary span" (display: block) não vale para o novo cabeçalho. */
+.activity-module summary .module-meta span { margin-top: 0; }
+.activity-module summary .module-meta .module-progress { display: inline-flex; }
+.activity-module summary .module-meta .badge { display: inline-block; }
+/* "1 · Ver detalhes": sem o espaçamento do inline-flex entre a contagem e o texto. */
+.cell-pending .text-link { gap: 0; }
+.cell-pending .pending-count { white-space: pre; }

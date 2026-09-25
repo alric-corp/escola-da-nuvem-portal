@@ -1,6 +1,6 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, personalChanges, state, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, personalChanges, plural, state, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
   const s = state.report.student;
@@ -16,7 +16,7 @@ export function studentPage(name) {
   <div class="summary-goals">${goalIndicator("Média em KCs", s.kc, thresholds.kc, pendingKc, "KC")}${goalIndicator("Média em Labs", s.lab, thresholds.lab, pendingLab, "LAB")}</div></section>
   ${updateInfo()}
   <section class="panel next-steps" aria-labelledby="pending-heading"><div class="panel-title"><div><span class="eyebrow">PRÓXIMOS PASSOS</span><h2 id="pending-heading">${focus.length ? "Foco indicado pelo instrutor" : "Por onde começar"}</h2><p class="small">${focus.length ? "Até três atividades indicadas para a turma. Aqui aparecem apenas as que estão sem nota ou podem ser revisadas por você." : "Até três atividades: primeiro as sem nota, na ordem da publicação; depois, sugestões de revisão."}</p></div></div>
-  <div class="next-summary"><button class="button secondary" data-view="activities" data-pending="all">Ver minhas pendências · ${pending.length}</button><button class="button secondary" data-view="activities" data-activity-filter="review">Revisar resultados · ${review.length}</button></div>
+  ${pending.length || review.length ? `<div class="next-summary">${pending.length ? `<button class="button secondary" data-view="activities" data-pending="all">Ver minhas pendências · ${pending.length}</button>` : ""}${review.length ? `<button class="button secondary" data-view="activities" data-activity-filter="review">Revisar resultados · ${review.length}</button>` : ""}</div>` : ""}
   <p class="small">${current()?.autoSync ? `Sem nota pode significar entrega ou correção pendente. Quando a nota sair no Canvas, ela aparece aqui na próxima verificação (${nextCanvasSync()}).` : "Sem nota pode significar entrega ou correção pendente. Se já entregou no Canvas, aguarde a próxima atualização."}</p>
   ${next.length ? next.map(activityCard).join("") : `<p class="empty compact">${focus.length ? "Você já tem notas na referência nas atividades indicadas ou está dispensado delas. Consulte as demais atividades abaixo." : s.activities.some((a) => ["pending", "completed"].includes(a.state)) ? "As atividades avaliadas estão na referência. Continue acompanhando as próximas liberações." : "Ainda não há atividades para entrega ou revisão nesta publicação."}</p>`}
   <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${gradingHelp(thresholds)}</div>
@@ -60,7 +60,7 @@ export function activitiesPage() {
       normalize(a.name).includes(normalize(state.search)),
   );
   return `${heading("APRENDER E COLOCAR EM PRÁTICA", "Minhas atividades", "Notas registradas e atividades que ainda serão liberadas.")}${updateInfo()}${gradingHelp(thresholds)}
-  <section class="panel"><div class="table-tools"><label for="activity-kind">Tipo de atividade <select id="activity-kind">${[
+  <section class="panel"><div class="table-tools activity-filters"><label for="activity-kind">Tipo de atividade <select id="activity-kind">${[
     ["all", "KCs e LABs"],
     ["kc", "Somente KCs"],
     ["lab", "Somente LABs"],
@@ -71,7 +71,7 @@ export function activitiesPage() {
     )
     .join(
       "",
-    )}</select></label><label for="activity-module">Módulo <select id="activity-module" aria-label="Módulo"><option value="all">Todos os módulos</option>${groupActivities(activities).map(([name]) => `<option value="${e(name)}" ${state.activityModule === name ? "selected" : ""}>${e(name)}</option>`).join("")}</select></label><span class="count-chip" role="status">${filtered.length} atividade(s)</span></div><div class="table-tools"><div class="tabs" role="group" aria-label="Filtrar atividades">${[
+    )}</select></label><label for="activity-module">Módulo <select id="activity-module" aria-label="Módulo"><option value="all">Todos os módulos</option>${groupActivities(activities).map(([name]) => `<option value="${e(name)}" ${state.activityModule === name ? "selected" : ""}>${e(name)}</option>`).join("")}</select></label><span class="count-chip" role="status">${plural(filtered.length, "atividade", "atividades")}</span></div><div class="table-tools"><div class="tabs" role="group" aria-label="Filtrar atividades">${[
     ["all", "Todas"],
     ["pending", "Sem nota"],
     ["review", "Revisar resultados"],
@@ -88,9 +88,25 @@ export function activitiesPage() {
     )}</div><input id="search" type="search" aria-label="Buscar atividade" placeholder="Buscar atividade…" value="${e(state.search)}"></div><p class="small">Revisão: KCs abaixo de ${thresholds.kc}% e LABs abaixo de ${thresholds.lab}%, entre as atividades com nota. É uma sugestão de estudo; confirme com o instrutor se há possibilidade de nova tentativa.</p><div id="activity-list">${filtered.length ? activityGroups(filtered) : '<div class="empty"><p>Nenhuma atividade encontrada neste filtro.</p><button class="button secondary" data-action="clear-filters">Limpar filtros</button></div>'}</div></section>`;
 }
 
-export function activityGroups(activities) {
-  return groupActivities(activities).map(([name, items], i) => {
-    const counts = `${items.filter((a) => a.state === "completed").length} com nota · ${items.filter((a) => a.state === "pending").length} sem nota · ${items.filter(needsReview).length} para revisar`;
-    return `<details class="activity-module" ${(i === 0 || state.filter !== "all" || state.search || state.activityModule !== "all") ? "open" : ""}><summary><strong>${e(name)}</strong><span>${items.length} atividade(s) neste filtro · ${counts}</span></summary>${items.map(activityCard).join("")}</details>`;
+// Cabeçalho do módulo: progresso ("2 de 3 com nota") e, só quando houver, o que pede ação.
+function moduleSummary(items, filtered) {
+  const graded = items.filter((a) => a.state === "completed").length;
+  const open = items.filter((a) => ["pending", "completed"].includes(a.state)).length;
+  const pending = items.filter((a) => a.state === "pending").length;
+  const review = items.filter(needsReview).length;
+  const flags = `${pending ? `<span class="badge pending">${pending} sem nota</span>` : ""}${review ? `<span class="badge attention">${review} para revisar</span>` : ""}`;
+  const progress = open ? `<span class="module-progress">${graded} de ${open} com nota<i aria-hidden="true"><b style="width:${Math.round(graded / open * 100)}%"></b></i></span>` : `<span class="module-progress">Sem atividades liberadas</span>`;
+  return `<span class="module-meta">${progress}${flags}${filtered ? `<span class="module-count">${plural(items.length, "atividade neste filtro", "atividades neste filtro")}</span>` : ""}</span>`;
+}
+
+// filtered: a lista está filtrada (abre todos os módulos e mostra a contagem do filtro).
+export function activityGroups(activities, filtered = state.filter !== "all" || !!state.search || state.activityModule !== "all" || state.activityKind !== "all") {
+  const groups = groupActivities(activities);
+  // Abre os módulos que pedem ação (sem nota ou para revisar); se nenhum pedir, abre o primeiro.
+  const needsAction = (items) => items.some((a) => a.state === "pending" || needsReview(a));
+  const anyAction = groups.some(([, items]) => needsAction(items));
+  return groups.map(([name, items], i) => {
+    const open = filtered || (anyAction ? needsAction(items) : i === 0);
+    return `<details class="activity-module" ${open ? "open" : ""}><summary><strong>${e(name)}</strong>${moduleSummary(items, filtered)}</summary>${items.map(activityCard).join("")}</details>`;
   }).join("");
 }

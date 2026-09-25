@@ -1,5 +1,5 @@
 import { callback, clearSession, login, logout, session, validSession } from "./auth.js";
-import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, roleLabel, sessionContext, state, teacher } from "./ui.js";
+import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, state, teacher } from "./ui.js";
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";
@@ -336,7 +336,7 @@ const actions = {
   "send-reminders-batch": async () => {
     const code = state.code, p = state.batchPreview;
     const eligible = p.recipients.filter((r) => !r.skip);
-    if (!eligible.length || !confirm(`Enviar lembrete para ${eligible.length} aluno(s)?`)) return;
+    if (!eligible.length || !confirm(`Enviar lembrete para ${plural(eligible.length, "aluno", "alunos")}?`)) return;
     const result = await api(`/cohorts/${code}/send-reminders`, { method: "POST", body: {
       studentIds: state.batchIds, expectedPublicationId: p.publicationId } });
     if (state.code === code && state.view === "reminders-batch") {
@@ -358,7 +358,7 @@ const actions = {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notice(`CSV exportado com ${rows.length} aluno(s).`);
+    notice(`CSV exportado com ${plural(rows.length, "aluno", "alunos")}.`);
   },
   "copy-reminder": async () => {
     const message = state.pendingPreview?.message;
@@ -484,6 +484,13 @@ document.addEventListener("click", (event) => {
   if (button.dataset.filter) {
     state.filter = button.dataset.filter;
     render();
+    // Cartões do painel filtram a lista abaixo: leva a vista e o foco até ela (no celular a
+    // lista fica fora da tela).
+    const target = button.dataset.scrollTo && document.getElementById(button.dataset.scrollTo);
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    }
     return;
   }
   if (button.dataset.revoke)

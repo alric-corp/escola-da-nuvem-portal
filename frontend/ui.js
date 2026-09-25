@@ -36,7 +36,8 @@ export const labels = {
 };
 export const badge = (status) =>
   `<span class="badge ${e(status)}">${e(labels[status] || status)}</span>`;
-const plural = (n, one, many) => `${n.toLocaleString("pt-BR")} ${n === 1 ? one : many}`;
+// "1 aluno" / "2 alunos": concordância real em vez de "aluno(s)".
+export const plural = (n, one, many) => `${Number(n).toLocaleString("pt-BR")} ${Number(n) === 1 ? one : many}`;
 
 // Indicador de média do aluno (KC ou LAB) com a referência da turma. Abaixo da referência
 // mostra quanto falta, calculado dos valores reais, em âmbar (progresso, não erro). Usa o
@@ -232,6 +233,11 @@ export function heading(kicker, title, subtitle, action = "") {
 }
 export function metric(label, value, caption, kind = "") {
   return `<article class="metric ${kind}"><span>${label}</span><strong>${value}</strong><small>${caption}</small></article>`;
+}
+// Cartão que também filtra a lista (painel do instrutor): mesmo visual do metric(), como botão.
+export function filterMetric(label, value, caption, kind, filter) {
+  const active = state.filter === filter;
+  return `<button type="button" class="metric metric-filter ${kind} ${active ? "active" : ""}" data-filter="${filter}" data-scroll-to="students-heading" aria-pressed="${active}"><span>${label}</span><strong>${value}</strong><small>${caption}</small></button>`;
 }
 
 export function personalChanges(changes) {

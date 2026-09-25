@@ -161,7 +161,7 @@ try {
   assert.equal(await page.locator("tbody tr").count(), 6);
   assert.deepEqual(
     await page.locator(".metrics .metric > span").allTextContents(),
-    ["Alunos na publicação", "Médias na referência", "Atenção", "Crítico"],
+    ["Alunos na publicação", "Médias na referência", "Atenção", "Crítico", "Ainda não entraram"],
   );
   assert.deepEqual(
     await page.locator("#status-filter option").allTextContents(),
@@ -169,7 +169,7 @@ try {
   );
   assert.deepEqual(
     await page.locator(".metrics .metric > strong").allTextContents(),
-    ["6", "2", "2", "1"],
+    ["6", "2", "2", "1", "2"],
   );
 
   await page.screenshot({

@@ -104,7 +104,17 @@ try {
   await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
 
   // Quem ainda não entrou no portal: coluna, filtro e contagem no cartão.
-  assert.match(await page.locator(".metric-primary").innerText(), /1 ainda não entraram no portal/);
+  assert.match(await page.locator('.metric-filter[data-filter="no-portal"]').innerText(), /Ainda não entraram\n1/);
+  // Cartões do painel filtram a lista e levam o foco até ela.
+  await page.locator('.metric-filter[data-filter="critical"]').click();
+  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["Carla Souza"]);
+  assert.equal(await page.locator('.metric-filter[data-filter="critical"]').getAttribute("aria-pressed"), "true");
+  assert.equal(await page.locator("#status-filter").inputValue(), "critical");
+  assert.equal(await page.evaluate(() => document.activeElement.id), "students-heading");
+  await page.locator('.metric-filter[data-filter="no-portal"]').click();
+  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["João Silva"]);
+  await page.locator('.metric-filter[data-filter="all"]').click();
+  assert.equal(await page.locator("tbody tr").count(), 3);
   assert.deepEqual((await page.locator("tbody tr td:last-child").allInnerTexts()).sort(), ["Entrou", "Entrou", "Não entrou"]);
   await page.locator("#status-filter").selectOption("no-portal");
   assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["João Silva"]);

@@ -71,19 +71,19 @@ try {
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
   await page.locator("#status-filter").selectOption("pending");
   assert.equal(await page.locator("tbody tr").count(), 2);
-  const batchButton = page.getByRole("button", { name: "Enviar lembrete para 2 aluno(s)", exact: true });
+  const batchButton = page.getByRole("button", { name: "Enviar lembrete para 2 alunos", exact: true });
   await batchButton.waitFor();
   await batchButton.click();
 
   await page.getByRole("heading", { name: "Lembretes em lote", exact: true }).waitFor();
-  await page.getByText(/1 de 2 aluno\(s\) vão receber/).waitFor();
+  await page.getByText(/1 de 2 alunos vai receber/).waitFor();
   assert.equal(previewCalls, 1);
   assert.match(await page.locator("tbody").first().innerText(), /Sem e-mail no Canvas/);
   await page.getByText("Olá, Ana Teste!", { exact: true }).waitFor();
 
-  await page.getByRole("button", { name: "Enviar para 1 aluno(s)", exact: true }).click();
+  await page.getByRole("button", { name: "Enviar para 1 aluno", exact: true }).click();
   assert.equal(sendCalls, 1);
-  await page.getByText("1 enviado(s) · 1 pulado(s) · 0 com falha.", { exact: true }).waitFor();
+  await page.getByText("1 enviado · 1 pulado · 0 com falha.", { exact: true }).waitFor();
   assert.match(await page.locator("tbody").innerText(), /Ana Teste[\s\S]*Enviado/);
   assert.match(await page.locator("tbody").innerText(), /Bruna Teste[\s\S]*Pulado.*Sem e-mail no Canvas/);
 

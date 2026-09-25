@@ -78,7 +78,9 @@ try {
   await page.getByRole("button",{name:"Revisar resultados · 2",exact:true}).click();
   assert.equal(await page.locator(".activity-card").count(),2);
   assert.equal(await page.locator(".review-hint").count(),2);
-  assert.match(await page.locator(".activity-module summary").innerText(),/2 com nota · 0 sem nota · 2 para revisar/);
+  // Cabeçalho do módulo: progresso e só os avisos que pedem ação (sem "0 sem nota").
+  assert.match(await page.locator(".activity-module summary").innerText(),/2 de 2 com nota\s+2 para revisar\s+2 atividades neste filtro/);
+  assert.doesNotMatch(await page.locator(".activity-module summary").innerText(),/0 sem nota/);
   await page.getByLabel("Tipo de atividade").selectOption("lab");
   assert.equal(await page.locator(".activity-card").count(),1);
   await page.getByRole("button",{name:"Todas",exact:true}).click();
