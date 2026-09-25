@@ -53,3 +53,14 @@ test("sem foco, sugere primeiro as atividades liberadas mais recentemente", () =
   assert.deepEqual(nextActivities(activities).map(a=>a.id),["recente","media","antiga"]);
   assert.deepEqual(nextActivities(activities.slice(0,2)).map(a=>a.id),["antiga","sem-data"]);
 });
+
+test("com catálogo do Canvas, módulo e ordem vêm do backend, sem cair na lista fixa", () => {
+  const linux = { name: "226-LX-KC - Uma introdução ao Linux", kind: "kc", module: "Linux", moduleOrder: 7 };
+  const bases = { name: "Qualquer título", kind: "lab", module: "Bases", moduleOrder: 11 };
+  const intro = { name: "Qualquer título", kind: "kc", module: "Introdução ao Cloud Foundations", moduleOrder: 6 };
+  const roll = { name: "Roll Call Attendance", kind: "lab", module: null, moduleOrder: null };
+  assert.equal(activityModule("BRSA0257", linux), "Linux");
+  assert.equal(activityModule("BRSA0267", roll), "Outras atividades");
+  assert.deepEqual(groupActivities("BRSA0267", [roll, bases, linux, intro]).map(([name]) => name),
+    ["Introdução ao Cloud Foundations", "Linux", "Bases", "Outras atividades"]);
+});

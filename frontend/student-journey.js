@@ -27,6 +27,8 @@ const modules = [
 ];
 
 export function activityModule(cohort, activity, courseId) {
+  // Catálogo do Canvas (todo/12, parte 2): o backend já manda o módulo de cada atividade.
+  if (Object.hasOwn(activity, "module")) return activity.module || "Outras atividades";
   // courseId (de COHORT#<code>/METADATA, ver todo/12) tem prioridade sobre o mapeamento
   // fixo em cohortCanvasCourses, que fica só como compatibilidade para turmas sem essa
   // configuração ainda.
@@ -64,6 +66,10 @@ export function groupActivities(cohort, activities, courseId) {
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(activity);
   }
-  const order = ["Ambiente de sandbox", ...modules.map(([name]) => name), "Outras atividades"];
-  return [...groups].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+  // Com catálogo, a ordem é a dos módulos no curso; sem ele, a da lista fixa acima.
+  const position = new Map(activities.filter((a) => a.module).map((a) => [a.module, a.moduleOrder]));
+  const order = ["Ambiente de sandbox", ...modules.map(([name]) => name)];
+  const rank = (name) => name === "Outras atividades" ? 1e6
+    : position.get(name) ?? (order.includes(name) ? order.indexOf(name) : 1e6 - 1);
+  return [...groups].sort(([a], [b]) => rank(a) - rank(b));
 }

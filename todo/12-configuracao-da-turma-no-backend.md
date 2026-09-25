@@ -1,6 +1,6 @@
 # 12 · Configuração da turma no backend (curso Canvas, limites, módulos)
 
-**Status:** 🟨 parte 1 concluída e aplicada em produção em 2026-09-24 (limites e curso Canvas; apply: 1 rota criada, 3 lambdas atualizadas, 0 destruídos); parte 2 (catálogo e módulos) pendente · **Prioridade:** média · **Esforço:** médio · **Área:** backend / frontend
+**Status:** ✅ parte 1 aplicada em 2026-09-24 (limites e curso Canvas); parte 2 (catálogo e módulos pela API do Canvas) feita em 2026-09-25 · **Prioridade:** média · **Esforço:** médio · **Área:** backend / frontend
 
 ## Problema
 - O mapeamento turma → curso Canvas (`cohortCanvasCourses`), os catálogos de links e a lista de módulos estão fixos em `frontend/canvas-links.js` e `frontend/student-journey.js`. Cada turma nova exige mudar o código e publicar de novo; sem isso, todas as atividades caem em "Outras atividades".
@@ -26,13 +26,44 @@ O titular optou por dividir a tarefa em duas partes. Esta sessão fez só a **pa
 - `backend/test_portal.py`: 2 testes novos (configurar muda a situação calculada, aparece nos relatórios de instrutor e aluno e grava auditoria; só admin e com validação). Suíte: 95 unitários + 14 de integração.
 - `tests/admin-access-browser.mjs`: cobre o formulário de configurações. Node 16 + navegador 8, todos passando. `terraform fmt/validate/test` passando.
 
-## Limitação importante
-Configurar `canvasCourseId` só gera links e módulos se o catálogo desse curso existir em `frontend/canvas-links.js`, que hoje tem só 4436 e 4413. **Uma turma de um curso novo ainda exige deploy** até a parte 2.
+## Parte 2 — feita (2026-09-25)
+Em vez de cadastro manual, o catálogo vem da própria API do Canvas, com o mesmo token da [17](17-integracao-api-canvas.md).
 
-## Parte 2 — pendente
-- Catálogo e módulos por curso: `CATALOG#<courseId>` no DynamoDB ou JSON no S3, com forma do admin cadastrar/atualizar.
-- O backend passa a enviar `module` e `canvasUrl` em cada atividade, e o frontend só exibe.
+### Backend
+- `canvas.course_catalog()` lê `/courses/<id>/modules?include[]=items` e monta `{modules: [nomes na ordem do curso], items: {<ID da tarefa>: {module, url}}}`. A associação é pelo **ID da tarefa**, o mesmo número entre parênteses na coluna do CSV, e não pelo título. Ficam de fora: módulos e itens não publicados, itens que não são tarefa e links que não sejam item de módulo do próprio curso. Tarefa repetida vale na primeira ocorrência.
+- A Lambda `canvas-sync` (6h e 18h) atualiza `CATALOG#<courseId>/METADATA` para **toda turma com `canvasCourseId`**, mesmo com `autoSync` desligado. Só regrava se algo mudou. Falha ao ler o catálogo entra no alarme, mas não impede a atualização das notas.
+- `/report` (aluno e instrutor) e `pending-preview` anotam `module`, `moduleOrder` e `canvasUrl` em cada atividade (`portal.with_catalog`). Com catálogo, toda atividade recebe `module`; tarefa fora de módulo (Roll Call, Graduated) recebe `null`.
+
+### Frontend
+- `activityModule`, `groupActivities` e `canvasActivityLink` usam os campos do backend quando existem, com a ordem dos módulos do curso. Sem catálogo, continuam usando `canvas-links.js` e `student-journey.js` como antes.
+- O link do catálogo só é aceito se for `https://awsrestart.instructure.com/courses/<n>/modules/items/<n>`.
+- As configurações da turma avisam que módulos e links aparecem após a próxima atualização.
+
+### Comparação com produção (somente leitura, 2026-09-25)
+| Turma | Atividades | Links iguais aos atuais | "Outras atividades" antes → depois |
+| --- | --- | --- | --- |
+| BRSA0267 | 166 | 166 | 0 → 0 |
+| BRSA0257 | 75 | 75 | 0 → 0 |
+
+Os agrupamentos são os mesmos; só alguns nomes de módulo passam a ser exatamente os do Canvas:
+- "Bases de dados" → "Bases";
+- "Preparação para certificação" → "Preparação para exames";
+- "Inteligência artificial" → "Habilidades avançadas da AWS: Inteligência Artificial PT";
+- "Ferramentas e automação" → "Ferramentas e Automação";
+- "Monitoramento e segurança" → "Monitoramento e Segurança".
+
+### Testes
+- `backend/test_canvas.py`:
+  - catálogo (filtros, ordem, nomes, repetição);
+  - relatório de aluno e instrutor com e sem catálogo;
+  - `save_catalog` não regrava sem mudança;
+  - catálogo atualizado para turma sem `autoSync`.
+- `tests/student-journey.mjs` e `tests/canvas-links.mjs`: módulo, ordem e link vindos do backend, com recusa de link forjado.
+- `tests/canvas-links-browser.mjs`: turma de curso fora da lista fixa mostra módulos e links do catálogo.
 
 ## Critérios de aceite
-- [ ] Criar uma turma nova com módulos e links não exige deploy — depende da parte 2.
+- [x] Criar uma turma nova com módulos e links não exige deploy: basta o ID do curso em Configurações.
 - [x] Os limites vêm de um único lugar (metadados da turma, calculados no backend).
+
+## Próximo passo possível
+Quando todas as turmas ativas tiverem catálogo, remover as listas fixas de `canvas-links.js` e `student-journey.js`, que hoje ficam só como reserva.

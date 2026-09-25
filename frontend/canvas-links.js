@@ -288,12 +288,18 @@ export function canvasActivityEntry(courseId, activity) {
   return matches.length === 1 ? matches[0] : null;
 }
 
+// Link vindo do catálogo do Canvas (todo/12, parte 2); só aceita itens de módulo do Canvas.
+function catalogUrl(activity) {
+  const url = activity.canvasUrl;
+  return typeof url === "string" && /^https:\/\/awsrestart\.instructure\.com\/courses\/\d+\/modules\/items\/\d+$/.test(url) ? url : null;
+}
+
 export function canvasActivityLink(courseId, activity) {
   if (!["pending", "completed"].includes(activity.state)) return null;
-  const entry = canvasActivityEntry(courseId, activity);
-  if (!entry) return null;
+  const url = Object.hasOwn(activity, "canvasUrl") ? catalogUrl(activity) : canvasActivityEntry(courseId, activity)?.url;
+  if (!url) return null;
   return {
-    url: entry.url,
+    url,
     label: activity.state === "completed"
       ? "Ver atividade no Canvas"
       : `Abrir ${activity.kind === "kc" ? "KC" : "LAB"} no Canvas`,

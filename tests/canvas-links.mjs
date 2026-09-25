@@ -90,3 +90,13 @@ test("catálogos têm destinos únicos e cada título resolve para seu próprio 
     }
   }
 });
+
+test("link do catálogo do Canvas tem prioridade e só aceita item de módulo do Canvas", () => {
+  const item = "https://awsrestart.instructure.com/courses/4999/modules/items/123";
+  const activity = { name: "Título sem correspondência na lista fixa", kind: "kc", state: "pending", canvasUrl: item };
+  assert.deepEqual(canvasActivityLink("4999", activity), { url: item, label: "Abrir KC no Canvas" });
+  assert.equal(canvasActivityLink("4999", { ...activity, state: "unreleased" }), null);
+  assert.equal(canvasActivityLink("4436", { ...kc, state: "pending", canvasUrl: null }), null);
+  for (const url of ["javascript:alert(1)", "https://evil.test/courses/1/modules/items/2", item + "?x=1"])
+    assert.equal(canvasActivityLink("4999", { ...activity, canvasUrl: url }), null, url);
+});

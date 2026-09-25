@@ -20,7 +20,8 @@ class CanvasError(Exception):
 
 class CanvasClient:
     def __init__(self, base_url, token, opener=urllib.request.urlopen):
-        self.base = base_url.rstrip("/") + "/api/v1"
+        self.site = base_url.rstrip("/")
+        self.base = self.site + "/api/v1"
         self.token = token
         self.opener = opener
 
@@ -84,3 +85,29 @@ def course_csv(client, course_id):
         writer.writerow([st.get("sortable_name") or st.get("name") or "", str(st["id"]), email]
                         + [grade.get((st["id"], a["id"]), "") for a in columns] + [graduated_value])
     return out.getvalue(), len(students)
+
+
+def course_catalog(client, course_id):
+    """Módulo e link de cada tarefa, na ordem do curso (todo/12, parte 2).
+
+    Associa pelo ID da tarefa (o mesmo que aparece entre parênteses na coluna do CSV), não
+    pelo título: títulos de itens de módulo e de tarefas nem sempre coincidem. Só entram
+    itens publicados, com link para um item de módulo do próprio curso.
+    """
+    prefix = f"{client.site}/courses/{course_id}/modules/items/"
+    modules, items = [], {}
+    for module in client.get_all(f"/courses/{course_id}/modules?include[]=items&per_page=100"):
+        if module.get("published") is False:
+            continue
+        name = " ".join(str(module.get("name") or "").split())
+        found = {}
+        for item in module.get("items") or []:
+            key = str(item.get("content_id"))
+            # Tarefa repetida (no mesmo módulo ou em outro): vale a primeira ocorrência.
+            if (item.get("type") == "Assignment" and item.get("published") is not False
+                    and str(item.get("html_url") or "").startswith(prefix) and key not in items and key not in found):
+                found[key] = {"module": len(modules), "url": item["html_url"]}
+        if name and found:
+            items.update(found)
+            modules.append(name)
+    return {"courseId": str(course_id), "modules": modules, "items": items}

@@ -47,6 +47,34 @@ def released_at(publication, snapshot):
                                        for a in snapshot["activities"]]}
 
 
+def save_catalog(repo, catalog):
+    """Grava o catálogo de módulos e links de um curso do Canvas (todo/12), só se mudou."""
+    key = "CATALOG#" + catalog["courseId"]
+    current = repo.get(key, "METADATA")
+    if current and all(current.get(k) == catalog[k] for k in ("modules", "items")):
+        return False
+    repo.put(key, "METADATA", {**catalog, "updatedAt": now()})
+    return True
+
+
+def with_catalog(repo, cohort, snapshot):
+    """Anota módulo e link do Canvas em cada atividade, pelo ID da tarefa (o número entre
+    parênteses na coluna do CSV). Com catálogo, toda atividade recebe "module" (None se a
+    tarefa não está em nenhum módulo); sem catálogo, o frontend usa a lista fixa antiga."""
+    course = cohort.get("canvasCourseId")
+    catalog = repo.get("CATALOG#" + course, "METADATA") if course else None
+    if not catalog:
+        return snapshot
+    activities = []
+    for activity in snapshot["activities"]:
+        match = re.search(r"\((\d+)\)\s*$", activity["id"])
+        entry = catalog["items"].get(match.group(1)) if match else None
+        activities.append({**activity, "module": catalog["modules"][entry["module"]] if entry else None,
+                           "moduleOrder": entry["module"] if entry else None,
+                           "canvasUrl": entry["url"] if entry else None})
+    return {**snapshot, "activities": activities}
+
+
 def display_snapshot(repo, code, snapshot):
     """Aplica nomes de exibição por matrícula sem alterar CSV, notas ou e-mail."""
     profiles = {p["canvasId"]: p for p in repo.list("COHORT#" + code, "PROFILE#")}
@@ -304,7 +332,7 @@ class Portal:
         require(set(body) == expected_keys, 400, "Solicitação de lembrete inválida.")
         require(cohort.get("current"), 409, "Publique as notas antes de consultar pendências.")
         publication = self.publication(code, cohort["current"])
-        snap = display_snapshot(self.repo, code, self.snapshot(publication))
+        snap = with_catalog(self.repo, cohort, display_snapshot(self.repo, code, self.snapshot(publication)))
         raw_student = next((s for s in snap["students"] if s["id"] == body["studentId"]), None)
         require(raw_student is not None, 404, "Aluno não encontrado nesta publicação.")
         student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
@@ -611,7 +639,8 @@ class Portal:
             return {"cohort": code, "publication": None, "students": [], "history": [],
                     "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId")}
         publication = self.publication(code, cohort["current"])
-        snap = released_at(publication, display_snapshot(self.repo, code, self.snapshot(publication)))
+        snap = with_catalog(self.repo, cohort,
+                            released_at(publication, display_snapshot(self.repo, code, self.snapshot(publication))))
         focus = self.repo.get(pk, "FOCUS") or {"activityIds": [], "version": None}
         active = {a["id"] for a in snap["activities"] if a["active"]}
         focus = {"activityIds": [i for i in focus["activityIds"] if i in active], "version": focus.get("version")}

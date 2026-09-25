@@ -23,7 +23,7 @@ Legenda de status: ⬜ a fazer · 🟨 em andamento · ⏸️ aguardando decisã
 | 08 | [Enviar lembretes em lote](08-lembretes-em-lote.md) | Instrutor | M | ✅ |
 | 09 | [Visão por atividade e escolha do foco a partir dela](09-visao-por-atividade-e-foco.md) | Instrutor | M | ✅ |
 | 11 | [Administração de vínculos, nomes e solicitações](11-admin-vinculos-e-nomes.md) | Admin | M | ✅ |
-| 12 | [Configuração da turma no backend](12-configuracao-da-turma-no-backend.md) | Backend/Frontend | M | 🟨 (parte 1 feita; catálogo pendente) |
+| 12 | [Configuração da turma no backend](12-configuracao-da-turma-no-backend.md) | Backend/Frontend | M | ✅ (catálogo pela API do Canvas desde 25/09) |
 | 14 | [Integração contínua (GitHub Actions)](14-integracao-continua.md) | Qualidade | P | ✅ |
 
 ## Prioridade baixa

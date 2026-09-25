@@ -40,6 +40,15 @@ try {
   ].map((a) => ({ ...a, id: a.name }));
   const student = { id: "101", name: "Aluno de teste", email: "student@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 4, progress: 20, status: "attention", activities };
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
+  // Turma de curso novo (fora da lista fixa): módulo e link vêm do catálogo do Canvas no backend (todo/12).
+  const item = (n) => `https://awsrestart.instructure.com/courses/5000/modules/items/${n}`;
+  const catalogActivities = [
+    { name: "Título que a lista fixa não conhece", kind: "kc", state: "pending", module: "Redes", moduleOrder: 2, canvasUrl: item(1) },
+    { name: "Outro título novo", kind: "lab", state: "completed", percent: 100, module: "Linux", moduleOrder: 1, canvasUrl: item(2) },
+    { name: "Roll Call Attendance", kind: "lab", state: "pending", module: null, moduleOrder: null, canvasUrl: null },
+    { name: "Link forjado", kind: "kc", state: "pending", module: "Redes", moduleOrder: 2, canvasUrl: "https://evil.test/courses/1/modules/items/2" },
+  ].map((a) => ({ ...a, id: a.name }));
+  const catalogStudent = { ...student, activities: catalogActivities };
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test-only", expires: Date.now() + 3600000 })));
   // Recurso pausado no produto; exercitamos o catálogo em uma variante só de teste.
   await page.route("**/ui.js", async (route) => {
@@ -57,7 +66,9 @@ try {
       { code: "BRSA0267", canTeach: role === "instructor" },
       { code: "BRSA0257", canTeach: role === "instructor" },
       { code: "OTHER4437", canTeach: role === "instructor" },
+      { code: "NOVA0300", canTeach: role === "instructor" },
     ] };
+    else if (endpoint === "/cohorts/NOVA0300/report") data = { student: catalogStudent, students: [catalogStudent], publication, history: [], canvasCourseId: "5000" };
     else if (endpoint.endsWith("/report")) data = { student, students: [student], publication, history: [] };
     else if (endpoint.endsWith("/pending-preview")) data = { student, activities: activities.filter((a) => a.state === "pending"), publishedAt: publication.publishedAt };
     else throw new Error(`Unexpected endpoint: ${endpoint}`);
@@ -107,6 +118,11 @@ try {
   await page.locator("#cohort").selectOption("OTHER4437");
   await page.getByRole("button", { name: "Minhas atividades", exact: true }).click();
   assert.equal(await page.locator(".activity-link").count(), 0);
+  await page.locator("#cohort").selectOption("NOVA0300");
+  await page.getByRole("button", { name: "Minhas atividades", exact: true }).click();
+  await page.locator(".activity-module").first().waitFor();
+  assert.deepEqual(await page.locator(".activity-module summary strong").allTextContents(), ["Linux", "Redes", "Outras atividades"]);
+  assert.deepEqual(await page.locator(".activity-link").evaluateAll((links) => links.map((a) => a.href)), [item(2), item(1)]);
   assert.equal(writes, 0, "Consultar links não grava nem publica notas");
   role = "instructor";
   await page.reload();

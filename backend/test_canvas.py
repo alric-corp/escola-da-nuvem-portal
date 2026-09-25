@@ -5,10 +5,10 @@ import unittest
 import urllib.error
 from unittest.mock import patch
 
-from canvas import CanvasClient, CanvasError, course_csv
+from canvas import CanvasClient, CanvasError, course_catalog, course_csv
 from canvas_sync import run
 from grades import parse_csv
-from portal import APIError, Portal, sync_from_canvas
+from portal import APIError, Portal, save_catalog, sync_from_canvas
 from test_portal import MemoryRepository
 
 BASE = "https://canvas.example.test"
@@ -29,7 +29,8 @@ class FakeCanvas:
             raise self.fail
         path, _, query = url.split("/api/v1", 1)[1].partition("?")
         _, _, course, resource = path.split("/")[:4]
-        data = self.courses[course][{"assignments": "assignments", "users": "students", "students": "submissions"}[resource]]
+        data = self.courses[course][{"assignments": "assignments", "users": "students", "students": "submissions",
+                                     "modules": "modules"}[resource]]
         if resource == "students" and "workflow_state=graded" in query:
             data = [s for s in data if s["workflow_state"] == "graded"]
         page = int(dict(p.split("=") for p in query.split("&") if p.startswith("page=")).get("page", 1)) if "page=" in query else 1
@@ -43,6 +44,23 @@ class _Response(io.BytesIO):
     def __init__(self, data, link):
         super().__init__(json.dumps(data).encode())
         self.headers = {"Link": link}
+
+
+def modules(course_id="4436"):
+    item = lambda n: f"{BASE}/courses/{course_id}/modules/items/{n}"
+    return [
+        {"id": 1, "name": "Painel do instrutor", "published": False,
+         "items": [{"type": "Assignment", "content_id": 13, "html_url": item(500)}]},
+        {"id": 2, "name": " Introdução  ao   curso ", "published": True,
+         "items": [{"type": "ExternalUrl", "content_id": 0, "html_url": "https://externo.example.test/"},
+                   {"type": "Assignment", "content_id": 11, "published": True, "html_url": item(501)}]},
+        {"id": 3, "name": "Vazio", "published": True, "items": [{"type": "SubHeader", "title": "Seção"}]},
+        {"id": 4, "name": "Prática", "published": True,
+         "items": [{"type": "Assignment", "content_id": 12, "html_url": item(502)},
+                   {"type": "Assignment", "content_id": 12, "html_url": item(503)},
+                   {"type": "Assignment", "content_id": 99, "published": False, "html_url": item(504)},
+                   {"type": "Assignment", "content_id": 98, "html_url": f"{BASE}/courses/1/modules/items/505"}]},
+    ]
 
 
 def course(students=3, kc_scores=(7, 8, 9), lab_scores=(100, None, 50), excused_lab_for=None, graduated_for=None):
@@ -66,7 +84,7 @@ def course(students=3, kc_scores=(7, 8, 9), lab_scores=(100, None, 50), excused_
             subs.append({"user_id": p["id"], "assignment_id": 12, "score": None, "workflow_state": "unsubmitted"})
         if graduated_for == i:
             subs.append({"user_id": p["id"], "assignment_id": 99, "score": 1.0, "workflow_state": "graded"})
-    return {"assignments": assignments, "students": people, "submissions": subs}
+    return {"assignments": assignments, "students": people, "submissions": subs, "modules": modules()}
 
 
 class CourseCsvTests(unittest.TestCase):
@@ -100,6 +118,16 @@ class CourseCsvTests(unittest.TestCase):
         with patch("canvas.time.sleep"), self.assertRaises(CanvasError):
             course_csv(CanvasClient(BASE, "t", opener=fake), "4436")
         self.assertEqual(len(fake.calls), 3)
+
+
+class CatalogTests(unittest.TestCase):
+    def test_modules_in_course_order_with_links_by_assignment_id(self):
+        catalog = course_catalog(CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()})), "4436")
+        # Módulo não publicado, módulo sem tarefa, item não publicado, item repetido e link
+        # de outro curso ficam de fora; o nome do módulo tem espaços normalizados.
+        self.assertEqual(catalog, {"courseId": "4436", "modules": ["Introdução ao curso", "Prática"], "items": {
+            "11": {"module": 0, "url": f"{BASE}/courses/4436/modules/items/501"},
+            "12": {"module": 1, "url": f"{BASE}/courses/4436/modules/items/502"}}})
 
 
 class SyncTests(unittest.TestCase):
@@ -152,6 +180,28 @@ class SyncTests(unittest.TestCase):
         # Um aluno a menos (acima de 80%) é mudança normal de turma e publica.
         self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", *self.csv(students=4, kc_scores=(7,) * 4, lab_scores=(100,) * 4))["status"], "published")
 
+    def test_catalog_adds_module_and_link_to_the_student_report(self):
+        sync_from_canvas(self.repo, "BRSA0267", *self.csv(lab_scores=(100, 90, 50)))
+        student = Portal(self.repo, {"sub": "s0", "email": "aluno0@example.test", "groups": []})
+        before = student.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["activities"]
+        self.assertTrue(all("module" not in a for a in before))  # sem catálogo: frontend usa a lista fixa
+        catalog = course_catalog(CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()})), "4436")
+        self.assertTrue(save_catalog(self.repo, catalog))
+        self.assertFalse(save_catalog(self.repo, catalog))  # sem mudança, não regrava
+        by_id = {a["id"]: a for a in student.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["activities"]}
+        self.assertEqual((by_id["001 KC Introdução (11)"]["module"], by_id["001 KC Introdução (11)"]["moduleOrder"],
+                          by_id["001 KC Introdução (11)"]["canvasUrl"]),
+                         ("Introdução ao curso", 0, f"{BASE}/courses/4436/modules/items/501"))
+        self.assertEqual(by_id["002 Lab Prática (12)"]["module"], "Prática")
+        admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        overview = admin.dispatch("GET", "/cohorts/BRSA0267/report", {})["activities"]
+        self.assertEqual({a["id"]: a["module"] for a in overview}["002 Lab Prática (12)"], "Prática")
+        # Tarefa fora de qualquer módulo (ex.: Roll Call Attendance) vai para "Outras atividades".
+        del catalog["items"]["12"]
+        self.assertTrue(save_catalog(self.repo, catalog))
+        by_id = {a["id"]: a for a in student.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["activities"]}
+        self.assertEqual({k: by_id["002 Lab Prática (12)"][k] for k in ("module", "canvasUrl")}, {"module": None, "canvasUrl": None})
+
     def test_published_grades_reach_the_student_report(self):
         sync_from_canvas(self.repo, "BRSA0267", *self.csv(lab_scores=(100, 90, 50)))
         student = Portal(self.repo, {"sub": "s0", "email": "aluno0@example.test", "groups": []})
@@ -193,8 +243,11 @@ class RunTests(unittest.TestCase):
             return original(request, timeout)
         results, failures = run(repo, CanvasClient(BASE, "t", opener=maybe_fail))
         self.assertEqual(results, {"TURMAA": "published", "TURMAB": "failed"})
-        self.assertEqual(len(failures), 1)
-        self.assertIn("TURMAB:", failures[0])
+        self.assertEqual(len(failures), 2)  # catálogo e notas do curso inacessível
+        self.assertTrue(all(f.startswith("TURMAB:") for f in failures))
+        # O catálogo vale para toda turma com curso configurado, mesmo sem atualização automática.
+        self.assertIsNotNone(repo.get("CATALOG#4436", "METADATA"))
+        self.assertIsNone(repo.get("CATALOG#9999", "METADATA"))
         self.assertEqual(repo.get("COHORT#TURMAB", "SYNC")["status"], "failed")
         self.assertIsNone(repo.get("COHORT#TURMAC", "SYNC"))
 

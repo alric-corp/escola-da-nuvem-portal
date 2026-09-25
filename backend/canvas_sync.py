@@ -1,15 +1,17 @@
 """Lambda agendada (EventBridge Scheduler): atualiza as notas das turmas pela API do Canvas.
 
-Só processa turmas com autoSync ligado e canvasCourseId configurado (Turmas e acessos →
-Configurações). Falha de uma turma não impede as outras; ao final, qualquer falha faz a
-execução terminar com erro, o que aciona o alarme do CloudWatch (canvas-sync.tf).
+Só atualiza notas de turmas com autoSync ligado e canvasCourseId configurado (Turmas e acessos →
+Configurações). O catálogo de módulos e links (todo/12) é atualizado para toda turma com
+canvasCourseId, mesmo sem autoSync. Falha de uma turma não impede as outras; ao final,
+qualquer falha faz a execução terminar com erro, o que aciona o alarme do CloudWatch
+(canvas-sync.tf).
 """
 import json
 import logging
 import os
 
-from canvas import CanvasClient, CanvasError, course_csv
-from portal import APIError, sync_from_canvas
+from canvas import CanvasClient, CanvasError, course_catalog, course_csv
+from portal import APIError, save_catalog, sync_from_canvas
 from grades import ValidationError
 from repository import Conflict, Repository
 
@@ -32,9 +34,15 @@ def read_token(secret_arn):
 
 
 def run(repo, client):
-    results, failures = {}, []
+    results, failures, catalogs = {}, [], set()
     for cohort in repo.cohorts():
         code, course = cohort["code"], cohort.get("canvasCourseId")
+        if course and course not in catalogs:
+            catalogs.add(course)
+            try:
+                save_catalog(repo, course_catalog(client, course))
+            except CanvasError as err:
+                failures.append(f"{code}: catálogo do curso {course}: {err}")
         if not cohort.get("autoSync") or not course:
             continue
         try:
@@ -42,7 +50,7 @@ def run(repo, client):
             results[code] = sync_from_canvas(repo, code, csv_text, count)["status"]
         except (CanvasError, APIError, ValidationError, Conflict) as err:
             message = (err.message if isinstance(err, APIError) else
-                       "Os dados da turma mudaram durante a atualização; tenta de novo na próxima execução."
+                       "Os dados da turma mudaram durante a atualização; nova tentativa na próxima execução."
                        if isinstance(err, Conflict) else str(err))
             if isinstance(err, (CanvasError, Conflict)):
                 repo.put("COHORT#" + code, "SYNC", {"status": "failed", "message": message, "at": _now()})
