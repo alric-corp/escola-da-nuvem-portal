@@ -555,6 +555,11 @@ class Portal:
 
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
+        snapshot, before = self._prepare(code, cohort, body)
+        return self._save_draft(code, cohort, pk, body, snapshot, before)
+
+    def _prepare(self, code, cohort, body):
+        """Lê o CSV e a publicação atual, sem gravar nada."""
         active_ids = body.get("activeIds")
         snapshot = parse_csv(body.get("csv"), active_ids)
         before = self.snapshot(self.publication(code, cohort["current"])) if cohort.get("current") else None
@@ -566,6 +571,9 @@ class Portal:
             for activity in snapshot["activities"]:
                 if activity["id"] in previously_active:
                     activity["active"] = True
+        return snapshot, before
+
+    def _save_draft(self, code, cohort, pk, body, snapshot, before):
         draft_id = uuid.uuid4().hex
         key = f"cohorts/{code}/{draft_id}"
         # Rascunho não publicado expira em DRAFT_TTL_DAYS (tag no S3 + TTL no DynamoDB; ver todo/13).
@@ -697,12 +705,15 @@ def sync_from_canvas(repo, code, csv_text, api_students):
             require(api_students >= SYNC_MIN_ROSTER * len(current["students"]), 409,
                     f"O Canvas devolveu {api_students} alunos, bem menos que os {len(current['students'])} "
                     "da publicação atual; nada foi publicado.")
-        preview = portal._preview(code, cohort, pk, True, {"csv": csv_text, "filename": "canvas-api.csv"})
-        changes = preview["changes"]
+        body = {"csv": csv_text, "filename": "canvas-api.csv"}
+        snapshot, before = portal._prepare(code, cohort, body)
+        changes = snapshot_changes(before, snapshot)
         if current and not any(changes[k] for k in (
                 "gradesChanged", "studentsAdded", "studentsRemoved", "studentsUpdated", "activitiesAdded",
                 "activitiesRemoved", "activitiesReleased", "activitiesPaused", "scalesChanged")):
+            # Compara antes de gravar: execução sem mudança não deixa rascunho para trás.
             return record("unchanged", "Nenhuma mudança no Canvas desde a última publicação.")
+        preview = portal._save_draft(code, cohort, pk, body, snapshot, before)
         publication = portal._publish(portal.cohort(code), pk, True,
                                       {"draftId": preview["draft"]["id"], "acknowledgeRemoved": True},
                                       kind="canvas")["publication"]

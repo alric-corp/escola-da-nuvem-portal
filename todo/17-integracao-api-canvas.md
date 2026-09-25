@@ -72,3 +72,4 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
   - BRSA0257: 115 notas alteradas e 4 atividades liberadas.
 - Segunda execução: `unchanged` nas duas, sem publicação nova. Relatório de aluna vinculada conferido; alarme em OK.
 - Desde a ativação, um conflito de gravação em uma turma (edição simultânea) é registrado como falha dela no `SYNC` e não interrompe as outras.
+- Desde 25/09, a atualização compara com a publicação atual **antes** de gravar. Execução sem mudança não cria rascunho (`DRAFT#` nem arquivos no S3). Antes, cada execução "unchanged" deixava um rascunho, que expirava em 30 dias.

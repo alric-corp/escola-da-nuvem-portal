@@ -182,6 +182,17 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "PUB#")), 2)
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "SYNC")["status"], "published")
 
+    def test_unchanged_run_leaves_no_draft_behind(self):
+        sync_from_canvas(self.repo, "BRSA0267", *self.csv())
+        drafts = lambda: [k for k in self.repo.keys("COHORT#BRSA0267", "DRAFT#")]
+        before, files = drafts(), set(self.repo.files)
+        self.assertEqual(len(before), 1)  # o rascunho publicado fica, como no envio de CSV
+        for _ in range(3):
+            self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", *self.csv())["status"], "unchanged")
+        self.assertEqual((drafts(), set(self.repo.files)), (before, files))
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", *self.csv(kc_scores=(10, 8, 9)))["status"], "published")
+        self.assertEqual(len(drafts()), 2)
+
     def test_manual_csv_then_same_grades_from_canvas_is_unchanged(self):
         text, count = self.csv(lab_scores=(100, 90, 50))
         rows = list(csv.reader(io.StringIO(text)))
