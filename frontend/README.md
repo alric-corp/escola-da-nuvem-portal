@@ -76,31 +76,30 @@ A lista reflete o último CSV publicado; as entregas continuam no Canvas. Detalh
 
 **Ativado em 24/09/2026:** `canvasLinksEnabled = true` em `frontend/ui.js`. Os botões passam a ser exibidos nas duas turmas associadas. Ativado sem a validação com contas reais de aluno recomendada anteriormente; ver [todo/02](../todo/02-ativar-links-canvas.md) para o acompanhamento pós-ativação.
 
-`frontend/canvas-links.js` contém os catálogos fornecidos pelo instrutor: curso Canvas **4436**, com 170 links de KCs e LABs, e curso **4413**, com 75 links. Os endereços são de **itens de módulo**; não são montados com os IDs de tarefas encontrados nos cabeçalhos do CSV. A correspondência usa título completo e tipo, tolerando acentos, pontuação, espaços e o sufixo numérico do CSV. Números iniciais iguais não bastam para associar títulos diferentes.
+**Desde 25/09/2026 os links e os módulos vêm do Canvas, não de listas no código** ([todo/12](../todo/12-configuracao-da-turma-no-backend.md)). A Lambda `canvas-sync` lê os módulos do curso configurado em cada turma (Turmas e acessos → Configurações). O backend anota em cada atividade `module`, `moduleOrder` e `canvasUrl`, associando pelo ID da tarefa, e não pelo título. `frontend/canvas-links.js` só valida que `canvasUrl` é um item de módulo de `awsrestart.instructure.com` antes de exibir. `frontend/student-journey.js` agrupa pela ordem dos módulos no curso. Sem catálogo (curso ainda não lido), as atividades ficam em "Outras atividades" e sem link; nada é deduzido pelo título.
 
-O catálogo só é usado nas turmas explicitamente associadas em `cohortCanvasCourses`. As associações confirmadas são **BRSA0267 → 4436 (AWS re/Start 1)** e **BRSA0257 → 4413 (AWS re/Start 2)**. AWS re/Start 1 é o nome usado pelos instrutores e pela coordenação da Escola da Nuvem para o programa que aborda Linux, Redes, Python e outros tópicos. O nome do programa não substitui o código da turma: novas turmas precisam de confirmação do próprio curso Canvas e de seu catálogo de itens. Usar o código exato do portal, sem substituir automaticamente a letra O pelo número zero. Essa configuração é feita no código nesta versão. Atividades ausentes em um catálogo nunca usam links do outro curso.
+Atividades pendentes com link mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem:
+- no painel pessoal;
+- em Minhas atividades;
+- nas pendências consultadas pelo instrutor.
 
-Atividades pendentes com correspondência mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem no painel pessoal, em Minhas atividades e nas pendências consultadas pelo instrutor. Atividades não liberadas, dispensadas ou sem correspondência ficam sem botão. A demonstração local não direciona dados fictícios para um curso real. O clique não altera notas, status, matrícula ou progresso e não substitui o login/permissões do Canvas.
+Atividades não liberadas, dispensadas ou fora de qualquer módulo ficam sem botão. A demonstração local não mostra links. O clique não altera notas, status, matrícula ou progresso e não substitui o login e as permissões do Canvas.
 
-No CSV local de 14/09 da BRSAO267, todas as 166 atividades reconhecidas têm correspondência no catálogo; não há links pendentes nesse CSV. Os quatro links restantes do catálogo são LABs de Python que não aparecem nesse CSV; eles não geram atividades nem afetam médias. Agenda, materiais, fóruns e Skill Builder estão fora desta primeira integração com os cards de notas.
-
-No CSV local de 14/09 da BRSAO257, os 75 links do curso 4413 correspondem a todas as 75 atividades reconhecidas, incluindo os KCs de certificação 195–207. Os sete materiais complementares enviados junto com esses KCs estão preservados em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades ou alterar notas. A lista de pendências fica em [docs/links-canvas-pendentes.md](../docs/links-canvas-pendentes.md).
+As listas fixas anteriores (170 itens do curso 4436 e 75 do 4413, fornecidas pelo instrutor) foram removidas depois de conferir que o catálogo da API produz exatamente os mesmos 241 links. Estão no histórico do Git até o commit `244f7b0`. Os sete materiais complementares do curso 4413 continuam em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades.
 
 Validação específica, sem acesso à AWS ou ao Canvas:
 
 ```sh
-node --test tests/canvas-links.mjs
-python3 -B scripts/build_frontend.py --config portal-config.json
-PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
-PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
-  node tests/canvas-links-browser.mjs
+node --test tests/canvas-links.mjs tests/student-journey.mjs
+npm run build --silent && node --test tests/canvas-links-browser.mjs
 ```
 
-O teste específico dos links habilita o recurso apenas na resposta simulada de teste e usa as associações reais BRSA0267 → 4436 e BRSA0257 → 4413 com dados inteiramente fictícios e API simulada. Verifica aluno e instrutor, troca entre turmas sem manter links do curso anterior, destinos exatos, nomes acessíveis, foco de teclado e larguras de 320, 390 e 1440 pixels. Não valida a disponibilidade dos itens dentro de uma sessão real do Canvas.
-
-**Nome de exibição:** ajustes operacionais de nome podem ser registrados em `COHORT#<código>` / `PROFILE#<ID Canvas>`, com `canvasId` e `displayName`, sem mudar o e-mail ou a matrícula. O backend aplica o nome na prévia, na área pessoal, na lista do instrutor e na consulta da turma. Novos CSVs e restaurações preservam o ajuste; arquivos originais permanecem intactos. Essa configuração é administrada por acesso AWS autorizado, sem uma nova tela de edição nesta versão.
-
-**Cadastro institucional:** endereços cujo domínio é exatamente `escoladanuvem.org` podem solicitar acesso de instrutor. Endereços semelhantes ou subdomínios não recebem essa elegibilidade. O administrador escolhe as turmas; não há promoção automática por domínio.
+O teste de navegador usa API simulada com as anotações do backend. Ele verifica:
+- aluno e instrutor;
+- troca entre turmas sem manter links do curso anterior;
+- recusa de link forjado;
+- destinos exatos, nomes acessíveis e foco de teclado;
+- larguras de 320, 390 e 1440 pixels.
 
 ## Atividades sem nota e lembretes individuais
 

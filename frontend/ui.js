@@ -70,8 +70,8 @@ export const icon = (name, size = 20) =>
 export const demo =
   ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname) &&
   new URLSearchParams(location.search).has("demo");
-// Ativado em 2026-09-24 para BRSA0267 (curso 4436) e BRSA0257 (curso 4413),
-// as únicas turmas associadas em cohortCanvasCourses. Ver todo/02.
+// Chave geral dos links "Abrir no Canvas" (todo/02). Os links vêm do catálogo do curso da
+// turma, lido pela API do Canvas (todo/12).
 export const canvasLinksEnabled = true;
 
 export let state = {

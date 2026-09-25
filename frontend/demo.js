@@ -11,6 +11,9 @@ const activities = [
   id: name,
   name,
   kind,
+  // Como o backend anota a partir do catálogo do Canvas (todo/12).
+  module: ["Introdução ao Cloud Foundations", "Linux", "Redes", "Introdução à segurança"][Math.floor(i / 2)],
+  moduleOrder: Math.floor(i / 2),
   points: "100",
   active: i < 6,
   filled: 22,

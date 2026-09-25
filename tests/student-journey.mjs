@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { activityModule, groupActivities, needsReview, nextActivities } from "../frontend/student-journey.js";
-import { canvasCatalogs } from "../frontend/canvas-links.js";
 
-test("módulos respeitam catálogo, curso e título completo, inclusive não liberados", () => {
-  const linux = { name: "226-LX-KC - Uma introdução ao Linux (123)", kind: "kc", state: "unreleased" };
-  assert.equal(activityModule("BRSA0267", linux), "Linux");
-  assert.equal(activityModule("BRSA0257", linux), "Outras atividades");
-  assert.equal(activityModule("UNKNOWN", linux), "Outras atividades");
-  assert.equal(activityModule("BRSA0267", {...linux, name: "226-KC - Outro assunto"}), "Outras atividades");
-  const sandbox = { name: "1--Lab - Ambiente de Sandbox", kind: "lab" };
-  assert.equal(activityModule("BRSA0267", sandbox), "Ambiente de sandbox");
-  assert.equal(activityModule("BRSA0257", sandbox), "Introdução ao Cloud Foundations");
-  for (const [code, course] of [["BRSA0267", "4436"], ["BRSA0257", "4413"]])
-    for (const item of canvasCatalogs[course])
-      assert.notEqual(activityModule(code, { name: item.title, kind: item.kind }), "Outras atividades", item.title);
-  assert.equal(groupActivities("BRSA0267", [linux, sandbox])[0][0], "Ambiente de sandbox");
+test("módulo e ordem vêm do backend (catálogo do Canvas), inclusive não liberadas", () => {
+  const linux = { name: "226-LX-KC - Uma introdução ao Linux", kind: "kc", state: "unreleased", module: "Linux", moduleOrder: 7 };
+  const bases = { name: "Qualquer título", kind: "lab", module: "Bases", moduleOrder: 11 };
+  const intro = { name: "Qualquer título", kind: "kc", module: "Introdução ao Cloud Foundations", moduleOrder: 6 };
+  const roll = { name: "Roll Call Attendance", kind: "lab", module: null, moduleOrder: null };
+  assert.equal(activityModule(linux), "Linux");
+  assert.equal(activityModule(roll), "Outras atividades");
+  assert.deepEqual(groupActivities([roll, bases, linux, intro]).map(([name]) => name),
+    ["Introdução ao Cloud Foundations", "Linux", "Bases", "Outras atividades"]);
+  assert.deepEqual(groupActivities([roll, bases, linux, intro])[1][1], [linux]);
+});
+
+test("sem catálogo, nada é deduzido pelo título: tudo em Outras atividades", () => {
+  const titled = { name: "226-LX-KC - Uma introdução ao Linux", kind: "kc" };
+  assert.equal(activityModule(titled), "Outras atividades");
+  assert.deepEqual(groupActivities([titled]).map(([name]) => name), ["Outras atividades"]);
 });
 
 test("revisão inclui zero, distingue limites de KC e LAB e não confunde ausência de nota", () => {
@@ -52,15 +54,4 @@ test("sem foco, sugere primeiro as atividades liberadas mais recentemente", () =
   // Pendências vêm antes das revisões, mesmo que a revisão seja mais recente.
   assert.deepEqual(nextActivities(activities).map(a=>a.id),["recente","media","antiga"]);
   assert.deepEqual(nextActivities(activities.slice(0,2)).map(a=>a.id),["antiga","sem-data"]);
-});
-
-test("com catálogo do Canvas, módulo e ordem vêm do backend, sem cair na lista fixa", () => {
-  const linux = { name: "226-LX-KC - Uma introdução ao Linux", kind: "kc", module: "Linux", moduleOrder: 7 };
-  const bases = { name: "Qualquer título", kind: "lab", module: "Bases", moduleOrder: 11 };
-  const intro = { name: "Qualquer título", kind: "kc", module: "Introdução ao Cloud Foundations", moduleOrder: 6 };
-  const roll = { name: "Roll Call Attendance", kind: "lab", module: null, moduleOrder: null };
-  assert.equal(activityModule("BRSA0257", linux), "Linux");
-  assert.equal(activityModule("BRSA0267", roll), "Outras atividades");
-  assert.deepEqual(groupActivities("BRSA0267", [roll, bases, linux, intro]).map(([name]) => name),
-    ["Introdução ao Cloud Foundations", "Linux", "Bases", "Outras atividades"]);
 });

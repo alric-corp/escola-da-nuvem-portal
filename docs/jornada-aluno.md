@@ -32,14 +32,14 @@ A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se 
 
 ## 4. Minhas atividades (`activitiesPage`)
 
-- As atividades são agrupadas por **módulo** (`groupActivities`). O módulo vem do catálogo Canvas da turma (`frontend/canvas-links.js`). Em turmas sem catálogo, todas caem em "Outras atividades".
+- As atividades são agrupadas por **módulo** (`groupActivities`), na ordem do curso. Nome e ordem do módulo vêm do backend, pelo catálogo lido da API do Canvas ([todo/12](../todo/12-configuracao-da-turma-no-backend.md)). Sem catálogo, todas caem em "Outras atividades".
 - Filtros combináveis:
   - situação: todas, sem nota, revisar, com nota, não liberadas, dispensadas;
   - tipo: KC ou LAB;
   - módulo;
   - busca por texto, que ignora acentos.
 - Os botões de atalho de "Meu desempenho" abrem esta tela já filtrada.
-- Os links "Abrir no Canvas" estão **ativos** desde 24/09/2026 (`canvasLinksEnabled = true` em `frontend/ui.js`) nas turmas associadas em `cohortCanvasCourses` (BRSA0267 e BRSA0257). Ativado sem a validação com conta real de aluno recomendada anteriormente — ver [todo/02](../todo/02-ativar-links-canvas.md).
+- Os links "Abrir no Canvas" estão **ativos** desde 24/09/2026 (`canvasLinksEnabled = true` em `frontend/ui.js`) para as atividades que têm item de módulo no catálogo do curso da turma (`canvasUrl`, validado em `frontend/canvas-links.js`). Ativado sem a validação com conta real de aluno recomendada anteriormente — ver [todo/02](../todo/02-ativar-links-canvas.md).
 
 ## 5. Meu histórico (`historyPage`)
 

@@ -1,43 +1,9 @@
-import { canvasActivityEntry, cohortCanvasCourses } from "./canvas-links.js";
+// Módulo de cada atividade: nome e posição vêm do backend, pelo catálogo do curso no
+// Canvas (todo/12). Sem catálogo (curso ainda não lido), tudo cai em "Outras atividades".
+export const otherActivities = "Outras atividades";
 
-const range = (first, last) => Array.from({ length: last - first + 1 }, (_, i) => first + i);
-// Módulos dos catálogos fornecidos. O código só é usado após conferir título,
-// tipo e curso; nunca classificar uma atividade desconhecida só pelo número.
-const modules = [
-  ["Introdução ao Cloud Foundations", [...range(2, 12), 208, 209]],
-  ["Linux", range(225, 253)],
-  ["Redes", range(254, 267)],
-  ["Introdução à segurança", range(276, 298)],
-  ["Programação Python", [...range(108, 141), 223]],
-  ["Bases de dados", [...range(268, 275), ...range(299, 309), 160, 162]],
-  ["Arquitetura AWS", [167]],
-  ["Operações do sistema", [168, 210]],
-  ["Ferramentas e automação", [169, 211]],
-  ["Servidores", [170, 171, 172, 173, 212]],
-  ["Escala e resolução de nomes", [174, 175, 176, 213]],
-  ["Tecnologia sem servidor e contêineres", [177, 178, 214]],
-  ["Serviços de banco de dados da AWS", [179, 215]],
-  ["Serviços de redes da AWS", [180, 181, 216]],
-  ["Armazenamento e arquivamento", [182, 183, 184, 185, 217]],
-  ["Monitoramento e segurança", [186, 187, 218]],
-  ["Gerenciando o consumo de recursos", [188, 189, 219]],
-  ["Implantação automática e repetível", [190, 191, 192, 220]],
-  ["Inteligência artificial", [316]],
-  ["Preparação para certificação", range(195, 207)],
-];
-
-export function activityModule(cohort, activity, courseId) {
-  // Catálogo do Canvas (todo/12, parte 2): o backend já manda o módulo de cada atividade.
-  if (Object.hasOwn(activity, "module")) return activity.module || "Outras atividades";
-  // courseId (de COHORT#<code>/METADATA, ver todo/12) tem prioridade sobre o mapeamento
-  // fixo em cohortCanvasCourses, que fica só como compatibilidade para turmas sem essa
-  // configuração ainda.
-  const course = courseId ?? cohortCanvasCourses[cohort];
-  const entry = canvasActivityEntry(course, activity);
-  if (!entry) return "Outras atividades";
-  const code = Number(entry.title.match(/^\d+/)?.[0]);
-  if (code === 1) return course === "4436" ? "Ambiente de sandbox" : "Introdução ao Cloud Foundations";
-  return modules.find(([, codes]) => codes.includes(code))?.[0] || "Outras atividades";
+export function activityModule(activity) {
+  return activity.module || otherActivities;
 }
 
 export function needsReview(activity) {
@@ -59,17 +25,14 @@ export function nextActivities(activities, focusIds = []) {
   return [...recentFirst(activities.filter((a) => a.state === "pending")), ...recentFirst(activities.filter(needsReview))].slice(0, 3);
 }
 
-export function groupActivities(cohort, activities, courseId) {
+export function groupActivities(activities) {
   const groups = new Map();
   for (const activity of activities) {
-    const name = activityModule(cohort, activity, courseId);
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(activity);
+    const name = activityModule(activity);
+    if (!groups.has(name)) groups.set(name, { order: activity.moduleOrder ?? 1e6, items: [] });
+    groups.get(name).items.push(activity);
   }
-  // Com catálogo, a ordem é a dos módulos no curso; sem ele, a da lista fixa acima.
-  const position = new Map(activities.filter((a) => a.module).map((a) => [a.module, a.moduleOrder]));
-  const order = ["Ambiente de sandbox", ...modules.map(([name]) => name)];
-  const rank = (name) => name === "Outras atividades" ? 1e6
-    : position.get(name) ?? (order.includes(name) ? order.indexOf(name) : 1e6 - 1);
-  return [...groups].sort(([a], [b]) => rank(a) - rank(b));
+  // Ordem dos módulos no curso; "Outras atividades" por último.
+  return [...groups].sort(([a, x], [b, y]) => (a === otherActivities) - (b === otherActivities) || x.order - y.order)
+    .map(([name, group]) => [name, group.items]);
 }

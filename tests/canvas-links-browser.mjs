@@ -38,12 +38,25 @@ try {
     { name: "279--Lab - Introdução ao gerenciamento de identidade e acesso (IAM)", kind: "lab", state: "exempt" },
     { name: '<img src=x onerror="window.injected=1">', kind: "kc", state: "pending" },
   ].map((a) => ({ ...a, id: a.name }));
+  // O que o backend anota pelo catálogo de cada curso (todo/12): 4413 não tem os itens de Linux e DynamoDB.
+  const catalogs = {
+    BRSA0267: { course: "4436", items: { "10-": 2892243, "11-": 2892246, "12-": 2892247, "279": 2892342, "275": 2892448, "226": 2892251 } },
+    BRSA0257: { course: "4413", items: { "10-": 2877585, "11-": 2877588, "12-": 2877589, "279": 2877598 } },
+  };
+  const annotated = (code) => activities.map((a) => {
+    const catalog = catalogs[code];
+    if (!catalog) return a;
+    const id = catalog.items[a.name.slice(0, 3)];
+    return { ...a, module: id ? "Módulo" : null, moduleOrder: id ? 0 : null,
+      canvasUrl: id ? `https://awsrestart.instructure.com/courses/${catalog.course}/modules/items/${id}` : null };
+  });
   const student = { id: "101", name: "Aluno de teste", email: "student@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 4, progress: 20, status: "attention", activities };
+  const studentOf = (code) => ({ ...student, activities: annotated(code) });
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
-  // Turma de curso novo (fora da lista fixa): módulo e link vêm do catálogo do Canvas no backend (todo/12).
+  // Turma de outro curso: módulo e link vêm só do catálogo que o backend anota (todo/12).
   const item = (n) => `https://awsrestart.instructure.com/courses/5000/modules/items/${n}`;
   const catalogActivities = [
-    { name: "Título que a lista fixa não conhece", kind: "kc", state: "pending", module: "Redes", moduleOrder: 2, canvasUrl: item(1) },
+    { name: "Título qualquer", kind: "kc", state: "pending", module: "Redes", moduleOrder: 2, canvasUrl: item(1) },
     { name: "Outro título novo", kind: "lab", state: "completed", percent: 100, module: "Linux", moduleOrder: 1, canvasUrl: item(2) },
     { name: "Roll Call Attendance", kind: "lab", state: "pending", module: null, moduleOrder: null, canvasUrl: null },
     { name: "Link forjado", kind: "kc", state: "pending", module: "Redes", moduleOrder: 2, canvasUrl: "https://evil.test/courses/1/modules/items/2" },
@@ -69,8 +82,8 @@ try {
       { code: "NOVA0300", canTeach: role === "instructor" },
     ] };
     else if (endpoint === "/cohorts/NOVA0300/report") data = { student: catalogStudent, students: [catalogStudent], publication, history: [], canvasCourseId: "5000" };
-    else if (endpoint.endsWith("/report")) data = { student, students: [student], publication, history: [] };
-    else if (endpoint.endsWith("/pending-preview")) data = { student, activities: activities.filter((a) => a.state === "pending"), publishedAt: publication.publishedAt };
+    else if (endpoint.endsWith("/report")) data = { student: studentOf(endpoint.split("/")[2]), students: [student], publication, history: [] };
+    else if (endpoint.endsWith("/pending-preview")) data = { student, activities: annotated(endpoint.split("/")[2]).filter((a) => a.state === "pending"), publishedAt: publication.publishedAt };
     else throw new Error(`Unexpected endpoint: ${endpoint}`);
     await route.fulfill({ json: data });
   });

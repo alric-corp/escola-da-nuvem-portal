@@ -37,7 +37,7 @@ export function pendingPage() {
 function studentDetail(p) {
   if (!p.summary || !p.allActivities) return "";
   const s = p.summary, t = p.thresholds || { kc: 70, lab: 95 };
-  const groups = groupActivities(state.code, p.allActivities, p.canvasCourseId);
+  const groups = groupActivities(p.allActivities);
   return `<section class="metrics" aria-label="Desempenho do aluno">${metric("Média em KCs", percent(s.kc), `Referência: ${t.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), `Referência: ${t.lab}% ou mais`)}${metric("Com nota", percent(s.progress), `${s.completed} atividade(s) · ${s.pending} sem nota`)}${metric("Situação", badge(s.status), "Critério da turma")}</section>
   <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${groups.map(([name, items], i) => `<details class="activity-module" ${i === 0 ? "open" : ""}><summary><strong>${e(name)}</strong><span>${items.filter((a) => a.state === "completed").length} com nota · ${items.filter((a) => a.state === "pending").length} sem nota · ${items.filter(needsReview).length} para revisar</span></summary>${items.map(activityCard).join("")}</details>`).join("")}</section>
   ${p.history?.length ? `<section class="panel"><h2>Histórico do aluno</h2><div class="table-scroll"><table><thead><tr><th>Publicação</th><th>KCs</th><th>Labs</th><th>Média geral</th></tr></thead><tbody>${p.history.map((h) => `<tr><td>${date(h.publishedAt)}${h.current ? " · atual" : ""}</td><td>${percent(h.kc)}</td><td>${percent(h.lab)}</td><td>${percent(h.total)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;

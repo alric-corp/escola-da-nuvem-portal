@@ -1,5 +1,5 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
-import { canvasActivityLink, cohortCanvasCourses } from "../canvas-links.js";
+import { canvasActivityLink } from "../canvas-links.js";
 import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, normalize, percent, personalChanges, state, studentBadge, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
@@ -23,8 +23,7 @@ export function studentPage(name) {
 }
 
 export function activityCard(a) {
-  const courseId = state.report?.canvasCourseId ?? cohortCanvasCourses[state.code];
-  const link = demo || !canvasLinksEnabled ? null : canvasActivityLink(courseId, a);
+  const link = demo || !canvasLinksEnabled ? null : canvasActivityLink(a);
   return `<div class="activity-card"><span class="activity-symbol ${a.kind}">${icon(a.kind === "kc" ? "book" : "network")}</span><div><small>${a.kind === "kc" ? "KNOWLEDGE CHECK" : "LABORATÓRIO"}</small><strong>${e(a.name)}</strong>${link ? `<a class="activity-link" href="${e(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(`${link.label}: ${a.name} (abre em nova aba)`)}">${e(link.label)} ${icon("external", 16)}</a>` : ""}</div>${a.state === "completed" ? `<div class="activity-result"><strong class="activity-grade">${percent(a.percent)}</strong>${needsReview(a) ? '<span class="review-hint">Sugestão de revisão</span>' : ""}</div>` : badge(a.state)}</div>`;
 }
 
@@ -51,13 +50,12 @@ export function evolution() {
 
 export function activitiesPage() {
   const activities = state.report.student.activities;
-  const courseId = state.report.canvasCourseId;
   const thresholds = state.report.thresholds || { kc: 70, lab: 95 };
   const filtered = activities.filter(
     (a) =>
       (state.filter === "all" || (state.filter === "review" ? needsReview(a) : a.state === state.filter)) &&
       (state.activityKind === "all" || a.kind === state.activityKind) &&
-      (state.activityModule === "all" || activityModule(state.code, a, courseId) === state.activityModule) &&
+      (state.activityModule === "all" || activityModule(a) === state.activityModule) &&
       normalize(a.name).includes(normalize(state.search)),
   );
   return `${heading("APRENDER E COLOCAR EM PRÁTICA", "Minhas atividades", "Notas registradas e atividades que ainda serão liberadas.")}${updateInfo()}${gradingHelp(thresholds)}
@@ -72,7 +70,7 @@ export function activitiesPage() {
     )
     .join(
       "",
-    )}</select></label><label for="activity-module">Módulo <select id="activity-module" aria-label="Módulo"><option value="all">Todos os módulos</option>${groupActivities(state.code, activities, courseId).map(([name]) => `<option value="${e(name)}" ${state.activityModule === name ? "selected" : ""}>${e(name)}</option>`).join("")}</select></label><span class="count-chip" role="status">${filtered.length} atividade(s)</span></div><div class="table-tools"><div class="tabs" role="group" aria-label="Filtrar atividades">${[
+    )}</select></label><label for="activity-module">Módulo <select id="activity-module" aria-label="Módulo"><option value="all">Todos os módulos</option>${groupActivities(activities).map(([name]) => `<option value="${e(name)}" ${state.activityModule === name ? "selected" : ""}>${e(name)}</option>`).join("")}</select></label><span class="count-chip" role="status">${filtered.length} atividade(s)</span></div><div class="table-tools"><div class="tabs" role="group" aria-label="Filtrar atividades">${[
     ["all", "Todas"],
     ["pending", "Sem nota"],
     ["review", "Revisar resultados"],
@@ -90,7 +88,7 @@ export function activitiesPage() {
 }
 
 export function activityGroups(activities) {
-  return groupActivities(state.code, activities, state.report.canvasCourseId).map(([name, items], i) => {
+  return groupActivities(activities).map(([name, items], i) => {
     const counts = `${items.filter((a) => a.state === "completed").length} com nota · ${items.filter((a) => a.state === "pending").length} sem nota · ${items.filter(needsReview).length} para revisar`;
     return `<details class="activity-module" ${(i === 0 || state.filter !== "all" || state.search || state.activityModule !== "all") ? "open" : ""}><summary><strong>${e(name)}</strong><span>${items.length} atividade(s) neste filtro · ${counts}</span></summary>${items.map(activityCard).join("")}</details>`;
   }).join("");

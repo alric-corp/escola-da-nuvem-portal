@@ -41,7 +41,13 @@ try {
     activity("exempt", "227--Lab - Linha de comando do Linux", "lab", "exempt", 0),
     activity("unknown", "999-KC - Atividade de teste sem módulo", "kc", "completed", 100),
   ];
-  const student = {id:"1",name:"Ana Teste",email:"ana@example.test",kc:70,lab:94,total:82,completed:4,pending:4,progress:50,status:"attention",activities};
+  // Anotação do backend pelo catálogo do curso 4436 (todo/12); a BRSA0257 vem sem catálogo.
+  const modules = {linux:["Linux",7],future:["Linux",7],exempt:["Linux",7],network:["Redes",8],python:["Programação Python",10],
+    cert:["Preparação para certificação",25],zero:["Introdução ao Cloud Foundations",6],lowlab:["Introdução ao Cloud Foundations",6],ok:["Introdução ao Cloud Foundations",6]};
+  const linked = {linux:2892251,network:2892295,python:2892100};
+  const annotated = activities.map((a)=>({...a,module:modules[a.id]?.[0] ?? null,moduleOrder:modules[a.id]?.[1] ?? null,
+    canvasUrl:linked[a.id] ? `https://awsrestart.instructure.com/courses/4436/modules/items/${linked[a.id]}` : null}));
+  const student = {id:"1",name:"Ana Teste",email:"ana@example.test",kc:70,lab:94,total:82,completed:4,pending:4,progress:50,status:"attention",activities:annotated};
   const publication = {id:"p1",publishedAt:"2026-09-24T12:00:00Z"};
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({accessToken:"test",expires:Date.now()+3600000})));
   await page.route("**/config.json", route=>route.fulfill({json:{apiUrl:origin+"/api"}}));
@@ -50,7 +56,10 @@ try {
     let data;
     if (endpoint === "/me") data={roles:[role],email:role+"@example.test"};
     else if (endpoint === "/cohorts") data={cohorts:["BRSA0267","BRSA0257"].map(code=>({code,canTeach:role === "instructor"}))};
-    else if (endpoint.endsWith("/report")) data={student,students:[student],activities,publication,history:[],focus};
+    else if (endpoint.endsWith("/report")) {
+      const own=endpoint.includes("BRSA0267") ? student : {...student,activities};
+      data={student:own,students:[own],activities:own.activities,publication,history:[],focus};
+    }
     else if (endpoint.endsWith("/focus-activities")) {
       const body=route.request().postDataJSON();
       assert.equal(body.expectedCurrent,"p1");
@@ -64,7 +73,7 @@ try {
   await page.goto(origin);
   await page.getByRole("heading",{name:"Por onde começar",exact:true}).waitFor();
   assert.equal(await page.locator(".next-steps .activity-card").count(),3);
-  assert.equal(await page.locator(".activity-link").count(),3); // linux, network e python têm correspondência no catálogo 4436
+  assert.equal(await page.locator(".activity-link").count(),3); // linux, network e python têm item de módulo anotado
   assert.ok(!(await page.locator(".next-steps").innerText()).includes("Certificação do Cenário"));
   await page.getByRole("button",{name:"Revisar resultados · 2",exact:true}).click();
   assert.equal(await page.locator(".activity-card").count(),2);

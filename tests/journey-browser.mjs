@@ -31,8 +31,8 @@ try {
   let acceptDialog = true;
   page.on("dialog", (dialog) => acceptDialog ? dialog.accept() : dialog.dismiss());
   const activities = [
-    { id: "a", name: "10- CF - KC — Introdução ao Amazon S3", kind: "kc", state: "pending", active: true, filled: 3, points: "100" },
-    { id: "b", name: "11--Lab - Introdução ao Amazon EC2", kind: "lab", state: "completed", active: true, percent: 100, points: "100" },
+    { id: "a", name: "10- CF - KC — Introdução ao Amazon S3", kind: "kc", state: "pending", module: "Introdução ao Cloud Foundations", moduleOrder: 6, canvasUrl: "https://awsrestart.instructure.com/courses/4436/modules/items/2892243", active: true, filled: 3, points: "100" },
+    { id: "b", name: "11--Lab - Introdução ao Amazon EC2", kind: "lab", state: "completed", module: "Introdução ao Cloud Foundations", moduleOrder: 6, canvasUrl: "https://awsrestart.instructure.com/courses/4436/modules/items/2892246", active: true, percent: 100, points: "100" },
   ];
   const student = { id: "1", name: "Ana Teste", email: "ana@example.test", kc: 70, lab: 100, total: 85, completed: 1, pending: 1, progress: 50, status: "ok", activities };
   const students = [student, { ...student, id: "2", name: "Bruna Teste", email: null, pending: 4, total: 50 }];
@@ -84,7 +84,7 @@ try {
   failReport = false;
   await page.getByRole("button", { name: "Tentar novamente", exact: true }).click();
   await page.getByRole("heading", { name: "Por onde começar", exact: true }).waitFor();
-  assert.equal(await page.locator(".activity-link").count(), 1, "Link do Canvas aparece para a atividade com correspondência no catálogo");
+  assert.equal(await page.locator(".activity-link").count(), 1, "Link do Canvas aparece para a atividade anotada com o item de módulo");
   assert.match(await page.locator(".update-line").innerText(), /24\/09\/2026/);
   assert.match(await page.locator(".update-line").innerText(), /02\/09\/2026/);
   await page.getByText("Como interpretar minhas notas?", { exact: true }).click();

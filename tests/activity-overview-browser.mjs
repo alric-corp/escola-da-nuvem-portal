@@ -30,10 +30,10 @@ try {
   // As duas primeiras casam com o módulo Linux (catálogo 4436, 225–253); a terceira não
   // tem correspondência no catálogo e cai em "Outras atividades".
   const activities = [
-    { id: "kc1", name: "226-LX-KC - Uma introdução ao Linux", kind: "kc", active: true, completed: 5, pending: 5, needsReview: 1, average: 60, points: "100" },
-    { id: "lab1", name: "229--Lab - Usuários e grupos", kind: "lab", active: true, completed: 8, pending: 2, needsReview: 4, average: 50, points: "100" },
-    { id: "other", name: "999-KC - Sem módulo", kind: "kc", active: true, completed: 10, pending: 0, needsReview: 0, average: 95, points: "100" },
-    { id: "paused", name: "9-CF-KC - Não liberada", kind: "kc", active: false, completed: 0, pending: 0, needsReview: 0, average: null, points: "100" },
+    { id: "kc1", name: "226-LX-KC - Uma introdução ao Linux", kind: "kc", module: "Linux", moduleOrder: 7, active: true, completed: 5, pending: 5, needsReview: 1, average: 60, points: "100" },
+    { id: "lab1", name: "229--Lab - Usuários e grupos", kind: "lab", module: "Linux", moduleOrder: 7, active: true, completed: 8, pending: 2, needsReview: 4, average: 50, points: "100" },
+    { id: "other", name: "999-KC - Sem módulo", kind: "kc", module: null, moduleOrder: null, active: true, completed: 10, pending: 0, needsReview: 0, average: 95, points: "100" },
+    { id: "paused", name: "9-CF-KC - Não liberada", kind: "kc", module: "Introdução ao Cloud Foundations", moduleOrder: 6, active: false, completed: 0, pending: 0, needsReview: 0, average: null, points: "100" },
   ];
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));

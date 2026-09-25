@@ -65,5 +65,10 @@ Os agrupamentos são os mesmos; só alguns nomes de módulo passam a ser exatame
 - [x] Criar uma turma nova com módulos e links não exige deploy: basta o ID do curso em Configurações.
 - [x] Os limites vêm de um único lugar (metadados da turma, calculados no backend).
 
-## Próximo passo possível
-Quando todas as turmas ativas tiverem catálogo, remover as listas fixas de `canvas-links.js` e `student-journey.js`, que hoje ficam só como reserva.
+## Listas fixas removidas (2026-09-25)
+As duas turmas já tinham catálogo, e a comparação mostrou os mesmos 241 links. Por isso as listas fixas saíram de `canvas-links.js` e `student-journey.js` (−365 linhas):
+- `cohortCanvasCourses`;
+- os catálogos de 170 e 75 itens;
+- a tabela de módulos por número.
+
+O frontend agora só exibe o que o backend anota. Sem catálogo, nada é deduzido pelo título: as atividades ficam em "Outras atividades" e sem link. O filtro de módulo da visão por atividade passou a seguir a ordem do curso.

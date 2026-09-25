@@ -26,7 +26,7 @@ Limitações atuais:
 | Conceder papel de admin | Adicionar ao grupo `admin` no Cognito |
 | Corrigir o vínculo de um aluno com a conta errada | Editar ou apagar `USER#<sub>/STUDY#<code>` e `COHORT#<code>/OWNER#<canvasId>` |
 | Ajustar o nome exibido de um aluno | Criar `COHORT#<code>/PROFILE#<canvasId>` com `{"canvasId", "displayName"}` |
-| Associar uma turma nova ao curso Canvas (links e módulos) | Editar `cohortCanvasCourses` e os catálogos em `frontend/canvas-links.js` e publicar o frontend de novo |
+| Associar uma turma nova ao curso Canvas (links e módulos) | Turmas e acessos → Configurações: ID do curso. Módulos e links aparecem após a próxima atualização (6h ou 18h), sem deploy |
 | Ligar ou desligar lembretes | Variável `reminders_enabled` no Terraform |
 
 Antes de qualquer mudança na AWS, siga os cuidados de [CONTEXTO-HANDOFF-2026-09-24.md](CONTEXTO-HANDOFF-2026-09-24.md): rodar `terraform plan`, não apagar publicações ou snapshots e publicar só `frontend/dist`.
