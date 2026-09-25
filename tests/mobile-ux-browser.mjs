@@ -24,7 +24,11 @@ const origin = `http://127.0.0.1:${server.address().port}`;
 
 const activity = (id, kind, state, percent = null) => ({ id, name: `${id} ${kind.toUpperCase()}`, kind, state, percent, active: true, points: "100", module: "Módulo", moduleOrder: 0 });
 const thresholds = { kc: 70, lab: 95 };
-const publication = { id: "p1", publishedAt: "2026-09-25T09:00:00Z" };
+const publication = { id: "p1", publishedAt: "2026-09-25T09:00:00Z", filename: "canvas-api.csv",
+  changes: { studentsAdded: 1, studentsRemoved: 0, gradesChanged: 1, activitiesReleased: 2, activitiesPaused: 1 } };
+// Publicação anterior (restaurável), com o nome padrão da exportação do Canvas, o mais longo em produção.
+const previous = { id: "p0", publishedAt: "2026-09-18T09:00:00Z", filename: "2026-09-21T1731_Notas-BRSAO257.csv",
+  changes: { studentsAdded: 12, studentsRemoved: 3, gradesChanged: 305, activitiesReleased: 13, activitiesPaused: 0 } };
 // KC abaixo (1 sem nota), LAB exatamente na referência.
 const below = { id: "1", name: "Ana Teste", email: "ana@example.test", kc: 56.67, lab: 95, total: 75.8, completed: 3, pending: 1, progress: 75, status: "attention",
   activities: [activity("k1", "kc", "completed", 80), activity("k2", "kc", "completed", 33.33), activity("k3", "kc", "pending"), activity("l1", "lab", "completed", 95)] };
@@ -46,7 +50,7 @@ async function open(browser, { width, role = "student", autoSync = true, now = "
     if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor", autoSync }] } });
     if (endpoint.endsWith("/report"))
       return route.fulfill({ json: role === "instructor"
-        ? { students, activities: student.activities, publication, history: [publication], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
+        ? { students, activities: student.activities, publication, history: [publication, previous], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
             canvasSync: { status: "unchanged", at: "2026-09-25T09:00:05Z", message: "" } }
         : { student, publication, history: [], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt } });
     return route.fulfill({ status: 404, json: { error: "não usado" } });
@@ -122,6 +126,29 @@ try {
     await teacher.page.close();
   }
 
+  // Publicações da turma no desktop: "Restaurar" visível sem rolar a tabela para o lado (só
+  // "O que mudou" quebra linha); abaixo de 1024px continuam os cards.
+  for (const width of [768, 1024, 1280, 1440, 1920]) {
+    const { page, errors } = await open(browser, { width, role: "instructor" });
+    await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
+    await page.locator('.sidebar nav [data-view="history"]').click();
+    const restore = page.getByRole("button", { name: "Restaurar", exact: true });
+    await restore.waitFor();
+    const m = await page.evaluate(() => {
+      const box = document.querySelector(".history-table"), table = box.querySelector("table");
+      const b = [...box.querySelectorAll("button")].find((x) => x.textContent.trim() === "Restaurar").getBoundingClientRect(), r = box.getBoundingClientRect();
+      return { row: getComputedStyle(table.querySelector("tbody tr")).display, tableScroll: table.scrollWidth > box.clientWidth + 1,
+        inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.right <= innerWidth, pageScroll: document.documentElement.scrollWidth > innerWidth,
+        changes: getComputedStyle(table.querySelector("td.h-changes")).whiteSpace, file: getComputedStyle(table.querySelector("td.h-file")).whiteSpace };
+    });
+    assert.equal(m.row, width < 1024 ? "grid" : "table-row", `layout em ${width}px`);
+    assert.ok(m.inside, `Restaurar visível em ${width}px`);
+    assert.equal(m.tableScroll, false, `sem rolagem lateral da tabela em ${width}px`);
+    assert.equal(m.pageScroll, false, `sem rolagem lateral da página em ${width}px`);
+    if (width >= 1024) assert.deepEqual([m.changes, m.file], ["normal", "nowrap"], "só \"O que mudou\" quebra linha");
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
   // Desktop continua com menu lateral e tabela.
   const desktop = await open(browser, { width: 1440, role: "instructor" });
   await desktop.page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();

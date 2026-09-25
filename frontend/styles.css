@@ -2576,3 +2576,10 @@ details ul, .onboarding ol { padding-left: 24px; }
 /* "1 · Ver detalhes": sem o espaçamento do inline-flex entre a contagem e o texto. */
 .cell-pending .text-link { gap: 0; }
 .cell-pending .pending-count { white-space: pre; }
+
+/* Publicações da turma (instrutor) no desktop: "O que mudou" pode quebrar linha para que a
+   coluna "Ação" (Restaurar) caiba sem rolagem lateral da tabela. Só a tabela com a coluna de
+   ação (o histórico do aluno não tem); abaixo de 1024px a tabela já vira cards. */
+@media (min-width: 1024px) {
+  .history-table:has(td.h-action) td.h-changes { white-space: normal; }
+}
