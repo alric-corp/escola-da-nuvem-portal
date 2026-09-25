@@ -34,7 +34,7 @@ const students = [
 ];
 
 async function open(browser, { width, role = "student", autoSync = true, now = "2026-09-25T13:00:00Z", student = below }) {
-  const page = await browser.newPage({ viewport: { width, height: 800 } });
+  const page = await browser.newPage({ viewport: { width, height: 800 }, timezoneId: "America/Sao_Paulo" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.clock.setSystemTime(new Date(now));
