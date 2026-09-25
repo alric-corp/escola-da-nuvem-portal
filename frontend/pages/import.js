@@ -1,4 +1,4 @@
-import { badge, demo, e, heading, icon, percent, state } from "../ui.js";
+import { badge, current, demo, e, heading, icon, nextCanvasSync, percent, state } from "../ui.js";
 
 export function importComparison(c) {
   if (!c) return '<p class="small">A comparação não está disponível nesta prévia.</p>';
@@ -11,7 +11,9 @@ export function importComparison(c) {
 
 export function importPage() {
   const p = state.preview;
+  const auto = !!current()?.autoSync;
   return `${heading("GESTÃO DA TURMA", `Atualizar notas da ${e(state.code)}`, "Importe, confira e publique. Os alunos verão as notas somente após a publicação.")}
+  ${auto ? `<section class="panel fallback-note" role="note"><strong>Esta turma é atualizada automaticamente pelo Canvas.</strong><p>A próxima verificação é ${nextCanvasSync()}. Use o envio manual só se precisar publicar antes disso ou se a atualização automática falhar.</p></section>` : ""}
   <div class="steps"><span class="active">1 <b>Enviar CSV</b></span><i></i><span class="${p ? "active" : ""}">2 <b>Conferir prévia</b></span><i></i><span>3 <b>Publicar</b></span></div>
   <section class="panel"><form id="import-form"><label class="drop-zone" for="csv-file">${icon("upload", 36)}<strong>Selecione o CSV exportado do Canvas</strong><span>Arquivo original UTF-8, com a linha Points Possible · até 2 MB</span><input id="csv-file" type="file" accept=".csv,text/csv" ${demo || state.importLoading ? "disabled" : ""}></label><div class="form-footer"><span class="small">${e(state.filename || "Nenhum arquivo selecionado")}</span><button class="button primary" type="submit" ${demo || state.importLoading ? "disabled" : ""}>${state.importLoading ? "Conferindo…" : p ? "Atualizar prévia" : "Conferir arquivo"} ${icon("arrow")}</button></div></form></section>
   ${

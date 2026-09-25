@@ -2316,3 +2316,184 @@ details ul, .onboarding ol { padding-left: 24px; }
 .stack-form .checkbox-line { display: flex; flex-direction: row; align-items: center; gap: 10px; }
 .stack-form .checkbox-line input { width: auto; margin: 0; }
 .update-line .sync-failed { color: var(--warning); font-weight: 600; }
+
+/* Navegação no celular: barra inferior fixa com todos os itens visíveis, sem rolagem
+   horizontal. O cabeçalho fica compacto (logo, turma e Sair em uma linha). */
+.nav-short { display: none; }
+@media (max-width: 760px) {
+  .sidebar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .brand-logo, .sidebar .brand-logo { width: 56px; height: 56px; }
+  #cohort { grid-column: 2; grid-row: 1; justify-self: end; width: auto; max-width: 100%; min-width: 0; font-size: .875rem; }
+  .sidebar-bottom { grid-column: 3; grid-row: 1; justify-self: end; }
+  .sidebar nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    margin: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 2px;
+    overflow: visible;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, .3);
+  }
+  .sidebar nav .nav-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    min-height: 56px;
+    padding: 6px 2px;
+    font-size: .75rem;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+  }
+  .sidebar nav .nav-item svg { width: 22px; height: 22px; }
+  .sidebar nav .nav-item.active { box-shadow: inset 0 3px 0 var(--primary); }
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .nav-short { display: block; max-width: 100%; overflow-wrap: anywhere; }
+  /* Espaço para a barra inferior não cobrir o rodapé nem o último conteúdo. */
+  .main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+}
+
+/* "Seu resumo" com as médias de KC e LAB junto do progresso (mais acima na página). */
+.journey.student-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 2fr);
+  align-items: stretch;
+  gap: 16px;
+}
+.summary-overview { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.summary-text { min-width: 0; }
+.summary-goals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; }
+.goal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.goal-label { font-size: .8125rem; color: var(--text-secondary); }
+.goal > strong { font-size: 1.75rem; font-weight: 500; line-height: 1.1; color: var(--text-primary); }
+.goal-bar { position: relative; height: 6px; margin: 6px 0 4px; border-radius: 3px; background: var(--border); }
+.goal-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--primary); }
+.goal-below .goal-bar i { background: var(--warning); }
+.goal-reached .goal-bar i { background: var(--success); }
+.goal-bar b { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--text-primary); }
+.main .goal p { margin: 0; font-size: .8125rem; line-height: 1.4; color: var(--text-secondary); overflow-wrap: anywhere; }
+.main .goal .goal-status { font-weight: 650; color: var(--text-primary); }
+.main .goal-below .goal-status { color: var(--warning); }
+.main .goal-reached .goal-status { color: var(--success); }
+@media (max-width: 1100px) {
+  .journey.student-summary { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .journey.student-summary { display: grid; padding: 18px; }
+  .student-summary .ring { display: block; position: static; width: 88px; height: 88px; flex: 0 0 88px; padding: 6px; margin: 0; }
+  .student-summary .ring strong { font-size: 1rem; }
+  .student-summary .ring span { font-size: .625rem; }
+  .journey.student-summary h2 { max-width: none; margin-top: 12px; }
+  .summary-goals { gap: 10px; }
+  .goal { padding: 12px; }
+  .goal > strong { font-size: 1.5rem; }
+}
+
+/* Horários da atualização automática pelo Canvas. */
+.sync-times { display: flex; flex-wrap: wrap; gap: 4px 24px; margin: 8px 0 4px; font-size: .8125rem; }
+.sync-times div { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.sync-times dt { color: var(--text-secondary); }
+.sync-times dt::after { content: ":"; }
+.sync-times dd { margin: 0; color: var(--text-primary); font-weight: 600; }
+
+/* Lista de alunos do instrutor: tabela no desktop, cards no celular e no tablet (abaixo de
+   1024px a tabela não cabe ao lado do menu lateral e "Situação"/"Portal" ficavam fora da
+   tela). Mesmo HTML (filtros, CSV e "Ver detalhes" iguais); cada valor ganha seu rótulo. */
+.pending-unit { display: none; }
+@media (max-width: 1023px) {
+  .student-table { overflow: visible; }
+  .student-table table, .student-table tbody { display: block; white-space: normal; }
+  .student-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .student-table tbody { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 10px; }
+  .student-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "name name" "status portal" "kc lab" "pending pending";
+    gap: 10px 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-2);
+  }
+  .student-table td { display: block; padding: 0; border: 0; min-width: 0; }
+  .student-table .cell-name { grid-area: name; overflow-wrap: anywhere; }
+  .student-table .cell-name strong { font-size: 1rem; }
+  .student-table .cell-name small { font-size: .8125rem; }
+  .student-table .cell-status { grid-area: status; }
+  .student-table .cell-portal { grid-area: portal; justify-self: end; }
+  .student-table .portal-ok { display: none; }
+  .student-table .cell-kc { grid-area: kc; }
+  .student-table .cell-lab { grid-area: lab; }
+  .student-table .cell-kc, .student-table .cell-lab { font-size: 1.125rem; color: var(--text-primary); }
+  .student-table .cell-kc::before, .student-table .cell-lab::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .75rem;
+    color: var(--text-secondary);
+  }
+  .student-table .cell-progress { display: none; }
+  .student-table .cell-pending { grid-area: pending; }
+  .student-table .cell-pending .text-link {
+    gap: 0;
+    width: 100%;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: .875rem;
+  }
+  .student-table .pending-unit { display: inline; }
+  .student-table .pending-count { white-space: pre; }
+  /* Sem pendências, o card mostra só "Ver detalhes" (o zero não informa nada). */
+  .student-table .pending-count.is-zero { display: none; }
+  /* Sem o aviso "Não entrou", a situação ocupa a linha toda e não quebra o rótulo. */
+  .student-table tr:has(.portal-ok) .cell-status { grid-column: 1 / -1; }
+  .student-table tr:has(.portal-ok) .cell-portal { display: none; }
+  .student-table .cell-status .badge { white-space: nowrap; }
+}
+
+/* Título da página com ações: sem espaço, as ações descem para baixo do título em vez de
+   espremer o texto em uma coluna estreita (tablet com menu lateral). */
+.page-heading { flex-wrap: wrap; }
+.page-heading > div:first-child { flex: 1 1 22rem; min-width: 0; }
+/* Telas muito estreitas (320px) com 5 itens (administrador): rótulo menor, sem quebrar a palavra. */
+@media (max-width: 360px) {
+  .sidebar nav { padding-left: 2px; padding-right: 2px; gap: 0; }
+  .sidebar nav .nav-item { padding: 6px 0; font-size: .625rem; }
+  .nav-short { overflow-wrap: normal; }
+}

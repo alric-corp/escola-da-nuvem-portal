@@ -102,6 +102,8 @@ export function demoAPI(role) {
             name: "AWS re/Start · BRSA0267",
             canTeach: role !== "student",
             current: publication.id,
+            // Como as turmas em produção: atualização automática pelo Canvas ligada.
+            autoSync: true,
           },
         ],
       };
@@ -125,7 +127,8 @@ export function demoAPI(role) {
       };
     if (path.endsWith("/report"))
       return role !== "student"
-        ? { publication, students, activities, history: [publication], thresholds: { kc: 70, lab: 95 }, canvasCourseId: "4436" }
+        ? { publication, students, activities, history: [publication], thresholds: { kc: 70, lab: 95 }, canvasCourseId: "4436",
+            updateKind: "canvas", canvasSync: { status: "unchanged", at: publication.publishedAt, message: "Nenhuma mudança no Canvas desde a última publicação." } }
         : {
             publication,
             student,

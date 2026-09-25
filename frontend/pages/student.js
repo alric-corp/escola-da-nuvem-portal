@@ -1,6 +1,6 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, demo, e, gradingHelp, heading, icon, metric, normalize, percent, personalChanges, state, studentBadge, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, personalChanges, state, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
   const s = state.report.student;
@@ -11,14 +11,15 @@ export function studentPage(name) {
   const focus = state.report.focus?.activityIds || [];
   const next = nextActivities(s.activities, focus);
   const thresholds = state.report.thresholds || { kc: 70, lab: 95 };
-  return `${heading("SUA JORNADA DE APRENDIZADO", `Bom ter você aqui, ${e(name)}.`, "Acompanhe suas conquistas e organize os próximos passos.")}${updateInfo()}
-  <section class="journey student-summary"><div><span class="pill">TURMA ${e(state.code)}</span><h2>Seu resumo</h2><p>${s.completed} com nota · ${pending.length} sem nota · ${review.length} para revisar.</p><button class="button primary" data-view="activities">Ver minhas atividades ${icon("arrow")}</button></div><div class="ring" style="--progress:${s.progress || 0}%"><div><strong>${percent(s.progress)}</strong><span>das atividades<br>com nota</span></div></div></section>
+  return `${heading("SUA JORNADA DE APRENDIZADO", `Bom ter você aqui, ${e(name)}.`, "Acompanhe suas conquistas e organize os próximos passos.")}
+  <section class="journey student-summary" aria-labelledby="summary-heading"><div class="summary-overview"><div class="summary-text"><span class="pill">TURMA ${e(state.code)}</span><h2 id="summary-heading">Seu resumo</h2><p>${s.completed} com nota · ${pending.length} sem nota · ${review.length} para revisar.</p><button class="button primary" data-view="activities">Ver minhas atividades ${icon("arrow")}</button></div><div class="ring" style="--progress:${s.progress || 0}%" role="img" aria-label="${e(percent(s.progress))} das atividades com nota"><div><strong>${percent(s.progress)}</strong><span>das atividades<br>com nota</span></div></div></div>
+  <div class="summary-goals">${goalIndicator("Média em KCs", s.kc, thresholds.kc, pendingKc, "KC")}${goalIndicator("Média em Labs", s.lab, thresholds.lab, pendingLab, "LAB")}</div></section>
+  ${updateInfo()}
   <section class="panel next-steps" aria-labelledby="pending-heading"><div class="panel-title"><div><span class="eyebrow">PRÓXIMOS PASSOS</span><h2 id="pending-heading">${focus.length ? "Foco indicado pelo instrutor" : "Por onde começar"}</h2><p class="small">${focus.length ? "Até três atividades indicadas para a turma. Aqui aparecem apenas as que estão sem nota ou podem ser revisadas por você." : "Até três atividades: primeiro as sem nota, na ordem da publicação; depois, sugestões de revisão."}</p></div></div>
   <div class="next-summary"><button class="button secondary" data-view="activities" data-pending="all">Ver minhas pendências · ${pending.length}</button><button class="button secondary" data-view="activities" data-activity-filter="review">Revisar resultados · ${review.length}</button></div>
-  <p class="small">Sem nota pode significar entrega ou correção pendente. Se já entregou no Canvas, aguarde a próxima atualização.</p>
+  <p class="small">${current()?.autoSync ? `Sem nota pode significar entrega ou correção pendente. Quando a nota sair no Canvas, ela aparece aqui na próxima verificação (${nextCanvasSync()}).` : "Sem nota pode significar entrega ou correção pendente. Se já entregou no Canvas, aguarde a próxima atualização."}</p>
   ${next.length ? next.map(activityCard).join("") : `<p class="empty compact">${focus.length ? "Você já tem notas na referência nas atividades indicadas ou está dispensado delas. Consulte as demais atividades abaixo." : s.activities.some((a) => ["pending", "completed"].includes(a.state)) ? "As atividades avaliadas estão na referência. Continue acompanhando as próximas liberações." : "Ainda não há atividades para entrega ou revisão nesta publicação."}</p>`}
-  <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${studentBadge(s, thresholds)}${gradingHelp(thresholds)}</div>
-  <section class="metrics" aria-label="Indicadores de desempenho">${metric("Média em KCs", percent(s.kc), pendingKc ? `Referência: ${thresholds.kc}% ou mais · ${pendingKc} sem nota conta(m) como 0%` : `Referência: ${thresholds.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), pendingLab ? `Referência: ${thresholds.lab}% ou mais · ${pendingLab} sem nota conta(m) como 0%` : `Referência: ${thresholds.lab}% ou mais`)}${metric("Atividades com nota", s.completed, "Das atividades já liberadas")}${metric("Sem nota", s.pending, "Seu próximo ponto de partida", "metric-warning")}</section>
+  <button class="text-link" data-view="activities">Ver todas as atividades ${icon("arrow", 16)}</button></section>  <div class="grade-context">${gradingHelp(thresholds)}</div>
 <section class="panel"><h2>O que mudou nas suas notas</h2>${personalChanges(state.report.history?.find((r) => r.current)?.changes)}<button class="text-link" data-view="history">Ver meu histórico</button></section><section class="panel"><span class="eyebrow">A CADA PUBLICAÇÃO</span><h2>Seu aprendizado evolui</h2>${evolution()}<p class="small">Média de KCs e de LABs em cada publicação. Atividades novas podem mudar a média.</p></section>`;
 }
 

@@ -36,20 +36,29 @@ export const labels = {
 };
 export const badge = (status) =>
   `<span class="badge ${e(status)}">${e(labels[status] || status)}</span>`;
-// Rótulo do aluno para attention/critical: "Crítico" soa punitivo para quem não fez nada
-// de errado (atividade liberada sem nota já conta como 0%). O instrutor continua vendo
-// badge(s.status) com os rótulos originais.
-export function studentStatusLabel(s, thresholds = { kc: 70, lab: 95 }) {
-  if (s.status !== "attention" && s.status !== "critical") return labels[s.status] || s.status;
-  const kcBelow = s.kc != null && s.kc < thresholds.kc;
-  const labBelow = s.lab != null && s.lab < thresholds.lab;
-  if (kcBelow && labBelow) return "Foque em KCs e LABs";
-  if (labBelow) return "Foque nos LABs";
-  if (kcBelow) return "Foque nos KCs";
-  return labels[s.status];
+const plural = (n, one, many) => `${n.toLocaleString("pt-BR")} ${n === 1 ? one : many}`;
+
+// Indicador de média do aluno (KC ou LAB) com a referência da turma. Abaixo da referência
+// mostra quanto falta, calculado dos valores reais, em âmbar (progresso, não erro). Usa o
+// valor sem arredondar para decidir, como o backend (grades.summary).
+export function goalIndicator(label, value, reference, pending, unit) {
+  const reached = value != null && value >= reference;
+  const gap = value == null ? null : reference - value;
+  const shown = gap == null ? null : Math.round(gap * 100) / 100;
+  const status = value == null
+    ? "Ainda sem atividades avaliadas"
+    : reached
+      ? "Referência atingida"
+      : gap < 0.01
+        ? "Falta menos de 0,01 ponto para a referência"
+        // Em português, com decimais o singular vai até antes de 2 ("falta 1,5 ponto").
+        : `${shown < 2 ? "Falta" : "Faltam"} ${shown.toLocaleString("pt-BR")} ${shown < 2 ? "ponto" : "pontos"} para a referência`;
+  const tone = value == null ? "neutral" : reached ? "reached" : "below";
+  const fill = Math.max(0, Math.min(100, Number(value) || 0));
+  return `<article class="goal goal-${tone}"><span class="goal-label">${label}</span><strong>${percent(value)}</strong>
+  <div class="goal-bar" aria-hidden="true"><i style="width:${fill}%"></i><b style="left:${reference}%"></b></div>
+  <p class="goal-reference">Referência: ${reference}%</p><p class="goal-status">${status}</p>${pending ? `<p class="goal-note">${plural(pending, `${unit} sem nota conta`, `${unit}s sem nota contam`)} como 0%</p>` : ""}</article>`;
 }
-export const studentBadge = (s, thresholds) =>
-  `<span class="badge ${e(s.status)}">${e(studentStatusLabel(s, thresholds))}</span>`;
 export const icon = (name, size = 20) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${
     {
@@ -127,13 +136,41 @@ export function errorPanel(message, action) {
   return `<section class="panel empty" role="alert"><h2>Não foi possível carregar</h2><p>${e(message)}</p><button class="button primary" data-action="${action}">Tentar novamente</button></section>`;
 }
 
+// Horários da atualização automática pelo Canvas, em horário de Brasília. Espelha o
+// agendamento do Terraform (infra/terraform/canvas-sync.tf, cron(0 6,18 * * ? *) em
+// America/Sao_Paulo); a API não expõe o horário, então mude os dois juntos.
+export const canvasSyncHours = [6, 18];
+const syncZone = "America/Sao_Paulo";
+
+// Próximo horário de verificação a partir de agora, como "hoje às 18h" / "amanhã às 6h".
+export function nextCanvasSync(now = new Date()) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: syncZone, hour: "numeric", minute: "numeric", hourCycle: "h23" })
+    .formatToParts(now).map((p) => [p.type, Number(p.value)]));
+  const minutes = parts.hour * 60 + parts.minute;
+  const hour = canvasSyncHours.find((h) => h * 60 > minutes);
+  return hour === undefined ? `amanhã às ${canvasSyncHours[0]}h` : `hoje às ${hour}h`;
+}
+
+const syncSchedule = () => `às ${canvasSyncHours.map((h) => `${h}h`).join(" e às ")} (horário de Brasília)`;
+
 export function updateInfo() {
   const r = state.report;
   if (!r?.publication) return "";
-  const source = r.updateKind === "canvas"
-    ? "<p>Notas trazidas automaticamente do Canvas. O portal atualiza às 6h e às 18h; uma correção feita no Canvas aparece aqui na atualização seguinte.</p>"
-    : "<p>As notas mudam quando o instrutor publica uma atualização. Entregas e correções são feitas no Canvas.</p>";
-  return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : ""}${source}${canvasSyncStatus(r.canvasSync)}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+  const auto = !!current()?.autoSync;
+  const instructor = teacher();
+  const restored = r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : "";
+  if (!auto) {
+    const source = instructor
+      ? "<p>Esta turma não tem atualização automática pelo Canvas: as notas mudam quando um CSV é publicado em Atualizar notas.</p>"
+      : "<p>As notas mudam quando a equipe publica uma atualização. Entregas e correções são feitas no Canvas.</p>";
+    // Sem autoSync, um SYNC antigo (de quando a sincronização estava ligada) não é mostrado.
+    return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${restored}${source}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+  }
+  // "Última atualização" é quando as notas mudaram (updatedAt); a última verificação no
+  // Canvas (canvasSync) só vem no relatório do instrutor.
+  return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Atualizado automaticamente do Canvas ${syncSchedule()}</strong>
+  <dl class="sync-times"><div><dt>Última mudança nas notas</dt><dd>${date(r.updatedAt || r.publication.publishedAt)}</dd></div>${instructor && r.canvasSync ? `<div><dt>Última verificação</dt><dd>${date(r.canvasSync.at)}${r.canvasSync.status === "unchanged" ? " · sem mudanças" : ""}</dd></div>` : ""}<div><dt>Próxima verificação</dt><dd>${nextCanvasSync()}</dd></div></dl>
+  ${restored}${instructor ? "" : "<p>Uma correção feita no Canvas aparece aqui na verificação seguinte.</p>"}${r.canvasSync?.status === "failed" ? canvasSyncStatus(r.canvasSync) : ""}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
 }
 
 // Só o relatório do instrutor traz canvasSync (backend/portal.py); o aluno não vê falhas técnicas.
@@ -184,8 +221,10 @@ export function pageLabel() {
     }[state.view] || "Meu painel"
   );
 }
-export function nav(id, label, symbol) {
-  return `<button class="nav-item ${state.view === id ? "active" : ""}" data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>${icon(symbol)}${label}</button>`;
+// No celular o menu vira barra inferior: aparece o rótulo curto, e o nome completo continua
+// sendo o nome acessível do botão (visualmente oculto, não removido).
+export function nav(id, label, symbol, short = label) {
+  return `<button class="nav-item ${state.view === id ? "active" : ""}" data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>${icon(symbol)}<span class="nav-label">${label}</span><span class="nav-short" aria-hidden="true">${short}</span></button>`;
 }
 
 export function heading(kicker, title, subtitle, action = "") {

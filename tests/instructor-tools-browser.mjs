@@ -53,7 +53,7 @@ try {
   await page.route("**/api/**", async (route) => {
     const endpoint = new URL(route.request().url()).pathname.slice(4);
     if (endpoint === "/me") return route.fulfill({ json: { roles: [role], email: role + "@example.test" } });
-    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor" }] } });
+    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor", autoSync: true }] } });
     if (endpoint.endsWith("/report")) {
       if (role === "instructor")
         return route.fulfill({ json: { students, activities: all, publication, history: [publication], thresholds, canvasCourseId: "4436", focus: { activityIds: [], version: null },
@@ -80,7 +80,7 @@ try {
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
 
   // 17: instrutor vê que as notas vieram do Canvas e o motivo da última falha.
-  assert.match(await page.locator(".update-line").innerText(), /trazidas automaticamente do Canvas/);
+  assert.match(await page.locator(".update-line").innerText(), /Atualizado automaticamente do Canvas às 6h e às 18h/);
   assert.match(await page.locator(".update-line .sync-failed").innerText(), /Token do Canvas recusado/);
 
   // 19: busca sem acento encontra "João".
@@ -128,7 +128,7 @@ try {
   await page.reload();
   await page.getByRole("heading", { name: "Por onde começar", exact: true }).waitFor();
   assert.match(await page.locator(".next-steps .activity-card").first().innerText(), /226-LX-KC/);
-  assert.match(await page.locator(".update-line").innerText(), /trazidas automaticamente do Canvas/);
+  assert.match(await page.locator(".update-line").innerText(), /Atualizado automaticamente do Canvas às 6h e às 18h/);
   assert.equal(await page.locator(".update-line .sync-failed").count(), 0);
   assert.equal(await page.locator(".evolution path.evo-kc").count(), 1);
   assert.equal(await page.locator(".evolution path.evo-lab").count(), 1);
