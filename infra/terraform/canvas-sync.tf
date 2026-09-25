@@ -62,7 +62,12 @@ resource "aws_iam_role_policy" "canvas_sync" {
         Action   = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging"]
         Resource = "${aws_s3_bucket.imports.arn}/cohorts/*"
       },
-      { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = aws_secretsmanager_secret.canvas_token.arn }
+      { Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = aws_secretsmanager_secret.canvas_token.arn },
+      {
+        # PutMetricData não aceita ARN de recurso; a condição limita ao namespace do portal.
+        Effect    = "Allow", Action = ["cloudwatch:PutMetricData"], Resource = "*"
+        Condition = { StringEquals = { "cloudwatch:namespace" = local.name } }
+      }
     ]
   })
 }
@@ -84,6 +89,7 @@ resource "aws_lambda_function" "canvas_sync" {
       IMPORTS_BUCKET    = aws_s3_bucket.imports.id
       CANVAS_BASE_URL   = var.canvas_base_url
       CANVAS_SECRET_ARN = aws_secretsmanager_secret.canvas_token.arn
+      METRICS_NAMESPACE = local.name
     }
   }
   depends_on = [aws_iam_role_policy.canvas_sync]
@@ -152,6 +158,25 @@ resource "aws_cloudwatch_metric_alarm" "canvas_sync_errors" {
   threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+  ok_actions          = [aws_sns_topic.alerts.arn]
+}
+
+# Aviso antes do token do Canvas expirar: cada execução publica os dias restantes, lidos do
+# próprio Canvas (canvas_sync.report_token_expiry). Sem dado por um dia (consulta falhou ou
+# a atualização parou de rodar), o alarme também dispara. Só existe com o agendamento ligado.
+resource "aws_cloudwatch_metric_alarm" "canvas_token_expiring" {
+  count               = var.canvas_sync_enabled ? 1 : 0
+  alarm_name          = "${local.name}-canvas-token-expirando"
+  alarm_description   = "O token do Canvas expira em menos de 15 dias, ou a validade não foi conferida nas últimas 24 horas. Gere um token novo no Canvas e grave no segredo ${aws_secretsmanager_secret.canvas_token.name}; se a validade não foi conferida, veja o log /aws/lambda/${local.name}-canvas-sync."
+  namespace           = local.name
+  metric_name         = "CanvasTokenDaysLeft"
+  statistic           = "Minimum"
+  period              = 86400
+  evaluation_periods  = 1
+  threshold           = 15
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
   ok_actions          = [aws_sns_topic.alerts.arn]
 }

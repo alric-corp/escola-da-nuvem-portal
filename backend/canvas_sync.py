@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-from canvas import CanvasClient, CanvasError, course_catalog, course_csv
+from canvas import CanvasClient, CanvasError, course_catalog, course_csv, token_expires_at
 from portal import APIError, save_catalog, sync_from_canvas
 from grades import ValidationError
 from repository import Conflict, Repository
@@ -59,6 +59,31 @@ def run(repo, client):
     return results, failures
 
 
+TOKEN_METRIC = "CanvasTokenDaysLeft"
+NO_EXPIRY_DAYS = 3650
+
+
+def token_days_left(client, now=None):
+    """Dias até o token do Canvas expirar; um valor alto se ele não expira."""
+    from datetime import datetime, timezone
+    expires = token_expires_at(client)
+    if expires is None:
+        return NO_EXPIRY_DAYS
+    now = now or datetime.now(timezone.utc)
+    return max(0.0, round((datetime.fromisoformat(expires.replace("Z", "+00:00")) - now).total_seconds() / 86400, 2))
+
+
+def report_token_expiry(client, cloudwatch, namespace):
+    """Publica os dias restantes do token (alarme em canvas-sync.tf). Sem consulta ou sem
+    métrica, o alarme também dispara por falta de dados: nunca interrompe a atualização."""
+    try:
+        days = token_days_left(client)
+        cloudwatch.put_metric_data(Namespace=namespace, MetricData=[{"MetricName": TOKEN_METRIC, "Value": days, "Unit": "None"}])
+        logging.info(json.dumps({"canvasTokenDaysLeft": days}))
+    except Exception:
+        logging.exception("Não foi possível conferir a validade do token do Canvas")
+
+
 def _now():
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
@@ -67,6 +92,8 @@ def _now():
 def handler(event, context):
     client = CanvasClient(os.environ["CANVAS_BASE_URL"], read_token(os.environ["CANVAS_SECRET_ARN"]))
     results, failures = run(Repository(), client)
+    import boto3
+    report_token_expiry(client, boto3.client("cloudwatch"), os.environ["METRICS_NAMESPACE"])
     logging.info(json.dumps({"canvasSync": results}))
     if failures:
         raise RuntimeError("Falha na atualização pelo Canvas — " + "; ".join(failures))

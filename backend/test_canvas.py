@@ -6,7 +6,7 @@ import urllib.error
 from unittest.mock import patch
 
 from canvas import CanvasClient, CanvasError, course_catalog, course_csv
-from canvas_sync import run
+from canvas_sync import NO_EXPIRY_DAYS, report_token_expiry, run, token_days_left
 from grades import parse_csv
 from portal import APIError, Portal, save_catalog, sync_from_canvas
 from test_portal import MemoryRepository
@@ -20,6 +20,7 @@ class FakeCanvas:
     def __init__(self, courses, page_size=2):
         self.courses, self.page_size, self.calls, self.auth = courses, page_size, [], set()
         self.fail = None
+        self.token_hint, self.expires_at = "1~abcde", "2026-12-22T05:00:00Z"
 
     def __call__(self, request, timeout=None):
         url = request.full_url
@@ -28,6 +29,10 @@ class FakeCanvas:
         if self.fail:
             raise self.fail
         path, _, query = url.split("/api/v1", 1)[1].partition("?")
+        if path.startswith("/users/self/tokens/"):
+            if path != "/users/self/tokens/" + self.token_hint:
+                raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+            return _Response({"id": 1, "expires_at": self.expires_at}, "")
         _, _, course, resource = path.split("/")[:4]
         data = self.courses[course][{"assignments": "assignments", "users": "students", "students": "submissions",
                                      "modules": "modules"}[resource]]
@@ -118,6 +123,31 @@ class CourseCsvTests(unittest.TestCase):
         with patch("canvas.time.sleep"), self.assertRaises(CanvasError):
             course_csv(CanvasClient(BASE, "t", opener=fake), "4436")
         self.assertEqual(len(fake.calls), 3)
+
+
+class TokenExpiryTests(unittest.TestCase):
+    def test_days_left_come_from_the_token_itself(self):
+        from datetime import datetime, timezone
+        fake = FakeCanvas({})
+        client = CanvasClient(BASE, "1~abcdefghij", opener=fake)
+        now = datetime(2026, 12, 7, 5, tzinfo=timezone.utc)
+        self.assertEqual(token_days_left(client, now), 15)
+        self.assertTrue(fake.calls[-1].endswith("/users/self/tokens/1~abcde"))  # só a dica, nunca o token
+        self.assertEqual(token_days_left(client, datetime(2027, 1, 1, tzinfo=timezone.utc)), 0)
+        fake.expires_at = None
+        self.assertEqual(token_days_left(client, now), NO_EXPIRY_DAYS)
+
+    def test_metric_failure_never_breaks_the_sync(self):
+        published = []
+        class CloudWatch:
+            def put_metric_data(self, **kw):
+                published.append(kw)
+        report_token_expiry(CanvasClient(BASE, "1~abcdefghij", opener=FakeCanvas({})), CloudWatch(), "portal")
+        self.assertEqual(published[0]["Namespace"], "portal")
+        self.assertEqual(published[0]["MetricData"][0]["MetricName"], "CanvasTokenDaysLeft")
+        with self.assertLogs(level="ERROR"):
+            report_token_expiry(CanvasClient(BASE, "outro", opener=FakeCanvas({})), CloudWatch(), "portal")
+        self.assertEqual(len(published), 1)  # sem métrica: o alarme dispara por falta de dados
 
 
 class CatalogTests(unittest.TestCase):

@@ -53,7 +53,7 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
 4. Em "Turmas e acessos" → Configurações de cada turma: preencher o ID do curso (BRSA0267 → 4436, BRSA0257 → 4413) e ligar a atualização automática.
 
 ## Limitação conhecida
-- Token pessoal expira em 22/12/2026; quando isso acontecer, a atualização falha (alarme) e as notas param na última publicação até o segredo ser atualizado.
+- Token pessoal expira em 22/12/2026; quando isso acontecer, a atualização falha (alarme) e as notas param na última publicação até o segredo ser atualizado. Desde 25/09 há aviso antecipado: cada execução lê a validade do próprio token no Canvas (`GET /users/self/tokens/<dica>`) e publica a métrica `CanvasTokenDaysLeft`. O alarme `restart-portal-prod-canvas-token-expirando` avisa por e-mail com menos de 15 dias, ou se a validade não for conferida em 24 h. Um token novo gravado no segredo é lido sozinho, sem ajuste no código.
 - Turmas de cursos novos continuam sem links e módulos até a parte 2 da [12](12-configuracao-da-turma-no-backend.md).
 
 ## Verificação antes de ligar (2026-09-24)

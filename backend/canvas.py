@@ -10,6 +10,7 @@ import json
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from decimal import Decimal
 
@@ -111,3 +112,15 @@ def course_catalog(client, course_id):
             items.update(found)
             modules.append(name)
     return {"courseId": str(course_id), "modules": modules, "items": items}
+
+
+def token_expires_at(client):
+    """Data de expiração do próprio token (ISO 8601), ou None se ele não expira.
+
+    O Canvas aceita a "dica" do token no lugar do ID: o prefixo da instância, "~" e os
+    5 primeiros caracteres. Levanta CanvasError se não conseguir consultar.
+    """
+    prefix, _, rest = client.token.rpartition("~")
+    hint = f"{prefix}~{rest[:5]}" if prefix else client.token[:5]
+    data, _ = client._get(f"{client.base}/users/self/tokens/{urllib.parse.quote(hint, safe='')}")
+    return data.get("expires_at")

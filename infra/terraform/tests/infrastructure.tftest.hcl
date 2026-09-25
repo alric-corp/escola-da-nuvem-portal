@@ -166,3 +166,22 @@ run "private_storage_and_authenticated_api" {
     error_message = "Erros 5xx da API e falhas do login e dos eventos de e-mail precisam avisar por e-mail."
   }
 }
+
+run "canvas_token_expiry_warning" {
+  command = plan
+
+  variables {
+    canvas_sync_enabled = true
+  }
+
+  assert {
+    condition     = aws_scheduler_schedule.canvas_sync.state == "ENABLED" && length(aws_cloudwatch_metric_alarm.canvas_token_expiring) == 1
+    error_message = "Com o agendamento ligado, existe o aviso de token do Canvas expirando."
+  }
+
+  assert {
+    condition = alltrue([for a in aws_cloudwatch_metric_alarm.canvas_token_expiring :
+    a.threshold == 15 && a.comparison_operator == "LessThanThreshold" && a.treat_missing_data == "breaching" && a.namespace == aws_lambda_function.canvas_sync.environment[0].variables.METRICS_NAMESPACE])
+    error_message = "O aviso dispara com menos de 15 dias ou sem dado, no namespace em que a Lambda publica."
+  }
+}
