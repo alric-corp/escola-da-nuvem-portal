@@ -647,7 +647,12 @@ class Portal:
         thresholds = cohort_thresholds(cohort)
         canvas_course_id = cohort.get("canvasCourseId")
         if teach:
-            return {"cohort": code, "publication": publication, "focus": focus, **overview(snap, thresholds),
+            # Vínculo criado quando o aluno entra e abre o próprio relatório (Portal.student).
+            linked = {k[len("OWNER#"):] for k in self.repo.keys(pk, "OWNER#")}
+            class_overview = overview(snap, thresholds)
+            class_overview["students"] = [{**s, "portalLinked": s["id"] in linked}
+                                               for s in class_overview["students"]]
+            return {"cohort": code, "publication": publication, "focus": focus, **class_overview,
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
                     "thresholds": thresholds, "canvasCourseId": canvas_course_id,

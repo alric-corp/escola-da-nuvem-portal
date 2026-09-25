@@ -41,6 +41,19 @@ class Repository:
                 return items
             args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
 
+    def keys(self, pk, prefix):
+        """Só as chaves de ordenação (SK) que começam com o prefixo, sem ler os dados."""
+        from boto3.dynamodb.conditions import Key
+        args = {"KeyConditionExpression": Key("PK").eq(pk) & Key("SK").begins_with(prefix),
+                "ProjectionExpression": "SK", "ConsistentRead": True}
+        keys = []
+        while True:
+            result = self.table.query(**args)
+            keys.extend(i["SK"] for i in result["Items"])
+            if "LastEvaluatedKey" not in result:
+                return keys
+            args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+
     def cohorts(self):
         from boto3.dynamodb.conditions import Attr
         args = {"FilterExpression": Attr("SK").eq("METADATA") & Attr("PK").begins_with("COHORT#"), "ConsistentRead": True}

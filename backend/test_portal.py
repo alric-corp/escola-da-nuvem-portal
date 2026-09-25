@@ -56,6 +56,9 @@ class MemoryRepository:
     def list(self, pk, prefix=""):
         return [copy.deepcopy(v) for (p, s), v in self.items.items() if p == pk and s.startswith(prefix)]
 
+    def keys(self, pk, prefix):
+        return [s for (p, s) in self.items if p == pk and s.startswith(prefix)]
+
     def cohorts(self):
         return [copy.deepcopy(v) for (p, s), v in self.items.items() if s == "METADATA"]
 
@@ -386,6 +389,16 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(audits[0]["action"], "unlink-student")
         other = Portal(self.repo, {"sub": "student2", "email": "aluno@example.test", "groups": []}, mailer=self.mailer)
         self.assertEqual(self.call(other, "report", method="GET")["student"]["id"], "101")
+
+    def test_instructor_report_shows_who_never_opened_the_portal(self):
+        self.publish()
+        linked = lambda: {s["id"]: s["portalLinked"] for s in self.call(self.admin, "report", method="GET")["students"]}
+        self.assertEqual(linked(), {"101": False})
+        self.call(self.student, "report", method="GET")  # primeiro acesso vincula a matrícula
+        self.assertEqual(linked(), {"101": True})
+        self.call(self.admin, "unlink-student", {"canvasId": "101"})
+        self.assertEqual(linked(), {"101": False})
+        self.assertNotIn("students", self.call(self.student, "report", method="GET"))  # aluno não vê a turma
 
     def test_unlink_student_requires_existing_binding(self):
         self.publish()

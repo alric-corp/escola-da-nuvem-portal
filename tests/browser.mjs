@@ -165,7 +165,7 @@ try {
   );
   assert.deepEqual(
     await page.locator("#status-filter option").allTextContents(),
-    ["Todos os status", "Sem e-mail no Canvas", "Com atividades sem nota", "Médias na referência", "Atenção", "Crítico"],
+    ["Todos os status", "Sem e-mail no Canvas", "Com atividades sem nota", "Ainda não entraram no portal", "Médias na referência", "Atenção", "Crítico"],
   );
   assert.deepEqual(
     await page.locator(".metrics .metric > strong").allTextContents(),

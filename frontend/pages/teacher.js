@@ -13,7 +13,7 @@ export function filteredStudents() {
   const query = normalize(state.search);
   const filtered = (state.report.students || []).filter(
     (r) =>
-      (state.filter === "all" || r.status === state.filter || (state.filter === "missing-email" && !r.email) || (state.filter === "pending" && r.pending > 0)) &&
+      (state.filter === "all" || r.status === state.filter || (state.filter === "missing-email" && !r.email) || (state.filter === "pending" && r.pending > 0) || (state.filter === "no-portal" && r.portalLinked === false)) &&
       normalize(`${r.name} ${r.email || ""}`).includes(query),
   );
   return filtered.sort((a, b) => {
@@ -30,10 +30,19 @@ const csvCell = (value) => {
 };
 
 export function studentsCsv(rows) {
-  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação"];
-  const lines = rows.map((r) => [r.name, r.email || "", r.kc ?? "", r.lab ?? "", r.total ?? "", r.progress ?? "", r.pending, labels[r.status] || r.status]);
+  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal"];
+  const lines = rows.map((r) => [r.name, r.email || "", r.kc ?? "", r.lab ?? "", r.total ?? "", r.progress ?? "", r.pending, labels[r.status] || r.status,
+    r.portalLinked === undefined ? "" : r.portalLinked ? "Sim" : "Não"]);
   // BOM para o Excel reconhecer UTF-8 (acentos); ponto e vírgula é o separador que ele espera em pt-BR.
   return "﻿" + [header, ...lines].map((line) => line.map(csvCell).join(";")).join("\r\n");
+}
+
+// Vínculo criado no primeiro acesso do aluno ao próprio relatório; "Não entrou" inclui quem
+// ainda não criou conta e quem criou com um e-mail diferente do Canvas.
+function portalCell(r) {
+  if (r.portalLinked === undefined) return "—";
+  return r.portalLinked ? '<span class="small">Entrou</span>'
+    : '<span class="badge unreleased" title="Sem conta no portal ou conta com e-mail diferente do Canvas">Não entrou</span>';
 }
 
 export function teacherPage() {
@@ -41,8 +50,8 @@ export function teacherPage() {
     rows = report.students || [];
   const filtered = filteredStudents();
   return `${heading("GESTÃO DA TURMA", `Painel da ${e(state.code)}`, "Acompanhe todos os alunos identificados, filtre o desempenho e publique as notas.", `<button class="button secondary" data-view="activity-overview">Ver por atividade</button><button class="button primary" data-view="import">${icon("upload")} Atualizar notas</button>`)}
-  ${updateInfo()}<section class="metrics">${metric("Alunos na publicação", rows.length, "Última atualização da turma", "metric-primary")}${metric("Médias na referência", rows.filter((r) => r.status === "ok").length, `KCs ≥ ${(report.thresholds && report.thresholds.kc) ?? 70}% e Labs ≥ ${(report.thresholds && report.thresholds.lab) ?? 95}%`)}${metric("Atenção", rows.filter((r) => r.status === "attention").length, "Uma média abaixo da referência", "metric-warning")}${metric("Crítico", rows.filter((r) => r.status === "critical").length, "As duas médias abaixo da referência", "metric-danger")}</section>
-  ${focusEditor()}<section class="panel"><div class="panel-title"><div><h2>Desempenho dos alunos</h2><p class="small">Última publicação: ${date(report.publication?.publishedAt)}</p></div></div><div class="table-tools"><input id="search" type="search" placeholder="Buscar aluno ou e-mail…" aria-label="Buscar aluno" value="${e(state.search)}"><select id="status-filter" aria-label="Filtrar status">${[["all", "Todos os status"], ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"], ...Object.entries(labels).filter(([k]) => ["ok", "attention", "critical"].includes(k))].map(([id, label]) => `<option value="${id}" ${state.filter === id ? "selected" : ""}>${label}</option>`).join("")}</select><select id="student-sort" aria-label="Ordenar alunos">${[["name", "Nome A–Z"], ["pending", "Mais atividades sem nota"], ["score", "Menores médias primeiro"]].map(([value, label]) => `<option value="${value}" ${state.sort === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button secondary" data-action="clear-filters">Limpar filtros</button><button class="button secondary" data-action="export-csv" ${filtered.length ? "" : "disabled"}>Exportar CSV (${filtered.length})</button></div>
+  ${updateInfo()}<section class="metrics">${metric("Alunos na publicação", rows.length, rows.some((r) => r.portalLinked === false) ? `${rows.filter((r) => r.portalLinked === false).length} ainda não entraram no portal` : "Última atualização da turma", "metric-primary")}${metric("Médias na referência", rows.filter((r) => r.status === "ok").length, `KCs ≥ ${(report.thresholds && report.thresholds.kc) ?? 70}% e Labs ≥ ${(report.thresholds && report.thresholds.lab) ?? 95}%`)}${metric("Atenção", rows.filter((r) => r.status === "attention").length, "Uma média abaixo da referência", "metric-warning")}${metric("Crítico", rows.filter((r) => r.status === "critical").length, "As duas médias abaixo da referência", "metric-danger")}</section>
+  ${focusEditor()}<section class="panel"><div class="panel-title"><div><h2>Desempenho dos alunos</h2><p class="small">Última publicação: ${date(report.publication?.publishedAt)}</p></div></div><div class="table-tools"><input id="search" type="search" placeholder="Buscar aluno ou e-mail…" aria-label="Buscar aluno" value="${e(state.search)}"><select id="status-filter" aria-label="Filtrar status">${[["all", "Todos os status"], ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"], ["no-portal", "Ainda não entraram no portal"], ...Object.entries(labels).filter(([k]) => ["ok", "attention", "critical"].includes(k))].map(([id, label]) => `<option value="${id}" ${state.filter === id ? "selected" : ""}>${label}</option>`).join("")}</select><select id="student-sort" aria-label="Ordenar alunos">${[["name", "Nome A–Z"], ["pending", "Mais atividades sem nota"], ["score", "Menores médias primeiro"]].map(([value, label]) => `<option value="${value}" ${state.sort === value ? "selected" : ""}>${label}</option>`).join("")}</select><button class="button secondary" data-action="clear-filters">Limpar filtros</button><button class="button secondary" data-action="export-csv" ${filtered.length ? "" : "disabled"}>Exportar CSV (${filtered.length})</button></div>
   ${state.filter === "pending" && filtered.length ? `<p class="table-tools"><button class="button primary" data-action="reminders-batch" data-ids="${filtered.map((r) => e(r.id)).join(",")}">Enviar lembrete para ${filtered.length} aluno(s)</button></p>` : ""}
-  ${rows.length ? `<div class="table-scroll"><table><thead><tr><th>Aluno</th><th>KCs</th><th>Labs</th><th>Com nota</th><th>Sem nota</th><th>Situação</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${e(r.name)}</strong><small>${e(r.email || "E-mail ausente no Canvas")}</small></td><td>${percent(r.kc)}</td><td>${percent(r.lab)}</td><td>${percent(r.progress)}</td><td><button class="text-link" data-student-pending="${e(r.id)}" aria-label="Ver pendências de ${e(r.name)}">${r.pending} · Ver detalhes</button></td><td>${badge(r.status)}</td></tr>`).join("")}</tbody></table>${!filtered.length ? '<p class="empty">Nenhum aluno encontrado.</p>' : ""}</div>` : '<div class="empty"><h3>A turma está pronta para começar.</h3><p>Importe o CSV do Canvas para publicar a primeira atualização.</p></div>'}</section>`;
+  ${rows.length ? `<div class="table-scroll"><table><thead><tr><th>Aluno</th><th>KCs</th><th>Labs</th><th>Com nota</th><th>Sem nota</th><th>Situação</th><th>Portal</th></tr></thead><tbody>${filtered.map((r) => `<tr><td><strong>${e(r.name)}</strong><small>${e(r.email || "E-mail ausente no Canvas")}</small></td><td>${percent(r.kc)}</td><td>${percent(r.lab)}</td><td>${percent(r.progress)}</td><td><button class="text-link" data-student-pending="${e(r.id)}" aria-label="Ver pendências de ${e(r.name)}">${r.pending} · Ver detalhes</button></td><td>${badge(r.status)}</td><td>${portalCell(r)}</td></tr>`).join("")}</tbody></table>${!filtered.length ? '<p class="empty">Nenhum aluno encontrado.</p>' : ""}</div>` : '<div class="empty"><h3>A turma está pronta para começar.</h3><p>Importe o CSV do Canvas para publicar a primeira atualização.</p></div>'}</section>`;
 }

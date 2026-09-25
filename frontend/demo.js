@@ -54,6 +54,7 @@ const students = [
   progress: [66.67, 100, 100, 83.33, 83.33, 100][i],
   pending: [2, 0, 0, 1, 1, 0][i],
   status: ["critical", "ok", "graduated", "attention", "attention", "ok"][i],
+  portalLinked: [false, true, true, false, true, true][i],
 }));
 export function demoAPI(role) {
   return async (path, options = {}) => {

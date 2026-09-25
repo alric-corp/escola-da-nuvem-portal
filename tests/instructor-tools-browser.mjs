@@ -33,9 +33,9 @@ try {
   let role = "instructor";
   const thresholds = { kc: 70, lab: 95 };
   const students = [
-    { id: "1", name: "João Silva", email: "joao@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 2, progress: 33, status: "attention" },
-    { id: "2", name: "=HYPERLINK(\"x\")", email: "b@example.test", kc: 80, lab: 96, total: 88, completed: 3, pending: 0, progress: 100, status: "ok" },
-    { id: "3", name: "Carla Souza", email: "carla@example.test", kc: 40, lab: 50, total: 45, completed: 1, pending: 1, progress: 50, status: "critical" },
+    { id: "1", name: "João Silva", email: "joao@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 2, progress: 33, status: "attention", portalLinked: false },
+    { id: "2", name: "=HYPERLINK(\"x\")", email: "b@example.test", kc: 80, lab: 96, total: 88, completed: 3, pending: 0, progress: 100, status: "ok", portalLinked: true },
+    { id: "3", name: "Carla Souza", email: "carla@example.test", kc: 40, lab: 50, total: 45, completed: 1, pending: 1, progress: 50, status: "critical", portalLinked: true },
   ];
   const activity = (id, name, kind, state, extra = {}) => ({ id, name, kind, state, active: state !== "unreleased", points: "100", ...extra });
   const all = [
@@ -93,7 +93,7 @@ try {
   await page.getByRole("button", { name: "Exportar CSV (3)", exact: true }).click();
   let csv = await readFile(await (await download).path(), "utf8");
   assert.ok(csv.startsWith("﻿\"Nome\";\"E-mail\""));
-  assert.match(csv, /"João Silva";"joao@example\.test";"50";"100";"75";"33";"2";"Atenção"/);
+  assert.match(csv, /"João Silva";"joao@example\.test";"50";"100";"75";"33";"2";"Atenção";"Não"/);
   assert.match(csv, /"'=HYPERLINK\(""x""\)"/);
   await page.locator("#status-filter").selectOption("critical");
   download = page.waitForEvent("download");
@@ -101,6 +101,13 @@ try {
   csv = await readFile(await (await download).path(), "utf8");
   assert.equal(csv.trim().split("\r\n").length, 2);
   assert.match(csv, /Carla Souza/);
+  await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+
+  // Quem ainda não entrou no portal: coluna, filtro e contagem no cartão.
+  assert.match(await page.locator(".metric-primary").innerText(), /1 ainda não entraram no portal/);
+  assert.deepEqual((await page.locator("tbody tr td:last-child").allInnerTexts()).sort(), ["Entrou", "Entrou", "Não entrou"]);
+  await page.locator("#status-filter").selectOption("no-portal");
+  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["João Silva"]);
   await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
 
   // 10: detalhe completo do aluno.

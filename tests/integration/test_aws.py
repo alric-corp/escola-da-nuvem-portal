@@ -157,13 +157,14 @@ class AWSPersistenceTests(unittest.TestCase):
                                   "bound": True, "boundEmail": "aluno@example.test", "boundAt": found[0]["boundAt"]}])
 
         self.call("display-name", {"canvasId": "101", "displayName": "Apelido"})
-        self.assertEqual(Portal(Repository(), self.admin.user).dispatch(
-            "GET", "/cohorts/BRSA0267/report", {})["students"][0]["name"], "Apelido")
+        row = Portal(Repository(), self.admin.user).dispatch("GET", "/cohorts/BRSA0267/report", {})["students"][0]
+        self.assertEqual((row["name"], row["portalLinked"]), ("Apelido", True))
 
         self.call("unlink-student", {"canvasId": "101"})
         self.assertIsNone(self.repo.get("USER#s1", "STUDY#BRSA0267"))
         self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
         self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUDIT#")), 2)
+        self.assertEqual(self.repo.keys("COHORT#BRSA0267", "OWNER#"), [])
 
         other = Portal(Repository(), {"sub": "s2", "email": "aluno@example.test", "groups": []})
         self.assertEqual(other.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["id"], "101")
@@ -189,14 +190,16 @@ class AWSPersistenceTests(unittest.TestCase):
         from canvas import CanvasClient
         from test_canvas import BASE, FakeCanvas, course
         sm = boto3.client("secretsmanager", region_name="us-east-1")
-        arn = sm.create_secret(Name="canvas-token", SecretString='{"token": "t"}')["ARN"]
+        arn = sm.create_secret(Name="canvas-token", SecretString='{"token": "1~abcdefghij"}')["ARN"]
         self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "current": None, "canvasCourseId": "4436", "autoSync": True})
         fake = FakeCanvas({"4436": course(lab_scores=(100, 90, 50))})
-        env = {"CANVAS_SECRET_ARN": arn, "CANVAS_BASE_URL": BASE}
+        env = {"CANVAS_SECRET_ARN": arn, "CANVAS_BASE_URL": BASE, "METRICS_NAMESPACE": "portal-teste"}
         with patch.dict(os.environ, env), patch.object(canvas_sync, "CanvasClient", partial(CanvasClient, opener=fake)):
             self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "published"}})
             self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "unchanged"}})
-        self.assertEqual(fake.auth, {"Bearer t"})
+        self.assertEqual(fake.auth, {"Bearer 1~abcdefghij"})
+        metrics = boto3.client("cloudwatch", region_name="us-east-1").list_metrics(Namespace="portal-teste")["Metrics"]
+        self.assertEqual({m["MetricName"] for m in metrics}, {"CanvasTokenDaysLeft"})
         cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
         self.assertEqual(cohort["updateKind"], "canvas")
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "SYNC")["status"], "unchanged")
