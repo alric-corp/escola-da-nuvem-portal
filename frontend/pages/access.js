@@ -52,7 +52,7 @@ function studentsSection() {
 
 export function accessPage() {
   const title = heading(
-    "ADMINISTRAÇÃO DO PORTAL",
+    "",
     "Turmas e acessos",
     "Crie turmas e gerencie os acessos dos instrutores. As solicitações abaixo são de todo o portal.",
   );

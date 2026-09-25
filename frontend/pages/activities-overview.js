@@ -20,7 +20,7 @@ export function activityOverviewPage() {
     return x.name.localeCompare(y.name, "pt-BR", { sensitivity: "base" });
   });
   return `${heading(
-    "GESTÃO DA TURMA",
+    "",
     "Visão por atividade",
     "Veja onde a turma concentra pendências e notas baixas, e monte o foco a partir daqui.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',

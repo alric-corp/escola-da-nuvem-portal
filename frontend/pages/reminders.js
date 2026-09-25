@@ -2,7 +2,7 @@ import { badge, date, demo, e, errorPanel, heading, metric, percent, plural, sta
 import { activityCard, activityGroups } from "./student.js";
 
 export function senderPage() {
-  const title = heading("APOIO AO ALUNO", "Lembretes por e-mail", "Confirme seu remetente e revise cada mensagem antes de enviar.");
+  const title = heading("", "Lembretes por e-mail", "Confirme seu remetente e revise cada mensagem antes de enviar.");
   if (state.senderLoading) return title + '<section class="panel" role="status">Consultando seu remetente…</section>';
   if (state.senderError) return title + errorPanel(state.senderError, "refresh-sender");
   const s = state.sender;
@@ -13,7 +13,7 @@ export function senderPage() {
 export function pendingPage() {
   const p = state.pendingPreview;
   const title = heading(
-    "ACOMPANHAMENTO DO ALUNO",
+    "",
     p ? `Pendências de ${e(p.student.name)}` : "Pendências do aluno",
     "Pendências, notas, módulos e histórico do aluno na última publicação.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
@@ -52,7 +52,7 @@ const resultLabels = { sent: "Enviado", failed: "Falhou", skipped: "Pulado" };
 
 export function batchPage() {
   const title = heading(
-    "ACOMPANHAMENTO DA TURMA",
+    "",
     "Lembretes em lote",
     "Revise a lista e a prévia antes de enviar. Cada aluno recebe uma mensagem individual, com suas próprias pendências.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',

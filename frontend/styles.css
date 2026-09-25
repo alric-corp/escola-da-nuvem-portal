@@ -1785,7 +1785,7 @@ th {
     font-size: 0.5625rem;
   }
   .page-heading {
-    margin: 27px 0 22px;
+    margin: 20px 0 18px;
     flex-wrap: wrap;
   }
   .page-heading p {
@@ -2582,4 +2582,7 @@ details ul, .onboarding ol { padding-left: 24px; }
    ação (o histórico do aluno não tem); abaixo de 1024px a tabela já vira cards. */
 @media (min-width: 1024px) {
   .history-table:has(td.h-action) td.h-changes { white-space: normal; }
+  /* Nome de arquivo arbitrariamente longo (sem espaços) não pode empurrar "Restaurar" para
+     fora da tabela; evita quebrar palavra se houver espaço (só quebra quando precisa). */
+  .history-table:has(td.h-action) td.h-file { white-space: normal; overflow-wrap: anywhere; }
 }

@@ -32,12 +32,14 @@ const previous = { id: "p0", publishedAt: "2026-09-18T09:00:00Z", filename: "202
 // KC abaixo (1 sem nota), LAB exatamente na referência.
 const below = { id: "1", name: "Ana Teste", email: "ana@example.test", kc: 56.67, lab: 95, total: 75.8, completed: 3, pending: 1, progress: 75, status: "attention",
   activities: [activity("k1", "kc", "completed", 80), activity("k2", "kc", "completed", 33.33), activity("k3", "kc", "pending"), activity("l1", "lab", "completed", 95)] };
+// 69,96% arredonda para 70% na exibição, mas não atingiu a referência de 70% (valor bruto).
+const nearRef = { ...below, id: "3", name: "Bia Limite", email: "bia@example.test", kc: 69.96 };
 const students = [
   { ...below, portalLinked: false },
   { id: "2", name: "Maria Aparecida dos Santos Figueiredo Nascimento", email: "maria.aparecida.figueiredo@example.test", kc: 90, lab: 100, total: 95, completed: 4, pending: 0, progress: 100, status: "ok", portalLinked: true },
 ];
 
-async function open(browser, { width, role = "student", autoSync = true, now = "2026-09-25T13:00:00Z", student = below }) {
+async function open(browser, { width, role = "student", autoSync = true, now = "2026-09-25T13:00:00Z", student = below, previousFilename = previous.filename }) {
   const page = await browser.newPage({ viewport: { width, height: 800 }, timezoneId: "America/Sao_Paulo" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -50,7 +52,7 @@ async function open(browser, { width, role = "student", autoSync = true, now = "
     if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor", autoSync }] } });
     if (endpoint.endsWith("/report"))
       return route.fulfill({ json: role === "instructor"
-        ? { students, activities: student.activities, publication, history: [publication, previous], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
+        ? { students, activities: student.activities, publication, history: [publication, { ...previous, filename: previousFilename }], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
             canvasSync: { status: "unchanged", at: "2026-09-25T09:00:05Z", message: "" } }
         : { student, publication, history: [], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt } });
     return route.fulfill({ status: 404, json: { error: "não usado" } });
@@ -65,6 +67,18 @@ const insideViewport = (locator) => locator.evaluateAll((els) => els.every((el) 
 let browser;
 try {
   browser = await chromium.launch({ headless: true });
+
+  {
+    const { page, errors } = await open(browser, { width: 390, student: nearRef });
+    await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
+    const kcGoal = page.locator(".student-summary .goal").nth(0);
+    // Exibe "70%" (arredondado, 1 casa), mas o status usa o valor bruto: ainda não atingiu.
+    assert.match(await kcGoal.innerText(), /^Média em KCs\n70%/);
+    assert.doesNotMatch(await kcGoal.innerText(), /Referência atingida/);
+    assert.match(await kcGoal.innerText(), /Falta menos de 0,01 ponto|Faltam? 0,0[1-9]/);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
 
   for (const width of [375, 390, 430]) {
     // Aluno: barra inferior com os 3 itens, nome acessível completo, sem corte.
@@ -86,11 +100,16 @@ try {
     // Médias no resumo, com a distância real até a referência e plural correto.
     const goals = page.locator(".student-summary .goal");
     assert.equal(await goals.count(), 2);
-    assert.match(await goals.nth(0).innerText(), /56,67%[\s\S]*Referência: 70%[\s\S]*Faltam 13,33 pontos para a referência[\s\S]*1 KC sem nota conta como 0%/);
+    // 56,67% exibe 56,7% (1 casa, sem truncar); "Faltam X pontos" continua com o valor bruto.
+    assert.match(await goals.nth(0).innerText(), /56,7%[\s\S]*Referência: 70%[\s\S]*Faltam 13,33 pontos para a referência[\s\S]*1 KC sem nota conta como 0%/);
     assert.match(await goals.nth(1).innerText(), /95%[\s\S]*Referência atingida/);
     assert.doesNotMatch(await goals.nth(1).innerText(), /Falta|sem nota/);
     assert.equal(await page.getByText(/Foque (em|nos)/).count(), 0, "sem o alerta vermelho isolado");
     assert.equal(await page.locator(".metrics").count(), 0, "médias não aparecem duplicadas mais abaixo");
+    // Cabeçalho enxuto: só o h1 (sem eyebrow), contexto de turma continua fixo no topo.
+    assert.equal(await page.locator(".page-heading h1").count(), 1, "exatamente um h1");
+    assert.equal(await page.locator(".page-heading .eyebrow").count(), 0, "sem eyebrow redundante");
+    assert.match(await page.locator(".topline .location-context").innerText(), /Turma BRSA0267/);
     assert.ok(await page.locator(".student-summary .ring").isVisible(), `anel de progresso visível em ${width}px`);
     const kcTop = await goals.nth(0).evaluate((el) => el.getBoundingClientRect().top);
     assert.ok(kcTop < 800, `média de KC visível ao abrir em ${width}px`);
@@ -145,10 +164,39 @@ try {
     assert.ok(m.inside, `Restaurar visível em ${width}px`);
     assert.equal(m.tableScroll, false, `sem rolagem lateral da tabela em ${width}px`);
     assert.equal(m.pageScroll, false, `sem rolagem lateral da página em ${width}px`);
-    if (width >= 1024) assert.deepEqual([m.changes, m.file], ["normal", "nowrap"], "só \"O que mudou\" quebra linha");
+    // "O que mudou" e "Arquivo" quebram linha no desktop (nomes longos não empurram "Restaurar");
+    // as demais colunas continuam nowrap (regra global de tabela inalterada).
+    if (width >= 1024) assert.deepEqual([m.changes, m.file], ["normal", "normal"], "\"O que mudou\" e \"Arquivo\" quebram linha");
     assert.deepEqual(errors, []);
     await page.close();
   }
+  // "Arquivo" com nome sem espaços de vários tamanhos não pode empurrar "Restaurar" para
+  // fora, em nenhuma largura de desktop. Evita quebrar palavra havendo espaço (overflow-wrap:
+  // anywhere só entra em uso quando a palavra não cabe).
+  for (const length of [34, 50, 80]) {
+    const filename = "a".repeat(length - 4) + ".csv";
+    assert.equal(filename.length, length);
+    for (const width of [1024, 1280, 1440, 1920]) {
+      const { page, errors } = await open(browser, { width, role: "instructor", previousFilename: filename });
+      await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
+      await page.locator('.sidebar nav [data-view="history"]').click();
+      const restore = page.getByRole("button", { name: "Restaurar", exact: true });
+      await restore.waitFor();
+      const m = await page.evaluate(() => {
+        const box = document.querySelector(".history-table"), table = box.querySelector("table");
+        const b = [...box.querySelectorAll("button")].find((x) => x.textContent.trim() === "Restaurar").getBoundingClientRect(), r = box.getBoundingClientRect();
+        return { inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.right <= innerWidth,
+          tableScroll: table.scrollWidth > box.clientWidth + 1, pageScroll: document.documentElement.scrollWidth > innerWidth };
+      });
+      assert.ok(await page.locator(".history-table").getByText(filename).isVisible(), `nome de ${length} caracteres exibido em ${width}px`);
+      assert.ok(m.inside, `Restaurar visível com nome de ${length} caracteres em ${width}px`);
+      assert.equal(m.tableScroll, false, `sem rolagem lateral da tabela (${length} caracteres) em ${width}px`);
+      assert.equal(m.pageScroll, false, `sem rolagem lateral da página (${length} caracteres) em ${width}px`);
+      assert.deepEqual(errors, []);
+      await page.close();
+    }
+  }
+
   // Desktop continua com menu lateral e tabela.
   const desktop = await open(browser, { width: 1440, role: "instructor" });
   await desktop.page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();

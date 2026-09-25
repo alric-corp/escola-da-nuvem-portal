@@ -1,6 +1,6 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, personalChanges, plural, state, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, state, updateInfo } from "../ui.js";
 
 export function studentPage(name) {
   const s = state.report.student;
@@ -11,8 +11,8 @@ export function studentPage(name) {
   const focus = state.report.focus?.activityIds || [];
   const next = nextActivities(s.activities, focus);
   const thresholds = state.report.thresholds || { kc: 70, lab: 95 };
-  return `${heading("SUA JORNADA DE APRENDIZADO", `Bom ter você aqui, ${e(name)}.`, "Acompanhe suas conquistas e organize os próximos passos.")}
-  <section class="journey student-summary" aria-labelledby="summary-heading"><div class="summary-overview"><div class="summary-text"><span class="pill">TURMA ${e(state.code)}</span><h2 id="summary-heading">Seu resumo</h2><p>${s.completed} com nota · ${pending.length} sem nota · ${review.length} para revisar.</p><button class="button primary" data-view="activities">Ver minhas atividades ${icon("arrow")}</button></div><div class="ring" style="--progress:${s.progress || 0}%" role="img" aria-label="${e(percent(s.progress))} das atividades com nota"><div><strong>${percent(s.progress)}</strong><span>das atividades<br>com nota</span></div></div></div>
+  return `${heading("", `Bom ter você aqui, ${e(name)}.`, "Acompanhe suas conquistas e organize os próximos passos.")}
+  <section class="journey student-summary" aria-labelledby="summary-heading"><div class="summary-overview"><div class="summary-text"><span class="pill">TURMA ${e(state.code)}</span><h2 id="summary-heading">Seu resumo</h2><p>${s.completed} com nota · ${pending.length} sem nota · ${review.length} para revisar.</p><button class="button primary" data-view="activities">Ver minhas atividades ${icon("arrow")}</button></div><div class="ring" style="--progress:${s.progress || 0}%" role="img" aria-label="${e(percentStudent(s.progress))} das atividades com nota"><div><strong>${percentStudent(s.progress)}</strong><span>das atividades<br>com nota</span></div></div></div>
   <div class="summary-goals">${goalIndicator("Média em KCs", s.kc, thresholds.kc, pendingKc, "KC")}${goalIndicator("Média em Labs", s.lab, thresholds.lab, pendingLab, "LAB")}</div></section>
   ${updateInfo()}
   <section class="panel next-steps" aria-labelledby="pending-heading"><div class="panel-title"><div><span class="eyebrow">PRÓXIMOS PASSOS</span><h2 id="pending-heading">${focus.length ? "Foco indicado pelo instrutor" : "Por onde começar"}</h2><p class="small">${focus.length ? "Até três atividades indicadas para a turma. Aqui aparecem apenas as que estão sem nota ou podem ser revisadas por você." : "Até três atividades: primeiro as sem nota, na ordem da publicação; depois, sugestões de revisão."}</p></div></div>
@@ -23,9 +23,9 @@ export function studentPage(name) {
 <section class="panel"><h2>O que mudou nas suas notas</h2>${personalChanges(state.report.history?.find((r) => r.current)?.changes)}<button class="text-link" data-view="history">Ver meu histórico</button></section><section class="panel"><span class="eyebrow">A CADA PUBLICAÇÃO</span><h2>Seu aprendizado evolui</h2>${evolution()}<p class="small">Média de KCs e de LABs em cada publicação. Atividades novas podem mudar a média.</p></section>`;
 }
 
-export function activityCard(a) {
+export function activityCard(a, studentView = true) {
   const link = demo || !canvasLinksEnabled ? null : canvasActivityLink(a);
-  return `<div class="activity-card"><span class="activity-symbol ${a.kind}">${icon(a.kind === "kc" ? "book" : "network")}</span><div><small>${a.kind === "kc" ? "KNOWLEDGE CHECK" : "LABORATÓRIO"}</small><strong>${e(a.name)}</strong>${link ? `<a class="activity-link" href="${e(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(`${link.label}: ${a.name} (abre em nova aba)`)}">${e(link.label)} ${icon("external", 16)}</a>` : ""}</div>${a.state === "completed" ? `<div class="activity-result"><strong class="activity-grade">${percent(a.percent)}</strong>${needsReview(a) ? '<span class="review-hint">Sugestão de revisão</span>' : ""}</div>` : badge(a.state)}</div>`;
+  return `<div class="activity-card"><span class="activity-symbol ${a.kind}">${icon(a.kind === "kc" ? "book" : "network")}</span><div><small>${a.kind === "kc" ? "KNOWLEDGE CHECK" : "LABORATÓRIO"}</small><strong>${e(a.name)}</strong>${link ? `<a class="activity-link" href="${e(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(`${link.label}: ${a.name} (abre em nova aba)`)}">${e(link.label)} ${icon("external", 16)}</a>` : ""}</div>${a.state === "completed" ? `<div class="activity-result"><strong class="activity-grade">${(studentView ? percentStudent : percent)(a.percent)}</strong>${needsReview(a) ? '<span class="review-hint">Sugestão de revisão</span>' : ""}</div>` : badge(a.state)}</div>`;
 }
 
 export function evolution() {
@@ -59,7 +59,7 @@ export function activitiesPage() {
       (state.activityModule === "all" || activityModule(a) === state.activityModule) &&
       normalize(a.name).includes(normalize(state.search)),
   );
-  return `${heading("APRENDER E COLOCAR EM PRÁTICA", "Minhas atividades", "Notas registradas e atividades que ainda serão liberadas.")}${updateInfo()}${gradingHelp(thresholds)}
+  return `${heading("", "Minhas atividades", "Notas registradas e atividades que ainda serão liberadas.")}${updateInfo()}${gradingHelp(thresholds)}
   <section class="panel"><div class="table-tools activity-filters"><label for="activity-kind">Tipo de atividade <select id="activity-kind">${[
     ["all", "KCs e LABs"],
     ["kc", "Somente KCs"],
@@ -100,13 +100,13 @@ function moduleSummary(items, filtered) {
 }
 
 // filtered: a lista está filtrada (abre todos os módulos e mostra a contagem do filtro).
-export function activityGroups(activities, filtered = state.filter !== "all" || !!state.search || state.activityModule !== "all" || state.activityKind !== "all") {
+export function activityGroups(activities, filtered = state.filter !== "all" || !!state.search || state.activityModule !== "all" || state.activityKind !== "all", studentView = true) {
   const groups = groupActivities(activities);
   // Abre os módulos que pedem ação (sem nota ou para revisar); se nenhum pedir, abre o primeiro.
   const needsAction = (items) => items.some((a) => a.state === "pending" || needsReview(a));
   const anyAction = groups.some(([, items]) => needsAction(items));
   return groups.map(([name, items], i) => {
     const open = filtered || (anyAction ? needsAction(items) : i === 0);
-    return `<details class="activity-module" ${open ? "open" : ""}><summary><strong>${e(name)}</strong>${moduleSummary(items, filtered)}</summary>${items.map(activityCard).join("")}</details>`;
+    return `<details class="activity-module" ${open ? "open" : ""}><summary><strong>${e(name)}</strong>${moduleSummary(items, filtered)}</summary>${items.map((a) => activityCard(a, studentView)).join("")}</details>`;
   }).join("");
 }

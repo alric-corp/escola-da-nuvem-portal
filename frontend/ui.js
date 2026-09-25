@@ -16,6 +16,13 @@ export const percent = (value) =>
   value == null
     ? "—"
     : `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+// Percentual nas telas do próprio aluno: no máximo 1 casa decimal, sem zero à direita
+// (56,67% -> 56,7%; 70,00% -> 70%). Só a exibição arredonda; toda regra acadêmica (referência
+// atingida, quanto falta) continua usando o valor bruto sem arredondar.
+export const percentStudent = (value) =>
+  value == null
+    ? "—"
+    : `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 export const date = (value) =>
   value
     ? new Date(value).toLocaleString("pt-BR", {
@@ -56,7 +63,7 @@ export function goalIndicator(label, value, reference, pending, unit) {
         : `${shown < 2 ? "Falta" : "Faltam"} ${shown.toLocaleString("pt-BR")} ${shown < 2 ? "ponto" : "pontos"} para a referência`;
   const tone = value == null ? "neutral" : reached ? "reached" : "below";
   const fill = Math.max(0, Math.min(100, Number(value) || 0));
-  return `<article class="goal goal-${tone}"><span class="goal-label">${label}</span><strong>${percent(value)}</strong>
+  return `<article class="goal goal-${tone}"><span class="goal-label">${label}</span><strong>${percentStudent(value)}</strong>
   <div class="goal-bar" aria-hidden="true"><i style="width:${fill}%"></i><b style="left:${reference}%"></b></div>
   <p class="goal-reference">Referência: ${reference}%</p><p class="goal-status">${status}</p>${pending ? `<p class="goal-note">${plural(pending, `${unit} sem nota conta`, `${unit}s sem nota contam`)} como 0%</p>` : ""}</article>`;
 }
@@ -228,8 +235,10 @@ export function nav(id, label, symbol, short = label) {
   return `<button class="nav-item ${state.view === id ? "active" : ""}" data-view="${id}" ${state.view === id ? 'aria-current="page"' : ""}>${icon(symbol)}<span class="nav-label">${label}</span><span class="nav-short" aria-hidden="true">${short}</span></button>`;
 }
 
+// kicker: rótulo maiúsculo opcional acima do h1. O contexto da turma já aparece fixo no
+// topo (topline); o kicker só entra quando adiciona algo que o h1 e o .topline não dizem.
 export function heading(kicker, title, subtitle, action = "") {
-  return `<div class="page-heading"><div><span class="eyebrow">${kicker}</span><h1>${title}</h1><p>${subtitle}</p></div>${action}</div>`;
+  return `<div class="page-heading"><div>${kicker ? `<span class="eyebrow">${kicker}</span>` : ""}<h1>${title}</h1>${subtitle ? `<p>${subtitle}</p>` : ""}</div>${action}</div>`;
 }
 export function metric(label, value, caption, kind = "") {
   return `<article class="metric ${kind}"><span>${label}</span><strong>${value}</strong><small>${caption}</small></article>`;
@@ -243,5 +252,5 @@ export function filterMetric(label, value, caption, kind, filter) {
 export function personalChanges(changes) {
   if (!changes) return '<p class="small">Primeira publicação disponível para comparação.</p>';
   const delta = (n) => n == null ? "sem comparação" : `${n > 0 ? "+" : ""}${Number(n).toLocaleString("pt-BR")} pontos percentuais`;
-  return `<p>KCs: ${delta(changes.kc)} · LABs: ${delta(changes.lab)}</p><p>Atividades sem nota: ${e(changes.pendingBefore)} → ${e(changes.pendingAfter)}.</p>${changes.activities?.length || changes.removed?.length ? `<details><summary>Ver atividades que mudaram</summary><ul>${(changes.activities || []).map((a) => `<li><strong>${e(a.name)}</strong>: ${a.previousState ? `${e(labels[a.previousState])} ${percent(a.before)}` : "Adicionada"} → ${e(labels[a.state])} ${percent(a.after)}</li>`).join("")}${(changes.removed || []).map((name) => `<li>${e(name)}: removida desta publicação.</li>`).join("")}</ul></details>` : '<p class="small">Nenhuma alteração nas atividades.</p>'}`;
+  return `<p>KCs: ${delta(changes.kc)} · LABs: ${delta(changes.lab)}</p><p>Atividades sem nota: ${e(changes.pendingBefore)} → ${e(changes.pendingAfter)}.</p>${changes.activities?.length || changes.removed?.length ? `<details><summary>Ver atividades que mudaram</summary><ul>${(changes.activities || []).map((a) => `<li><strong>${e(a.name)}</strong>: ${a.previousState ? `${e(labels[a.previousState])} ${percentStudent(a.before)}` : "Adicionada"} → ${e(labels[a.state])} ${percentStudent(a.after)}</li>`).join("")}${(changes.removed || []).map((name) => `<li>${e(name)}: removida desta publicação.</li>`).join("")}</ul></details>` : '<p class="small">Nenhuma alteração nas atividades.</p>'}`;
 }
