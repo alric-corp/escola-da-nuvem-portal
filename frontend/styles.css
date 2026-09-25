@@ -2444,7 +2444,7 @@ details ul, .onboarding ol { padding-left: 24px; }
   .student-table tr {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas: "name name" "status portal" "kc lab" "pending pending";
+    grid-template-areas: "name name" "status portal" "kc lab" "pending actions";
     gap: 10px 12px;
     padding: 14px;
     border: 1px solid var(--border);
@@ -2468,8 +2468,16 @@ details ul, .onboarding ol { padding-left: 24px; }
     color: var(--text-secondary);
   }
   .student-table .cell-progress { display: none; }
-  .student-table .cell-pending { grid-area: pending; }
-  .student-table .cell-pending .text-link {
+  .student-table .cell-pending { grid-area: pending; align-self: end; }
+  .student-table .cell-pending::before {
+    content: attr(data-label);
+    display: block;
+    font-size: .75rem;
+    color: var(--text-secondary);
+  }
+  .student-table .cell-pending .pending-count { font-size: 1.125rem; color: var(--text-primary); }
+  .student-table .cell-actions { grid-area: actions; align-self: end; }
+  .student-table .cell-actions .text-link {
     gap: 0;
     width: 100%;
     justify-content: center;
@@ -2477,14 +2485,33 @@ details ul, .onboarding ol { padding-left: 24px; }
     border-radius: 8px;
     font-size: .875rem;
   }
-  .student-table .pending-unit { display: inline; }
-  .student-table .pending-count { white-space: pre; }
-  /* Sem pendências, o card mostra só "Ver detalhes" (o zero não informa nada). */
-  .student-table .pending-count.is-zero { display: none; }
   /* Sem o aviso "Não entrou", a situação ocupa a linha toda e não quebra o rótulo. */
   .student-table tr:has(.portal-ok) .cell-status { grid-column: 1 / -1; }
   .student-table tr:has(.portal-ok) .cell-portal { display: none; }
   .student-table .cell-status .badge { white-space: nowrap; }
+}
+/* Desktop (>=1024px): coluna Ações separada, cabeçalho fixo ao rolar, números alinhados à
+   direita, "Não entrou"/badges em uma linha só e destaque de linha no hover/foco. */
+@media (min-width: 1024px) {
+  /* .table-scroll tem overflow:auto (protege outras tabelas contra rolagem lateral), mas
+     isso vira o "ancestral com rolagem" do sticky: como essa caixa não rola por si (é a
+     página que rola), o cabeçalho fixo nunca gruda. Com o nome (cell-name) já quebrando
+     linha, a tabela não precisa mais da própria rolagem, então é seguro devolver a rolagem
+     para a página aqui. */
+  .student-table { overflow: visible; }
+  .student-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-1); }
+  .student-table .cell-kc, .student-table .cell-lab, .student-table .cell-progress, .student-table .cell-pending,
+  .student-table th.cell-kc, .student-table th.cell-lab, .student-table th.cell-progress, .student-table th.cell-pending {
+    text-align: right;
+  }
+  /* O nome é a coluna mais larga da tabela; deixá-la quebrar (em vez de nowrap, como as
+     demais) evita que um nome real longo force rolagem horizontal na tabela inteira só
+     para manter os badges de Situação/Portal em uma linha. */
+  .student-table .cell-name { white-space: normal; overflow-wrap: anywhere; }
+  /* "Médias na referência" e "Não entrou" às vezes quebravam linha na tabela (.main .badge
+     tem white-space: normal, e nada contrariava isso acima de 1024px). */
+  .student-table .cell-status .badge, .student-table .cell-portal .badge { white-space: nowrap; }
+  .student-table tbody tr:hover, .student-table tbody tr:focus-within { background: var(--surface-1); }
 }
 
 /* Título da página com ações: sem espaço, as ações descem para baixo do título em vez de

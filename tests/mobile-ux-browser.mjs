@@ -39,7 +39,7 @@ const students = [
   { id: "2", name: "Maria Aparecida dos Santos Figueiredo Nascimento", email: "maria.aparecida.figueiredo@example.test", kc: 90, lab: 100, total: 95, completed: 4, pending: 0, progress: 100, status: "ok", portalLinked: true },
 ];
 
-async function open(browser, { width, role = "student", autoSync = true, now = "2026-09-25T13:00:00Z", student = below, previousFilename = previous.filename }) {
+async function open(browser, { width, role = "student", autoSync = true, now = "2026-09-25T13:00:00Z", student = below, previousFilename = previous.filename, studentsList = students }) {
   const page = await browser.newPage({ viewport: { width, height: 800 }, timezoneId: "America/Sao_Paulo" });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -52,7 +52,7 @@ async function open(browser, { width, role = "student", autoSync = true, now = "
     if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role === "instructor", autoSync }] } });
     if (endpoint.endsWith("/report"))
       return route.fulfill({ json: role === "instructor"
-        ? { students, activities: student.activities, publication, history: [publication, { ...previous, filename: previousFilename }], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
+        ? { students: studentsList, activities: student.activities, publication, history: [publication, { ...previous, filename: previousFilename }], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt,
             canvasSync: { status: "unchanged", at: "2026-09-25T09:00:05Z", message: "" } }
         : { student, publication, history: [], thresholds, focus: { activityIds: [], version: null }, updateKind: "canvas", updatedAt: publication.publishedAt } });
     return route.fulfill({ status: 404, json: { error: "não usado" } });
@@ -130,11 +130,15 @@ try {
       assert.ok(await teacher.page.getByRole("button", { name, exact: true }).isVisible(), `${name} visível em ${width}px`);
     const rows = teacher.page.locator(".student-table tbody tr");
     assert.equal(await rows.count(), 2);
-    for (const selector of [".cell-name", ".cell-status .badge", ".cell-kc", ".cell-lab", ".cell-pending .text-link"])
+    for (const selector of [".cell-name", ".cell-status .badge", ".cell-kc", ".cell-lab", ".cell-actions .text-link"])
       assert.ok(await insideViewport(rows.locator(selector)), `${selector} dentro da tela em ${width}px`);
     assert.match(await rows.nth(0).innerText(), /Não entrou/);
-    assert.match(await rows.nth(0).locator(".cell-pending").innerText(), /^1 sem nota ·\s+Ver detalhes$/);
-    assert.equal(await rows.nth(1).locator(".cell-pending").innerText(), "Ver detalhes", "zero pendências não aparece no card");
+    // "Sem nota" é só o número, com rótulo acima via ::before (como KCs/Labs); "Ver detalhes"
+    // fica na coluna/área "Ações", separada.
+    assert.equal(await rows.nth(0).locator(".cell-pending").innerText(), "1");
+    assert.equal(await rows.nth(0).locator(".cell-pending").evaluate((el) => getComputedStyle(el, "::before").content), '"Sem nota"');
+    assert.equal(await rows.nth(0).locator(".cell-actions").innerText(), "Ver detalhes");
+    assert.equal(await rows.nth(1).locator(".cell-pending").innerText(), "0");
     assert.equal(await rows.nth(1).locator(".cell-portal").isVisible(), false, "\"Entrou\" não ocupa espaço no card");
     assert.equal(await teacher.page.getByRole("button", { name: "Ver pendências de Ana Teste" }).count(), 1);
     assert.match(await teacher.page.locator(".update-line").innerText(), /Última verificação:?\s*25\/09\/2026, 06:00 · sem mudanças/);
@@ -195,6 +199,59 @@ try {
       assert.deepEqual(errors, []);
       await page.close();
     }
+  }
+
+  // Painel do instrutor no desktop: badges de situação ("Médias na referência", "Atenção",
+  // "Crítico") e o texto da coluna Portal ("Não entrou") não podem quebrar linha; a coluna
+  // "Ações" existe e "Ver detalhes" continua dentro da tela; a tabela não precisa de rolagem
+  // própria mesmo com o nome real mais longo já visto em produção (58 caracteres).
+  const realLongName = "Allysson Borges - Allysson Roberto Borges Lima De Moraes";
+  for (const width of [1024, 1280, 1440, 1500, 1600, 1920]) {
+    const { page, errors } = await open(browser, { width, role: "instructor", studentsList: [{ ...below, name: realLongName, portalLinked: false }, students[1]] });
+    await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
+    const oneLine = (loc) => loc.evaluateAll((els) => els.every((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getClientRects().length <= 1;
+    }));
+    assert.ok(await oneLine(page.locator(".student-table .cell-status .badge")), `badges de situação em uma linha em ${width}px`);
+    assert.ok(await oneLine(page.locator(".student-table .cell-portal .badge")), `"Não entrou" em uma linha em ${width}px`);
+    assert.equal(await page.locator("th.cell-actions").innerText(), "Ações", `coluna Ações existe em ${width}px`);
+    assert.ok(await insideViewport(page.locator(".cell-actions .text-link")), `Ver detalhes visível em ${width}px`);
+    // "Sem nota" contém só o número (sem "· Ver detalhes" junto).
+    assert.match(await page.locator("tbody td.cell-pending").first().innerText(), /^\d+$/, `Sem nota só com o número em ${width}px`);
+    const scroll = await page.evaluate(() => { const box = document.querySelector(".student-table"); return box.scrollWidth > box.clientWidth + 1; });
+    assert.equal(scroll, false, `sem rolagem própria da tabela (nome de 58 caracteres) em ${width}px`);
+    assert.ok(await noHorizontalScroll(page), `sem rolagem lateral da página em ${width}px`);
+    assert.deepEqual(errors, []);
+    await page.close();
+  }
+
+  // Alinhamento numérico e cabeçalho fixo ao rolar (desktop). Lista maior para garantir
+  // conteúdo suficiente para rolar de verdade (poucos alunos cabem inteiros na tela).
+  {
+    const manyStudents = Array.from({ length: 18 }, (_, i) => ({ ...students[i % 2], id: `many${i}`, name: `Aluno Teste ${i}` }));
+    const { page, errors } = await open(browser, { width: 1440, role: "instructor", studentsList: manyStudents });
+    await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
+    for (const cls of ["cell-kc", "cell-lab", "cell-progress", "cell-pending"])
+      assert.equal(await page.locator(`.student-table td.${cls}`).first().evaluate((el) => getComputedStyle(el).textAlign), "right", `${cls} alinhado à direita`);
+    await page.locator(".student-table").scrollIntoViewIfNeeded();
+    const scrollBefore = await page.evaluate(() => scrollY);
+    await page.evaluate(() => scrollBy(0, 600));
+    const scrollAfter = await page.evaluate(() => scrollY);
+    assert.ok(scrollAfter > scrollBefore, "a página realmente rolou (não é um falso positivo)");
+    const top = await page.locator(".student-table thead th").first().evaluate((el) => el.getBoundingClientRect().top);
+    assert.ok(top >= 0 && top < 100, `cabeçalho continua visível perto do topo após rolar (top=${top})`);
+    // Hover/foco: a linha ganha destaque, sem virar link (nenhuma tag <a> na linha).
+    const row = page.locator(".student-table tbody tr").first();
+    const base = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    await row.locator(".cell-actions .text-link").focus();
+    const focused = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    assert.notEqual(base, focused, "linha destacada com foco no elemento interativo");
+    assert.equal(await row.locator("a").count(), 0, "linha não vira link");
+    assert.ok(await noHorizontalScroll(page));
+    assert.deepEqual(errors, []);
+    await page.close();
   }
 
   // Desktop continua com menu lateral e tabela.
