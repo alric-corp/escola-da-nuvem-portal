@@ -10,6 +10,8 @@ mock_provider "aws" {
 variables {
   aws_account_id       = "123456789012"
   cognito_sender_email = "portal@example.test"
+  # Fixo aqui: o terraform.tfvars local (produção) liga o agendamento e não pode mudar o teste.
+  canvas_sync_enabled = false
 }
 
 run "private_storage_and_authenticated_api" {
@@ -154,5 +156,13 @@ run "private_storage_and_authenticated_api" {
   assert {
     condition     = aws_cloudwatch_metric_alarm.canvas_sync_errors.metric_name == "Errors" && length(aws_cloudwatch_metric_alarm.canvas_sync_errors.alarm_actions) == 1
     error_message = "Falhas da atualização pelo Canvas precisam acionar o alarme."
+  }
+
+  assert {
+    condition = alltrue([
+      for alarm in [aws_cloudwatch_metric_alarm.api_5xx, aws_cloudwatch_metric_alarm.auth_trigger_errors, aws_cloudwatch_metric_alarm.reminder_events_errors] :
+      length(alarm.alarm_actions) == 1 && alarm.treat_missing_data == "notBreaching"
+    ]) && aws_cloudwatch_metric_alarm.api_5xx.metric_name == "5xx" && aws_cloudwatch_metric_alarm.auth_trigger_errors.threshold == 1
+    error_message = "Erros 5xx da API e falhas do login e dos eventos de e-mail precisam avisar por e-mail."
   }
 }

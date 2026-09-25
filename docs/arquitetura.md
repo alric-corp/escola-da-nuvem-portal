@@ -36,6 +36,7 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | Persistência | `backend/repository.py` | `transaction()` usa comparação do JSON serializado como lock otimista. |
 | Lembretes | `backend/reminders.py`, `backend/delivery.py`, `infra/terraform/reminders.tf` | Envio sem retry automático, individual ou em lote. Eventos SES gravados por `messageId`. |
 | Atualização pelo Canvas | `backend/canvas.py`, `backend/canvas_sync.py`, `infra/terraform/canvas-sync.tf` | Às 6h e 18h, para turmas com `autoSync`: lê a API do Canvas, monta o mesmo CSV da exportação e publica como o fluxo manual, sem revisão humana. Não publica se nada mudou nem se a turma vier vazia ou com menos de 80% dos alunos atuais. Falha aciona alarme por e-mail. |
+| Alarmes | `infra/terraform/monitoring.tf`, `infra/terraform/canvas-sync.tf` | E-mail (tópico SNS `alerts`) quando a API responde 3 ou mais erros 5xx em 15 minutos, quando o gatilho de login do Cognito falha (ninguém consegue entrar), quando o processamento de eventos do SES falha e quando a atualização pelo Canvas falha. |
 | Retenção | `infra/terraform/storage.tf` | Prévias não publicadas expiram em 30 dias (tag `portal-status=draft` no S3 + TTL `expiresAt` no DynamoDB); versões antigas do bucket, em 90. |
 
 ## Autenticação de cada requisição
