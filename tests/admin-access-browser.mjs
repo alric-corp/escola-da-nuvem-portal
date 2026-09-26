@@ -87,8 +87,11 @@ try {
   await page.getByText("Aprovada", { exact: true }).waitFor();
   await page.locator("#requests-filter").selectOption("pending");
 
-  // Recusar solicitação pendente.
+  // Recusar solicitação pendente. A espera pela resposta do mock (o contador sobe antes do fulfill)
+  // é criada antes do clique, para não perder uma requisição rápida.
+  const rejected = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/requests/t1/reject"));
   await page.locator('[data-reject="t1"]').click();
+  await rejected;
   assert.equal(rejectCalls, 1);
   await page.locator("#requests-filter").selectOption("all");
   await page.getByText("Recusada", { exact: true }).waitFor();
@@ -97,7 +100,9 @@ try {
   await page.locator("#student-query").fill("ana");
   await page.getByRole("button", { name: "Buscar", exact: true }).click();
   await page.getByText("ana@example.test", { exact: true }).first().waitFor();
+  const unlinked = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/unlink-student"));
   await page.locator('[data-unlink="101"]').click();
+  await unlinked;
   assert.equal(unlinkCalls, 1);
   await page.getByText("Sem vínculo", { exact: true }).waitFor();
 
