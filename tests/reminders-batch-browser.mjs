@@ -81,7 +81,11 @@ try {
   assert.match(await page.locator("tbody").first().innerText(), /Sem e-mail no Canvas/);
   await page.getByText("Olá, Ana Teste!", { exact: true }).waitFor();
 
+  // O envio é assíncrono: espera a resposta do mock (sendCalls já foi incrementado antes do
+  // fulfill) em vez de conferir o contador logo após o clique.
+  const sent = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/send-reminders"));
   await page.getByRole("button", { name: "Enviar para 1 aluno", exact: true }).click();
+  await sent;
   assert.equal(sendCalls, 1);
   await page.getByText("1 enviado · 1 pulado · 0 com falha.", { exact: true }).waitFor();
   assert.match(await page.locator("tbody").innerText(), /Ana Teste[\s\S]*Enviado/);
