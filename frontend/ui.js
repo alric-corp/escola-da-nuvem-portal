@@ -82,6 +82,8 @@ export const icon = (name, size = 20) =>
       network:
         '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/>',
       out: '<path d="M9 4H4v16h5m0-8h12m-4-4 4 4-4 4"/>',
+      message: '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8m-8 3h5"/>',
+      inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/>',
     }[name] || ""
   }</svg>`;
 export const demo =
@@ -139,6 +141,14 @@ export let state = {
   // "Visualizar como aluno": { code, studentId, name } só nesta aba (sessionStorage), nunca em
   // avanca.context. O admin continua autenticado como admin; o servidor revalida a cada abertura.
   studentView: null,
+  // Feedback: rascunho do formulário (preservado entre renderizações), página de origem e listas
+  // paginadas pelo backend.
+  feedbackDraft: { type: "", title: "", description: "" },
+  feedbackOrigin: "",
+  feedbackSending: false,
+  feedbackSent: false,
+  myFeedback: { items: [], nextCursor: null, loading: false, error: "" },
+  adminFeedback: { items: [], nextCursor: null, summary: null, loading: false, error: "", filters: { status: "", type: "", cohort: "" }, selectedId: null },
   classFilter: "all",
   classSearch: "",
 };
@@ -237,6 +247,8 @@ export function pageLabel() {
       import: "Atualizar notas",
       access: "Turmas e acessos",
       reminders: "Lembretes",
+      feedback: "Feedback",
+      "admin-feedback": "Feedbacks",
     }[state.view] || "Meu painel"
   );
 }

@@ -210,6 +210,39 @@ class AWSPersistenceTests(unittest.TestCase):
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA"), current)
         self.assertIsNotNone(self.repo.get("COHORT#BRSA0267", "PUB#" + legacy["id"]))
 
+    def test_feedback_pagination_dedup_rate_limit_and_status_on_real_services(self):
+        from datetime import datetime, timedelta, timezone
+        import feedback as fb
+        student = Portal(self.repo, {"sub": "s1", "email": "aluno@example.test", "groups": []})
+        at = datetime(2026, 9, 26, 12, tzinfo=timezone.utc)
+
+        def send(title, when):
+            with patch("feedback.clock", return_value=when):
+                return student.dispatch("POST", "/feedback", {"type": "BUG", "title": title, "description": "Descrição do problema."})
+        ids = [send(f"Relato {i}", at + timedelta(minutes=i))["feedback"]["id"] for i in range(5)]
+        self.assertEqual(send("Relato 0", at + timedelta(minutes=6))["feedback"]["id"], ids[0])  # duplicado, sem consumir
+        with self.assertRaises(APIError) as err:
+            send("Sexto", at + timedelta(minutes=7))
+        self.assertEqual(err.exception.status, 429)
+        rate_pk, rate_sk, _ = fb.rate_key("s1", at)
+        self.assertEqual(self.repo.counter(rate_pk, rate_sk), {"count": 5})
+        raw = boto3.client("dynamodb", region_name="us-east-1").get_item(TableName="portal-test", Key={"PK": {"S": rate_pk}, "SK": {"S": rate_sk}})["Item"]
+        self.assertIn("expiresAt", raw)  # TTL no contador
+        # Dedup expirado pela data mas ainda presente (o TTL real é assíncrono): substituído por condição.
+        again = send("Relato 0", at + timedelta(hours=1, minutes=1))
+        self.assertFalse(again["duplicate"])
+        page1 = student.dispatch("GET", "/feedback", {}, {"limit": "4"})
+        page2 = student.dispatch("GET", "/feedback", {}, {"limit": "4", "cursor": page1["nextCursor"]})
+        self.assertEqual([f["id"] for f in page1["items"] + page2["items"]], sorted(ids + [again["feedback"]["id"]], reverse=True))
+        self.assertIsNone(page2["nextCursor"])
+        self.admin.dispatch("POST", f"/admin/feedback/{ids[0]}/status", {"status": "RESOLVED", "expectedStatus": "NEW"})
+        with self.assertRaises(APIError) as err:
+            self.admin.dispatch("POST", f"/admin/feedback/{ids[0]}/status", {"status": "ARCHIVED", "expectedStatus": "NEW"})
+        self.assertEqual(err.exception.status, 409)
+        listed = self.admin.dispatch("GET", "/admin/feedback", {}, {})
+        self.assertEqual(listed["summary"], {"NEW": 5, "IN_REVIEW": 0, "RESOLVED": 1, "ARCHIVED": 0})
+        self.assertEqual(len(listed["items"]), 6)
+
     def test_draft_retention_tags_and_ttl_on_real_services(self):
         s3 = boto3.client("s3", region_name="us-east-1")
         db = boto3.client("dynamodb", region_name="us-east-1")

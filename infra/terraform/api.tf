@@ -107,7 +107,8 @@ resource "aws_apigatewayv2_route" "portal" {
     "POST /cohorts/{code}/students-search", "POST /cohorts/{code}/unlink-student",
     "POST /cohorts/{code}/student-view",
     "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject",
-    "POST /cohorts/{code}/settings"
+    "POST /cohorts/{code}/settings",
+    "POST /feedback", "GET /feedback", "GET /admin/feedback", "POST /admin/feedback/{id}/status"
   ])
   api_id               = aws_apigatewayv2_api.portal.id
   route_key            = each.value

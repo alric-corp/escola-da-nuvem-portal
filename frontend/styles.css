@@ -2659,3 +2659,64 @@ details ul, .onboarding ol { padding-left: 24px; }
 @media (max-width: 600px) {
   .integrity-grid { grid-template-columns: 1fr; gap: 10px; }
 }
+
+/* Feedback da plataforma (aluno) e área Feedbacks (admin). Texto do usuário sempre como texto:
+   quebras de linha preservadas com pre-wrap, palavras longas quebram sem rolagem lateral. */
+.feedback-form-panel form { display: grid; gap: 6px; }
+.feedback-origin { margin: 0 0 8px; font-size: .8125rem; color: var(--text-secondary); }
+.feedback-types { display: flex; flex-wrap: wrap; gap: 8px; border: 0; margin: 0 0 12px; padding: 0; min-width: 0; }
+.feedback-types legend { padding: 0; margin-bottom: 8px; font-weight: 600; }
+.fb-type-option { position: relative; }
+.fb-type-option input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.fb-type-option span { display: inline-flex; align-items: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-1); }
+.fb-type-option input:checked + span { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); color: var(--primary-hover); font-weight: 600; }
+.fb-type-option input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+.fb-field { display: grid; gap: 6px; font-weight: 600; }
+.fb-field input, .fb-field textarea { width: 100%; min-height: 44px; font: inherit; font-weight: 400; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); box-sizing: border-box; }
+.fb-field textarea { resize: vertical; min-height: 140px; }
+.fb-count { justify-self: end; font-size: .75rem; color: var(--text-secondary); margin-bottom: 8px; }
+.feedback-success { margin: 4px 0; color: var(--success); font-weight: 600; }
+.feedback-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.feedback-card { display: grid; gap: 6px; width: 100%; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-1); color: inherit; font: inherit; text-align: left; min-width: 0; box-sizing: border-box; }
+button.feedback-card { cursor: pointer; min-height: 44px; }
+button.feedback-card:hover, button.feedback-card:focus-visible { border-color: var(--primary); }
+.feedback-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fb-type { font-size: .8125rem; font-weight: 600; color: var(--text-secondary); }
+.fb-title { overflow-wrap: anywhere; }
+.feedback-card small { color: var(--text-secondary); overflow-wrap: anywhere; }
+.fb-status { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .75rem; font-weight: 600; border: 1px solid var(--border); white-space: nowrap; }
+.fb-status-new { color: var(--primary-hover); border-color: var(--primary); }
+.fb-status-in_review { color: var(--warning); border-color: var(--warning); }
+.fb-status-resolved { color: var(--success); border-color: var(--success); }
+.fb-status-archived { color: var(--text-secondary); }
+.fb-more { margin-top: 12px; min-height: 44px; }
+.fb-filters { flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.fb-filters label { display: grid; gap: 4px; font-size: .8125rem; min-width: 0; }
+.fb-filters select, .fb-actions select { min-height: 44px; max-width: 100%; }
+.fb-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.fb-detail .fb-title { margin: 10px 0 8px; }
+.fb-description { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; margin: 0 0 16px; }
+.fb-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 0 0 18px; }
+.fb-facts dt { font-size: .75rem; color: var(--text-secondary); }
+.fb-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.fb-facts code { font-size: .75rem; overflow-wrap: anywhere; }
+.fb-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.fb-actions label { display: grid; gap: 4px; font-size: .8125rem; }
+.fb-actions .button, .fb-detail .text-link { min-height: 44px; }
+.footer-feedback { min-height: 44px; }
+@media (max-width: 600px) {
+  .fb-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fb-facts { grid-template-columns: 1fr; }
+  .fb-filters label, .fb-filters select, .fb-actions label, .fb-actions select, .fb-actions .button { width: 100%; }
+  .fb-type-option { flex: 1 1 calc(50% - 8px); }
+  .fb-type-option span { width: 100%; justify-content: center; box-sizing: border-box; }
+}
+/* Barra inferior com 6 itens (administrador, com Feedbacks): mesmo ajuste compacto dos 320px,
+   para que os rótulos não quebrem no meio da palavra. */
+@media (max-width: 760px) {
+  .sidebar nav:has(> .nav-item:nth-child(6)) { padding-left: 2px; padding-right: 2px; gap: 0; }
+  .sidebar nav:has(> .nav-item:nth-child(6)) .nav-item { padding: 6px 0; font-size: .625rem; }
+  .sidebar nav:has(> .nav-item:nth-child(6)) .nav-short { overflow-wrap: normal; }
+}

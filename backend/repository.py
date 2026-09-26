@@ -41,6 +41,23 @@ class Repository:
                 return items
             args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
 
+    def page(self, pk, prefix, limit, after=None):
+        """Uma página da partição do maior SK para o menor (com SK ordenável por data, do mais
+        recente para o mais antigo), começando depois de `after` (SK exclusivo).
+        Devolve ([(sk, dados)], fim_da_partição)."""
+        from boto3.dynamodb.conditions import Key
+        args = {"KeyConditionExpression": Key("PK").eq(pk) & Key("SK").begins_with(prefix),
+                "ScanIndexForward": False, "Limit": limit, "ConsistentRead": True}
+        if after:
+            args["ExclusiveStartKey"] = {"PK": pk, "SK": after}
+        result = self.table.query(**args)
+        return [(i["SK"], self.decode(i)) for i in result["Items"]], "LastEvaluatedKey" not in result
+
+    def counter(self, pk, sk):
+        """Atributos numéricos de um item contador (gravado por `transaction(..., counters)`)."""
+        item = self.table.get_item(Key={"PK": pk, "SK": sk}, ConsistentRead=True).get("Item") or {}
+        return {k: int(v) for k, v in item.items() if k not in ("PK", "SK", "data", "expiresAt")}
+
     def keys(self, pk, prefix):
         """Só as chaves de ordenação (SK) que começam com o prefixo, sem ler os dados."""
         from boto3.dynamodb.conditions import Key
@@ -86,9 +103,15 @@ class Repository:
         # com chaves em ordens diferentes.
         return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
-    def transaction(self, writes):
+    def transaction(self, writes, counters=()):
+        """Escritas atômicas. Cada escrita é (pk, sk, dados, esperado[, expiresAt]): dados None
+        apaga; esperado None exige item inexistente, senão exige o item igual a `esperado`.
+        Cada contador é (pk, sk, {atributo: incremento}, (atributo, máximo) | None, expiresAt | None):
+        soma atômica, e com máximo só aplica se o atributo ainda estiver abaixo dele."""
         actions = []
-        for pk, sk, data, expected in writes:
+        for write in writes:
+            pk, sk, data, expected = write[:4]
+            expires_at = write[4] if len(write) > 4 else None
             action = {"TableName": self.table.name, "Item": {
                 "PK": {"S": pk}, "SK": {"S": sk}, "data": {"S": self._encode(data)}},
                 "ConditionExpression": "attribute_not_exists(PK)" if expected is None else "#d = :old"}
@@ -103,7 +126,22 @@ class Repository:
                 del action["Item"]
                 actions.append({"Delete": action})
             else:
+                if expires_at:
+                    action["Item"]["expiresAt"] = {"N": str(int(expires_at))}
                 actions.append({"Put": action})
+        for pk, sk, deltas, limit, expires_at in counters:
+            names = {f"#c{i}": name for i, name in enumerate(deltas)}
+            values = {f":c{i}": {"N": str(int(delta))} for i, delta in enumerate(deltas.values())}
+            expression = "ADD " + ", ".join(f"#c{i} :c{i}" for i in range(len(deltas)))
+            if expires_at:
+                expression += " SET expiresAt = :exp"
+                values[":exp"] = {"N": str(int(expires_at))}
+            action = {"TableName": self.table.name, "Key": {"PK": {"S": pk}, "SK": {"S": sk}},
+                      "UpdateExpression": expression, "ExpressionAttributeNames": names, "ExpressionAttributeValues": values}
+            if limit:
+                names["#lim"], values[":max"] = limit[0], {"N": str(int(limit[1]))}
+                action["ConditionExpression"] = "attribute_not_exists(#lim) OR #lim < :max"
+            actions.append({"Update": action})
         try:
             self.db.transact_write_items(TransactItems=actions)
         except self.db.exceptions.TransactionCanceledException:

@@ -16,6 +16,7 @@ from reminders import SESMailer, SendFailure, message_for
 from changes import snapshot_changes, change_counts, student_changes, student_history
 from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
 from integrity import check as integrity_check
+import feedback
 
 
 class APIError(Exception):
@@ -206,9 +207,14 @@ class Portal:
                 "instructorCandidate": self.user["email"].rsplit("@", 1)[-1] == self.domain,
                 "request": self.repo.get("REQUESTS", self.uid)}
 
-    def dispatch(self, method, path, body):
+    def dispatch(self, method, path, body, query=None):
         if method == "GET" and path == "/me":
             return self.me()
+        if path in ("/feedback", "/admin/feedback") or path.startswith("/admin/feedback/"):
+            try:
+                return self._feedback_route(method, path, body, query or {})
+            except feedback.Invalid as err:
+                raise APIError(400, str(err)) from None
         if path == "/access-request" and method == "POST":
             require(self.user["email"].rsplit("@", 1)[-1] == self.domain,
                     403, "Somente e-mails institucionais confirmados podem solicitar acesso de instrutor.")
@@ -300,6 +306,135 @@ class Portal:
         if operation == "report" and method == "GET":
             return self._report(code, cohort, pk, teach)
         raise APIError(404, "Rota não encontrada.")
+
+    # Feedback da plataforma (feedback.py). Qualquer usuário autenticado envia e lê os próprios;
+    # só admin lista todos e muda o status. Autor, datas, status e vínculo vêm do servidor.
+    def _feedback_route(self, method, path, body, query):
+        if path == "/feedback" and method == "POST":
+            return self._create_feedback(body)
+        if path == "/feedback" and method == "GET":
+            require(set(query) <= {"limit", "cursor"}, 400, "Parâmetros inválidos.")
+            items, cursor = self._feedback_page(feedback.page_size(query.get("limit"), "mine"),
+                                                feedback.decode_cursor(query.get("cursor")),
+                                                lambda item: item["createdBy"] == self.uid)
+            return {"items": [feedback.own_view(i) for i in items], "nextCursor": cursor}
+        require(self.admin)
+        if path == "/admin/feedback" and method == "GET":
+            return self._admin_feedback(query)
+        match = re.fullmatch(r"/admin/feedback/([^/]+)/status", path)
+        if match and method == "POST":
+            return self._feedback_status(match.group(1), body)
+        raise APIError(404, "Rota não encontrada.")
+
+    def _feedback_page(self, limit, after_id, keep):
+        """Até `limit` feedbacks que passam em `keep`, do mais recente ao mais antigo. O próximo
+        cursor é sempre o id do último item devolvido ao próprio chamador, nunca de outro usuário."""
+        after = "FEEDBACK#" + after_id if after_id else None
+        found = []
+        while True:
+            rows, done = self.repo.page("FEEDBACK", "FEEDBACK#", max(limit * 2, 50), after)
+            for sk, item in rows:
+                after = sk
+                if keep(item):
+                    found.append(item)
+                    if len(found) > limit:
+                        return found[:limit], feedback.encode_cursor(found[limit - 1]["id"])
+            if done or not rows:
+                return found, None
+
+    def _create_feedback(self, body):
+        data = feedback.clean_new(body)
+        canvas_id = publication_id = None
+        if data["cohort"]:
+            cohort = self.cohort(data["cohort"])
+            student = None
+            if cohort.get("current"):
+                # Só leitura: o vínculo (bind) continua sendo criado apenas pelo relatório do aluno.
+                student = self.student(data["cohort"], self.snapshot(self.publication(data["cohort"], cohort["current"])))
+            require(student is not None or self.can_teach(data["cohort"]), 403, "Você não participa desta turma.")
+            canvas_id, publication_id = (student or {}).get("id"), cohort.get("current")
+        at = feedback.clock()
+        created_at = at.isoformat()
+        dedup = ("FEEDBACK-DEDUP", f"{self.uid}#{feedback.content_hash(self.uid, data)}")
+        active = lambda d: d is not None and d["expiresAt"] > at.timestamp()
+        previous = self.repo.get(*dedup)
+        if active(previous):
+            return self._duplicate_feedback(previous)
+        item = {"id": feedback.new_id(at), **data, "status": "NEW", "createdAt": created_at, "createdBy": self.uid,
+                "createdByEmail": self.user["email"], "canvasId": canvas_id, "publicationId": publication_id,
+                "updatedAt": created_at, "updatedBy": self.uid,
+                "statusHistory": [{"status": "NEW", "by": self.uid, "at": created_at}]}
+        expires = (at + feedback.DEDUP_WINDOW).timestamp()
+        rate_pk, rate_sk, rate_expires = feedback.rate_key(self.uid, at)
+        try:
+            # Feedback, marca de duplicidade e contadores juntos: ou tudo entra, ou nada. Um dedup
+            # expirado mas ainda não removido pelo TTL é substituído (condição: igual ao lido).
+            self.repo.transaction(
+                [("FEEDBACK", "FEEDBACK#" + item["id"], item, None),
+                 (*dedup, {"feedbackId": item["id"], "expiresAt": expires}, previous, int(expires) + 60)],
+                counters=[(rate_pk, rate_sk, {"count": 1}, ("count", feedback.RATE_LIMIT), rate_expires),
+                          ("FEEDBACK-STATS", "ALL", {"NEW": 1}, None, None)])
+        except Conflict:
+            again = self.repo.get(*dedup)
+            if active(again):  # envio idêntico simultâneo: devolve o que entrou primeiro
+                return self._duplicate_feedback(again)
+            require(self.repo.counter(rate_pk, rate_sk).get("count", 0) < feedback.RATE_LIMIT, 429,
+                    "Você já enviou 5 feedbacks nesta hora. Tente novamente mais tarde.")
+            raise APIError(409, "Não foi possível enviar agora. Tente novamente.") from None
+        return {"feedback": feedback.own_view(item), "duplicate": False}
+
+    def _duplicate_feedback(self, dedup):
+        item = self.repo.get("FEEDBACK", "FEEDBACK#" + dedup["feedbackId"])
+        require(item is not None and item["createdBy"] == self.uid, 409, "Não foi possível enviar agora. Tente novamente.")
+        return {"feedback": feedback.own_view(item), "duplicate": True}
+
+    def _admin_feedback(self, query):
+        require(set(query) <= {"limit", "cursor", "status", "type", "cohort"}, 400, "Parâmetros inválidos.")
+        status, kind, code = query.get("status"), query.get("type"), query.get("cohort")
+        require(status in (None, "ALL", *feedback.STATUSES) and kind in (None, *feedback.TYPES)
+                and (code is None or feedback.CODE_PATTERN.fullmatch(code) is not None), 400, "Filtro inválido.")
+
+        def keep(item):
+            # Sem filtro de status, arquivados ficam de fora; "ALL" inclui todos.
+            return ((item["status"] == status if status in feedback.STATUSES else status == "ALL" or item["status"] != "ARCHIVED")
+                    and (kind is None or item["type"] == kind) and (code is None or item["cohort"] == code))
+        items, cursor = self._feedback_page(feedback.page_size(query.get("limit"), "admin"),
+                                            feedback.decode_cursor(query.get("cursor")), keep)
+        counts = self.repo.counter("FEEDBACK-STATS", "ALL")
+        return {"items": [self._admin_feedback_view(i) for i in items], "nextCursor": cursor,
+                "summary": {s: max(0, counts.get(s, 0)) for s in feedback.STATUSES}}
+
+    def _admin_feedback_view(self, item):
+        """Nome atual do aluno, resolvido na publicação atual (não é guardado no feedback)."""
+        name, in_cohort = None, False
+        if item.get("cohort") and item.get("canvasId"):
+            cohort = self.repo.get("COHORT#" + item["cohort"], "METADATA")
+            if cohort and cohort.get("current"):
+                key = "_names#" + cohort["current"]  # por publicação: nomes mudam a cada publicação
+                if key not in self.cache:
+                    snap = display_snapshot(self.repo, item["cohort"], self.snapshot(self.publication(item["cohort"], cohort["current"])))
+                    self.cache[key] = {s["id"]: s["name"] for s in snap["students"]}
+                name = self.cache[key].get(item["canvasId"])
+                in_cohort = name is not None
+        return {**item, "studentName": name, "inCohort": in_cohort, "canViewAsStudent": in_cohort}
+
+    def _feedback_status(self, feedback_id, body):
+        require(isinstance(body, dict) and set(body) == {"status", "expectedStatus"}, 400, "Solicitação inválida.")
+        require(body["status"] in feedback.STATUSES and body["expectedStatus"] in feedback.STATUSES, 400, "Status inválido.")
+        require(feedback.ID_PATTERN.fullmatch(feedback_id) is not None, 404, "Feedback não encontrado.")
+        item = self.repo.get("FEEDBACK", "FEEDBACK#" + feedback_id)
+        require(item is not None, 404, "Feedback não encontrado.")
+        conflict = "O status deste feedback foi alterado por outra pessoa. Recarregue e tente de novo."
+        require(item["status"] == body["expectedStatus"], 409, conflict)
+        if body["status"] == item["status"]:
+            return {"feedback": self._admin_feedback_view(item)}
+        updated = feedback.with_status(item, body["status"], self.uid, now())
+        try:
+            self.repo.transaction([("FEEDBACK", "FEEDBACK#" + feedback_id, updated, item)],
+                                  counters=[("FEEDBACK-STATS", "ALL", {item["status"]: -1, body["status"]: 1}, None, None)])
+        except Conflict:
+            raise APIError(409, conflict) from None
+        return {"feedback": self._admin_feedback_view(updated)}
 
     def _focus_activities(self, cohort, pk, teach, body):
         require(teach)
@@ -840,7 +975,8 @@ def handler(event, context):
         require(len(raw.encode("utf-8")) <= 4_000_000, 413, "Arquivo maior que o limite permitido.")
         body = json.loads(raw)
         require(isinstance(body, dict), 400, "Corpo da requisição inválido.")
-        result = Portal(Repository(), user, os.environ["INSTRUCTOR_EMAIL_DOMAIN"]).dispatch(http.get("method"), path, body)
+        result = Portal(Repository(), user, os.environ["INSTRUCTOR_EMAIL_DOMAIN"]).dispatch(
+            http.get("method"), path, body, event.get("queryStringParameters") or {})
         return response(200, result)
     except APIError as e:
         return response(e.status, {"error": e.message})

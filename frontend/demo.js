@@ -108,6 +108,12 @@ export function demoAPI(role) {
         ],
       };
     if (path === "/requests") return { requests: [] };
+    // Feedback de demonstração: nada é gravado.
+    if (path.startsWith("/feedback") && options.method === "POST")
+      return { duplicate: false, feedback: { id: "demo", ...options.body, status: "NEW", createdAt: new Date().toISOString() } };
+    if (path.startsWith("/feedback"))
+      return { nextCursor: null, items: [{ id: "demo-1", type: "SUGGESTION", title: "Adicionar modo escuro", description: "", status: "RESOLVED",
+        createdAt: "2026-09-25T12:00:00Z", cohort: "BRSA0267", page: "overview" }] };
     if (path.endsWith("/class-report"))
       return {
         cohort: "BRSA0267",

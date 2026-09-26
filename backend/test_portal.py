@@ -6,6 +6,8 @@ import unittest
 from unittest.mock import patch
 
 from grades import parse_csv
+import feedback as feedback_module
+from datetime import datetime, timedelta, timezone
 from integrity import SYNC_MIN_ROSTER, check as integrity_check, email_hash, roster_record
 from portal import APIError, Portal, authenticate, handler, class_report
 from repository import Conflict
@@ -54,6 +56,8 @@ class MemoryRepository:
         self.files = {}
         self.tags = {}
         self.ttl = {}
+        self.expires = {}
+        self.counters = {}
         self.fail_transaction = False
 
     def get(self, pk, sk):
@@ -74,18 +78,42 @@ class MemoryRepository:
     def keys(self, pk, prefix):
         return [s for (p, s) in self.items if p == pk and s.startswith(prefix)]
 
+    def page(self, pk, prefix, limit, after=None):
+        keys = sorted((s for (p, s) in self.items if p == pk and s.startswith(prefix)), reverse=True)
+        if after:
+            keys = [k for k in keys if k < after]
+        return [(k, copy.deepcopy(self.items[pk, k])) for k in keys[:limit]], len(keys) <= limit
+
+    def counter(self, pk, sk):
+        return dict(self.counters.get((pk, sk), {}))
+
     def cohorts(self):
         # Como Repository.cohorts: só COHORT#…/METADATA (CATALOG# e ROSTER# também usam METADATA).
         return [copy.deepcopy(v) for (p, s), v in self.items.items() if s == "METADATA" and p.startswith("COHORT#")]
 
-    def transaction(self, writes):
-        if self.fail_transaction or any(self.get(p, s) != old for p, s, data, old in writes):
+    def transaction(self, writes, counters=()):
+        # Mesma semântica do Repository.transaction: tudo ou nada, com as mesmas condições.
+        if self.fail_transaction or any(self.get(w[0], w[1]) != w[3] for w in writes):
             raise Conflict()
-        for p, s, data, old in writes:
+        for p, s, deltas, limit, expires_at in counters:
+            current = self.counters.get((p, s), {})
+            if limit and limit[0] in current and current[limit[0]] >= limit[1]:
+                raise Conflict()
+        for w in writes:
+            p, s, data = w[:3]
             if data is None:
                 self.items.pop((p, s), None)
+                self.expires.pop((p, s), None)
             else:
                 self.put(p, s, data)
+                if len(w) > 4 and w[4]:
+                    self.expires[p, s] = w[4]
+        for p, s, deltas, limit, expires_at in counters:
+            current = self.counters.setdefault((p, s), {})
+            for name, delta in deltas.items():
+                current[name] = current.get(name, 0) + delta
+            if expires_at:
+                self.expires[p, s] = expires_at
 
     def snapshot(self, key, value=None, raw=False, status=None):
         if value is not None:
@@ -942,6 +970,294 @@ class IntegrityPortalTests(unittest.TestCase):
         del self.repo.items[("ROSTER#4436", "METADATA")]
         self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", course_file(STUDENTS), len(STUDENTS))["status"], "published")
         self.assertEqual(self.audits(), [])  # a sincronização continua registrando só em SYNC
+
+
+class FeedbackTests(unittest.TestCase):
+    """Feedback da plataforma: criação, leitura própria, administração, paginação, dedup e limite."""
+
+    T0 = datetime(2026, 9, 26, 12, 0, tzinfo=timezone.utc)
+
+    def setUp(self):
+        self.repo = MemoryRepository()
+        for code in ("BRSA0267", "BRSA0268"):
+            self.repo.put("COHORT#" + code, "METADATA", {"code": code, "name": code, "current": None})
+        self.admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        self.student = Portal(self.repo, {"sub": "student", "email": "aluno@example.test", "groups": []})
+        self.other = Portal(self.repo, {"sub": "student2", "email": "colega202@example.test", "groups": []})
+        self.instructor = Portal(self.repo, {"sub": "teacher", "email": "teacher@escoladanuvem.org", "groups": []})
+        self.repo.put("USER#teacher", "TEACH#BRSA0267", {"code": "BRSA0267"})
+        draft = self.admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": class_csv(["202", "203", "204", "205"])})["draft"]
+        self.publication = self.admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"]})["publication"]
+        self.at = self.T0
+
+    def send(self, actor=None, **fields):
+        body = {"type": "BUG", "title": "KC aparece como pendente", "description": "A atividade 254 continua sem nota.",
+                "cohort": "BRSA0267", "page": "activities", **fields}
+        body = {k: v for k, v in body.items() if v is not ...}
+        with patch("feedback.clock", return_value=self.at):
+            return (actor or self.student).dispatch("POST", "/feedback", body)
+
+    def mine(self, actor=None, **query):
+        return (actor or self.student).dispatch("GET", "/feedback", {}, {k: str(v) for k, v in query.items()})
+
+    def admin_list(self, **query):
+        return self.admin.dispatch("GET", "/admin/feedback", {}, {k: str(v) for k, v in query.items()})
+
+    def status(self, feedback_id, status, expected, actor=None):
+        return (actor or self.admin).dispatch("POST", f"/admin/feedback/{feedback_id}/status", {"status": status, "expectedStatus": expected})
+
+    def stored(self):
+        return [v for (p, s), v in self.repo.items.items() if p == "FEEDBACK"]
+
+    def assert_status(self, fn, status):
+        with self.assertRaises(APIError) as err:
+            fn()
+        self.assertEqual(err.exception.status, status)
+        return err.exception
+
+    def test_create_takes_identity_status_and_context_from_the_server(self):
+        created = self.send()["feedback"]
+        self.assertEqual((created["status"], created["type"], created["cohort"], created["page"]), ("NEW", "BUG", "BRSA0267", "activities"))
+        [item] = self.stored()
+        self.assertEqual({k: item[k] for k in ("createdBy", "createdByEmail", "canvasId", "publicationId", "updatedBy", "createdAt")},
+                         {"createdBy": "student", "createdByEmail": "aluno@example.test", "canvasId": "101",
+                          "publicationId": self.publication["id"], "updatedBy": "student", "createdAt": self.T0.isoformat()})
+        self.assertEqual(item["statusHistory"], [{"status": "NEW", "by": "student", "at": self.T0.isoformat()}])
+        self.assertNotIn("Marina", json.dumps(item))  # o nome não é guardado
+        self.assertTrue(feedback_module.ID_PATTERN.fullmatch(item["id"]))
+        self.assertEqual(set(created), {"id", "type", "title", "description", "status", "createdAt", "cohort", "page", "updatedAt"})
+        # Sem turma (tela de primeiro acesso) e por admin/instrutor também é permitido.
+        self.at += timedelta(minutes=1)
+        self.assertIsNone(self.send(cohort=..., page="onboarding", title="Sem turma")["feedback"]["cohort"])
+        admin_item = self.send(self.admin, title="Relato do admin")["feedback"]
+        self.assertEqual(self.repo.get("FEEDBACK", "FEEDBACK#" + admin_item["id"])["canvasId"], None)
+        self.send(self.instructor, title="Relato do instrutor")
+
+    def test_client_cannot_set_identity_status_dates_or_unknown_fields(self):
+        for field, value in (("createdBy", "outro"), ("createdByEmail", "x@y.z"), ("status", "RESOLVED"), ("createdAt", "2020-01-01"),
+                             ("updatedBy", "admin"), ("canvasId", "999999"), ("publicationId", "p"), ("userAgent", "x"), ("id", "1")):
+            with self.subTest(field):
+                self.assert_status(lambda: self.send(**{field: value}), 400)
+        self.assertEqual(self.stored(), [])
+
+    def test_validation_limits_and_text_cleanup(self):
+        bad = [{"type": "PRAISE"}, {"type": None}, {"title": "  ab  "}, {"title": "x" * 121}, {"title": 12},
+               {"description": "curta     "}, {"description": "x" * 2001}, {"page": "/admin/qualquer"}, {"page": "javascript:alert(1)"},
+               {"cohort": "brsa0267"}, {"cohort": "../BRSA0267"}, {"title": ...}, {"description": ...}, {"type": ...}]
+        for fields in bad:
+            with self.subTest(fields):
+                self.assert_status(lambda: self.send(**fields), 400)
+        self.assertEqual(self.stored(), [])
+        ok = self.send(title="  " + "t" * 3 + "\n\tcom quebra ", description="  linha 1\r\nlinha 2\x00\x07 " + "x" * 5 + "  ")["feedback"]
+        self.assertEqual((ok["title"], ok["description"]), ("ttt com quebra", "linha 1\nlinha 2 xxxxx"))
+        self.at += timedelta(minutes=1)
+        self.send(title="t" * 120, description="d" * 2000)
+        script = self.send(title="<script>alert(1)</script>", description="<img src=x onerror=alert(1)> nota < 70")["feedback"]
+        self.assertEqual(script["title"], "<script>alert(1)</script>")  # guardado como texto; a tela escapa
+
+    def test_cohort_must_be_one_the_user_belongs_to(self):
+        self.assert_status(lambda: self.send(cohort="BRSA0268"), 403)
+        self.assert_status(lambda: self.send(cohort="BRSA9999"), 404)
+        self.assert_status(lambda: self.send(self.other, cohort="BRSA0268"), 403)
+        self.assertEqual(self.stored(), [])
+        # Aluno do CSV ainda sem vínculo (nunca abriu o relatório) também pode, e o vínculo não é criado.
+        self.send(self.other)
+        self.assertEqual(self.repo.get("FEEDBACK", "FEEDBACK#" + self.stored()[0]["id"])["canvasId"], "202")
+        self.assertIsNone(self.repo.get("USER#student2", "STUDY#BRSA0267"))
+
+    def test_students_only_read_their_own_feedback_and_cannot_administer(self):
+        self.send(title="Meu relato")
+        self.send(self.other, title="Relato do colega")
+        self.assertEqual([f["title"] for f in self.mine()["items"]], ["Meu relato"])
+        self.assertEqual([f["title"] for f in self.mine(self.other)["items"]], ["Relato do colega"])
+        self.assert_status(lambda: self.mine(userId="student2"), 400)
+        self.assert_status(lambda: self.mine(createdBy="student2"), 400)
+        other_id = self.mine(self.other)["items"][0]["id"]
+        for actor in (self.student, self.instructor):
+            with self.subTest(actor=actor.uid):
+                self.assert_status(lambda: actor.dispatch("GET", "/admin/feedback", {}, {}), 403)
+                self.assert_status(lambda: self.status(other_id, "RESOLVED", "NEW", actor), 403)
+        self.assertEqual(self.repo.get("FEEDBACK", "FEEDBACK#" + other_id)["status"], "NEW")
+
+    def fill(self, count, actor=None, start=None, **fields):
+        """Um feedback por hora, para não esbarrar no limite de 5 por hora."""
+        self.at = start or self.at
+        ids = []
+        for i in range(count):
+            ids.append(self.send(actor, title=f"Relato {i:02d} de {(actor or self.student).uid}", **fields)["feedback"]["id"])
+            self.at += timedelta(hours=1)
+        return ids
+
+    def test_student_pagination_is_newest_first_and_never_leaks_other_users(self):
+        mine, theirs = [], []
+        for i in range(25):
+            mine.append(self.send(title=f"Meu {i:02d}")["feedback"]["id"])
+            theirs.append(self.send(self.other, title=f"Dele {i:02d}")["feedback"]["id"])
+            self.at += timedelta(hours=1)
+        pages, cursor = [], None
+        while True:
+            page = self.mine(limit=10, **({"cursor": cursor} if cursor else {}))
+            pages.append([f["id"] for f in page["items"]])
+            if page["nextCursor"]:
+                self.assertIn(feedback_module.decode_cursor(page["nextCursor"]), mine)  # cursor só com id próprio
+            cursor = page["nextCursor"]
+            if not cursor:
+                break
+        self.assertEqual([len(p) for p in pages], [10, 10, 5])
+        self.assertEqual(sum(pages, []), sorted(mine, reverse=True))
+        self.assertEqual(len(self.mine()["items"]), 20)  # padrão 20
+        # Cursor com id de outro aluno não devolve nada dele (só continua a partir daquele ponto).
+        forged = feedback_module.encode_cursor(theirs[-1])
+        self.assertTrue(set(f["id"] for f in self.mine(cursor=forged, limit=50)["items"]) <= set(mine))
+
+    def test_invalid_cursor_and_limits_are_rejected(self):
+        for query in ({"cursor": "abc"}, {"cursor": feedback_module.encode_cursor("../x")}, {"cursor": "e30"},
+                      {"limit": "0"}, {"limit": "51"}, {"limit": "abc"}, {"limit": "-1"}):
+            with self.subTest(query):
+                self.assert_status(lambda: self.mine(**query), 400)
+        self.assertEqual(self.mine(limit=50)["items"], [])
+        self.assert_status(lambda: self.admin_list(limit=101), 400)
+        self.assertEqual(self.admin_list(limit=100)["items"], [])
+        self.assert_status(lambda: self.admin_list(status="DONE"), 400)
+        self.assert_status(lambda: self.admin_list(type="PRAISE"), 400)
+        self.assert_status(lambda: self.admin_list(cohort="x"), 400)
+        self.assert_status(lambda: self.admin_list(owner="student"), 400)
+
+    def test_admin_lists_filters_and_paginates(self):
+        bugs = self.fill(3)
+        ideas = self.fill(2, type="SUGGESTION", page="history")
+        general = self.fill(1, self.admin, cohort=...)
+        archived = bugs[0]
+        self.status(archived, "ARCHIVED", "NEW")
+        self.status(ideas[0], "IN_REVIEW", "NEW")
+        listed = self.admin_list()
+        self.assertEqual([f["id"] for f in listed["items"]], sorted(set(bugs + ideas + general) - {archived}, reverse=True))
+        self.assertEqual(listed["summary"], {"NEW": 4, "IN_REVIEW": 1, "RESOLVED": 0, "ARCHIVED": 1})
+        self.assertEqual([f["id"] for f in self.admin_list(status="ARCHIVED")["items"]], [archived])
+        self.assertEqual(len(self.admin_list(status="ALL")["items"]), 6)
+        self.assertEqual([f["id"] for f in self.admin_list(type="SUGGESTION")["items"]], sorted(ideas, reverse=True))
+        self.assertEqual({f["id"] for f in self.admin_list(cohort="BRSA0267")["items"]}, set(bugs + ideas) - {archived})
+        self.assertEqual([f["id"] for f in self.admin_list(status="IN_REVIEW", type="SUGGESTION")["items"]], [ideas[0]])
+        first = self.admin_list(limit=2, status="ALL")
+        second = self.admin_list(limit=2, status="ALL", cursor=first["nextCursor"])
+        third = self.admin_list(limit=2, status="ALL", cursor=second["nextCursor"])
+        self.assertEqual([f["id"] for p in (first, second, third) for f in p["items"]], sorted(bugs + ideas + general, reverse=True))
+        self.assertIsNone(third["nextCursor"])
+        item = next(f for f in listed["items"] if f["id"] == bugs[1])
+        self.assertEqual((item["studentName"], item["inCohort"], item["canViewAsStudent"], item["createdByEmail"]),
+                         ("Marina Costa", True, True, "aluno@example.test"))
+
+    def test_student_who_left_the_class_keeps_email_but_cannot_be_viewed(self):
+        self.send()
+        self.admin.dispatch("POST", "/cohorts/BRSA0267/display-name", {"canvasId": "101", "displayName": "Marina Apelido"})
+        self.assertEqual(self.admin_list()["items"][0]["studentName"], "Marina Apelido")
+        draft = self.admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": class_csv(["202", "203", "204", "205"], marina=False)})["draft"]
+        self.admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"], "acknowledgeRemoved": True})
+        item = self.admin_list()["items"][0]
+        self.assertEqual((item["studentName"], item["inCohort"], item["canViewAsStudent"], item["createdByEmail"], item["canvasId"]),
+                         (None, False, False, "aluno@example.test", "101"))
+
+    def test_admin_changes_status_with_optimistic_concurrency_and_bounded_history(self):
+        fid = self.send()["feedback"]["id"]
+        with patch("portal.now", return_value="2026-09-26T13:00:00+00:00"):
+            changed = self.status(fid, "IN_REVIEW", "NEW")["feedback"]
+        self.assertEqual((changed["status"], changed["updatedBy"], changed["updatedAt"]), ("IN_REVIEW", "admin", "2026-09-26T13:00:00+00:00"))
+        self.assertEqual(changed["statusHistory"][-1], {"status": "IN_REVIEW", "by": "admin", "at": "2026-09-26T13:00:00+00:00"})
+        self.assert_status(lambda: self.status(fid, "RESOLVED", "NEW"), 409)  # outro admin já mudou
+        self.assert_status(lambda: self.status(fid, "DONE", "IN_REVIEW"), 400)
+        self.assert_status(lambda: self.status(fid, "RESOLVED", "WHATEVER"), 400)
+        self.assert_status(lambda: self.admin.dispatch("POST", f"/admin/feedback/{fid}/status", {"status": "RESOLVED"}), 400)
+        self.assert_status(lambda: self.admin.dispatch("POST", f"/admin/feedback/{fid}/status",
+                                                       {"status": "RESOLVED", "expectedStatus": "IN_REVIEW", "updatedBy": "x"}), 400)
+        self.assert_status(lambda: self.status("20260926T120000000000-deadbeef", "RESOLVED", "NEW"), 404)
+        self.assert_status(lambda: self.status("../x", "RESOLVED", "NEW"), 404)
+        current = "IN_REVIEW"
+        for i in range(25):
+            nxt = "RESOLVED" if current != "RESOLVED" else "IN_REVIEW"
+            self.status(fid, nxt, current)
+            current = nxt
+        history = self.repo.get("FEEDBACK", "FEEDBACK#" + fid)["statusHistory"]
+        self.assertEqual(len(history), 20)
+        self.assertEqual(history[-1]["status"], current)  # as 20 mais recentes
+        self.assertEqual(self.admin_list()["summary"], {"NEW": 0, "IN_REVIEW": 0, "RESOLVED": 1, "ARCHIVED": 0})
+        self.assertEqual(self.mine()["items"][0]["status"], "RESOLVED")  # o aluno vê o status atual
+
+    def rate_count(self, actor=None):
+        pk, sk, _ = feedback_module.rate_key((actor or self.student).uid, self.at)
+        return self.repo.counter(pk, sk).get("count", 0)
+
+    def test_identical_feedback_within_ten_minutes_returns_the_existing_one(self):
+        first = self.send()
+        self.at += timedelta(minutes=9)
+        again = self.send(title="  KC aparece como PENDENTE  ")  # mesmo conteúdo (espaços e maiúsculas)
+        self.assertEqual((again["duplicate"], again["feedback"]["id"]), (True, first["feedback"]["id"]))
+        self.assertEqual((len(self.stored()), self.rate_count()), (1, 1))  # não consome o limite de novo
+        # Expirado pela data, mas o item ainda existe (TTL do DynamoDB é assíncrono): cria outro.
+        self.at += timedelta(minutes=2)
+        self.assertIsNotNone(self.repo.get("FEEDBACK-DEDUP", f"student#{feedback_module.content_hash('student', feedback_module.clean_new({'type': 'BUG', 'title': 'KC aparece como pendente', 'description': 'A atividade 254 continua sem nota.', 'cohort': 'BRSA0267', 'page': 'activities'}))}"))
+        later = self.send()
+        self.assertEqual(later["duplicate"], False)
+        self.assertEqual(len(self.stored()), 2)
+        self.assertFalse(self.send(self.other)["duplicate"])  # outro aluno, mesmo texto: não é duplicado
+
+    def test_duplicate_key_includes_the_origin_page(self):
+        # 1. Mesmo tipo, título, descrição, turma e página em 10 minutos: duplicado, 1 feedback, 1 no limite.
+        first = self.send()
+        self.at += timedelta(minutes=5)
+        self.assertEqual((self.send()["duplicate"], len(self.stored()), self.rate_count()), (True, 1, 1))
+        # 2. Mesmo texto e turma, outra página: é outro feedback.
+        other_page = self.send(page="history")
+        self.assertEqual((other_page["duplicate"], len(self.stored()), self.rate_count()), (False, 2, 2))
+        self.assertNotEqual(other_page["feedback"]["id"], first["feedback"]["id"])
+        # 3. Sem página nos dois envios: continua deduplicando.
+        without = self.send(page=...)
+        self.assertEqual((self.send(page=...)["feedback"]["id"], len(self.stored())), (without["feedback"]["id"], 3))
+        # 4. Um sem página e outro com página: feedbacks diferentes.
+        self.assertEqual((self.send(page="overview")["duplicate"], len(self.stored())), (False, 4))
+        # 5. Marca vencida pela data, mas ainda presente (TTL assíncrono): novo envio é aceito.
+        key = f"student#{feedback_module.content_hash('student', {**feedback_module.clean_new({'type': 'BUG', 'title': 'KC aparece como pendente', 'description': 'A atividade 254 continua sem nota.', 'cohort': 'BRSA0267', 'page': 'history'})})}"
+        self.at += timedelta(minutes=11)
+        self.assertIsNotNone(self.repo.get("FEEDBACK-DEDUP", key))
+        self.assertEqual((self.send(page="history")["duplicate"], len(self.stored())), (False, 5))
+
+    def test_simultaneous_identical_requests_create_only_one_feedback(self):
+        original = self.repo.transaction
+        results = []
+
+        def racing(writes, counters=()):
+            if not results:  # a outra requisição chega entre a leitura do dedup e a gravação
+                results.append(None)
+                results.append(self.send())
+            return original(writes, counters)
+        with patch.object(self.repo, "transaction", side_effect=racing):
+            outer = self.send()
+        inner = results[1]
+        self.assertEqual((inner["duplicate"], outer["duplicate"]), (False, True))
+        self.assertEqual(outer["feedback"]["id"], inner["feedback"]["id"])
+        self.assertEqual((len(self.stored()), self.rate_count()), (1, 1))
+        self.assertEqual(self.repo.counter("FEEDBACK-STATS", "ALL"), {"NEW": 1})
+
+    def test_rate_limit_is_five_per_user_per_hour(self):
+        ids = [self.send(title=f"Relato {i}")["feedback"]["id"] for i in range(5)]
+        self.assertEqual(self.rate_count(), 5)
+        err = self.assert_status(lambda: self.send(title="Sexto relato"), 429)
+        self.assertIn("5 feedbacks nesta hora", err.message)
+        self.assertEqual((len(self.stored()), self.repo.counter("FEEDBACK-STATS", "ALL")), (5, {"NEW": 5}))
+        # Reenvio idêntico de um já aceito ainda devolve o existente, sem 429 e sem consumir.
+        self.assertEqual(self.send(title="Relato 0")["feedback"]["id"], ids[0])
+        self.assertEqual(self.rate_count(), 5)
+        self.assertFalse(self.send(self.other, title="Outro aluno")["duplicate"])  # o limite é por usuário
+        self.at += timedelta(hours=1)
+        self.assertFalse(self.send(title="Na hora seguinte")["duplicate"])
+        self.assertEqual(self.rate_count(), 1)
+
+    def test_query_string_reaches_the_api_through_the_handler(self):
+        event = {"rawPath": "/feedback", "requestContext": {"http": {"method": "GET"}}, "queryStringParameters": {"limit": "999"}}
+        with patch("portal.authenticate", return_value=self.student.user), patch("portal.Repository", return_value=self.repo), \
+                patch.dict("os.environ", {"INSTRUCTOR_EMAIL_DOMAIN": "escoladanuvem.org"}):
+            self.assertEqual(handler(event, None)["statusCode"], 400)
+            self.assertEqual(handler({**event, "queryStringParameters": {"limit": "5"}}, None)["statusCode"], 200)
+            self.assertEqual(handler({**event, "queryStringParameters": None}, None)["statusCode"], 200)
 
 
 class AuthenticationTests(unittest.TestCase):
