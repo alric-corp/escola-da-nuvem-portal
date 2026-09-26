@@ -34,7 +34,7 @@ function requestsSection() {
 function studentRow(s) {
   if (state.editingStudentId === s.id)
     return `<tr><td colspan="4"><form class="approve-form" data-edit-name-form="${e(s.id)}"><label class="sr-only" for="edit-name-${e(s.id)}">Nome de exibição para ${e(s.name)}</label><input id="edit-name-${e(s.id)}" name="displayName" value="${e(s.name)}" maxlength="100" required><button class="button primary" type="submit">Salvar</button><button class="button secondary" type="button" data-cancel-edit-name>Cancelar</button></form></td></tr>`;
-  return `<tr><td><strong>${e(s.name)}</strong><small>ID ${e(s.id)}</small></td><td>${e(s.email || "Ausente no Canvas")}</td><td>${s.bound ? e(s.boundEmail || "Vínculo sem e-mail registrado") : "Sem vínculo"}</td><td><button class="button secondary" data-start-edit-name="${e(s.id)}">Editar nome</button>${s.bound ? `<button class="button secondary" data-unlink="${e(s.id)}">Desvincular</button>` : ""}</td></tr>`;
+  return `<tr><td><strong>${e(s.name)}</strong><small>ID ${e(s.id)}</small></td><td>${e(s.email || "Ausente no Canvas")}</td><td>${s.bound ? e(s.boundEmail || "Vínculo sem e-mail registrado") : "Sem vínculo"}</td><td><button class="button secondary" data-view-as-student="${e(s.id)}">Visualizar como aluno</button><button class="button secondary" data-start-edit-name="${e(s.id)}">Editar nome</button>${s.bound ? `<button class="button secondary" data-unlink="${e(s.id)}">Desvincular</button>` : ""}</td></tr>`;
 }
 
 function studentsSection() {

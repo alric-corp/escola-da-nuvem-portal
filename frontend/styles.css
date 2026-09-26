@@ -2613,3 +2613,31 @@ details ul, .onboarding ol { padding-left: 24px; }
      fora da tabela; evita quebrar palavra se houver espaço (só quebra quando precisa). */
   .history-table:has(td.h-action) td.h-file { white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* Visualizar como aluno (admin): faixa sempre visível no topo do conteúdo, separando a
+   identidade real (admin) do aluno visualizado. */
+.student-view-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin: 12px 0 0;
+  padding: 12px 16px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning);
+  border-left-width: 4px;
+  border-radius: 10px;
+}
+.student-view-banner > div { display: grid; gap: 2px; min-width: 0; }
+.student-view-banner strong { color: var(--text-primary); font-size: .9375rem; overflow-wrap: anywhere; }
+.student-view-banner small { color: var(--warning); font-size: .75rem; font-weight: 600; }
+.student-view-banner .button { flex: none; }
+.session-context .viewing-as { color: var(--warning); font-weight: 600; }
+@media (max-width: 600px) {
+  .student-view-banner { padding: 10px 12px; }
+  .student-view-banner .button { width: 100%; }
+}

@@ -169,6 +169,19 @@ class AWSPersistenceTests(unittest.TestCase):
         other = Portal(Repository(), {"sub": "s2", "email": "aluno@example.test", "groups": []})
         self.assertEqual(other.dispatch("GET", "/cohorts/BRSA0267/report", {})["student"]["id"], "101")
 
+    def test_student_view_matches_student_report_without_binding(self):
+        for kc in ("7", "9"):
+            draft = self.call("preview", {"csv": canvas_csv(kc=kc)})["draft"]
+            self.call("publish", {"draftId": draft["id"]})
+        viewed = self.call("student-view", {"studentId": "101"})
+        self.assertEqual(viewed.pop("viewAs"), {"studentId": "101", "name": "Marina Costa"})
+        self.assertEqual(self.repo.keys("COHORT#BRSA0267", "OWNER#"), [])
+        self.assertEqual(self.repo.list("USER#admin", "STUDY#"), [])
+        audits = self.repo.list("COHORT#BRSA0267", "AUDIT#")
+        self.assertEqual([(a["action"], a["studentId"], a["by"]) for a in audits], [("STUDENT_VIEW_AS_ADMIN", "101", "admin")])
+        student = Portal(Repository(), {"sub": "s1", "email": "aluno@example.test", "groups": []})
+        self.assertEqual(student.dispatch("GET", "/cohorts/BRSA0267/report", {}), viewed)
+
     def test_draft_retention_tags_and_ttl_on_real_services(self):
         s3 = boto3.client("s3", region_name="us-east-1")
         db = boto3.client("dynamodb", region_name="us-east-1")

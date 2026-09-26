@@ -276,6 +276,8 @@ class Portal:
             return self._students_search(code, cohort, pk, body)
         if operation == "unlink-student" and method == "POST":
             return self._unlink_student(code, pk, body)
+        if operation == "student-view" and method == "POST":
+            return self._student_view(code, cohort, pk, body)
         if operation == "display-name" and method == "POST":
             return self._set_display_name(pk, body)
         if operation == "settings" and method == "POST":
@@ -646,12 +648,7 @@ class Portal:
             require(teach)
             return {"cohort": code, "publication": None, "students": [], "history": [],
                     "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId")}
-        publication = self.publication(code, cohort["current"])
-        snap = with_catalog(self.repo, cohort,
-                            released_at(publication, display_snapshot(self.repo, code, self.snapshot(publication))))
-        focus = self.repo.get(pk, "FOCUS") or {"activityIds": [], "version": None}
-        active = {a["id"] for a in snap["activities"] if a["active"]}
-        focus = {"activityIds": [i for i in focus["activityIds"] if i in active], "version": focus.get("version")}
+        publication, snap, focus = self._current_view(code, cohort, pk)
         thresholds = cohort_thresholds(cohort)
         canvas_course_id = cohort.get("canvasCourseId")
         if teach:
@@ -669,12 +666,48 @@ class Portal:
                                      key=lambda p: p["publishedAt"], reverse=True)}
         student = self.student(code, snap, bind=True)
         require(student is not None, 403, "Matrícula não localizada para sua conta nesta turma.")
+        return self._student_report(code, cohort, pk, publication, snap, focus, student)
+
+    def _current_view(self, code, cohort, pk):
+        """Publicação atual como aluno e instrutor a enxergam: nomes de exibição,
+        catálogo, liberação e foco restrito às atividades ativas."""
+        publication = self.publication(code, cohort["current"])
+        snap = with_catalog(self.repo, cohort,
+                            released_at(publication, display_snapshot(self.repo, code, self.snapshot(publication))))
+        focus = self.repo.get(pk, "FOCUS") or {"activityIds": [], "version": None}
+        active = {a["id"] for a in snap["activities"] if a["active"]}
+        focus = {"activityIds": [i for i in focus["activityIds"] if i in active], "version": focus.get("version")}
+        return publication, snap, focus
+
+    def _student_report(self, code, cohort, pk, publication, snap, focus, student):
+        """Relatório de um aluno. Único ponto usado pelo próprio aluno e pelo admin em
+        "Visualizar como aluno"; não cria nem consulta vínculo de conta."""
+        thresholds = cohort_thresholds(cohort)
         history = self.student_history(pk, publication, snap, student["id"], thresholds)
         return {"cohort": code, "publication": {"id": publication["id"], "publishedAt": publication["publishedAt"]},
                 "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                 "updateKind": cohort.get("updateKind", "publish"),
-                "thresholds": thresholds, "canvasCourseId": canvas_course_id,
+                "thresholds": thresholds, "canvasCourseId": cohort.get("canvasCourseId"),
                 "student": summary(student, snap["activities"], thresholds), "history": history, "focus": focus}
+
+    def _student_view(self, code, cohort, pk, body):
+        """Admin vê o relatório de um aluno sem se autenticar como ele: somente leitura,
+        sem vínculo OWNER/STUDY e com auditoria de cada abertura."""
+        require(self.admin)
+        require(isinstance(body, dict) and set(body) == {"studentId"}, 400, "Solicitação inválida.")
+        student_id = body["studentId"]
+        require(isinstance(student_id, str) and re.fullmatch(r"\d{1,32}", student_id) is not None,
+                400, "Identificador de aluno inválido.")
+        not_found = "Aluno não encontrado nesta turma."
+        require(bool(cohort.get("current")), 404, not_found)
+        publication, snap, focus = self._current_view(code, cohort, pk)
+        student = next((s for s in snap["students"] if s["id"] == student_id), None)
+        require(student is not None, 404, not_found)
+        self.repo.put(pk, "AUDIT#" + uuid.uuid4().hex,
+                      {"action": "STUDENT_VIEW_AS_ADMIN", "by": self.uid, "byEmail": self.user["email"],
+                       "studentId": student_id, "cohort": code, "at": now()}, absent=True)
+        return {**self._student_report(code, cohort, pk, publication, snap, focus, student),
+                "viewAs": {"studentId": student_id, "name": student["name"]}}
 
 
 SYNC_USER = {"sub": "system:canvas-sync", "email": "canvas-sync@system", "groups": ["admin"]}

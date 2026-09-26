@@ -406,6 +406,105 @@ class PortalTests(unittest.TestCase):
             self.call(self.admin, "unlink-student", {"canvasId": "101"})
         self.assertEqual(err.exception.status, 404)
 
+    def student_view_state(self):
+        """Tudo o que não é auditoria: vínculos, publicações, rascunhos e arquivos."""
+        items = {k: v for k, v in self.repo.items.items() if not k[1].startswith("AUDIT#")}
+        return copy.deepcopy(items), copy.deepcopy(self.repo.files)
+
+    def view_audits(self):
+        return [v for (p, s), v in self.repo.items.items()
+                if s.startswith("AUDIT#") and v["action"] == "STUDENT_VIEW_AS_ADMIN"]
+
+    def test_student_view_matches_student_report(self):
+        other = ["Private Other Name", "202", "other@example.test", "3", "90", "0"]
+        first = self.publish(canvas_csv(extra=other))
+        self.call(self.admin, "focus-activities", {"activityIds": ["001 KC (123)"],
+                                                   "expectedCurrent": first["id"], "expectedVersion": None})
+        self.call(self.admin, "display-name", {"canvasId": "101", "displayName": "Marina Exibição"})
+        self.publish(canvas_csv(kc="9", lab="100", extra=other))
+        own = self.call(self.student, "report", method="GET")
+        viewed = self.call(self.admin, "student-view", {"studentId": "101"})
+        self.assertEqual(viewed.pop("viewAs"), {"studentId": "101", "name": "Marina Exibição"})
+        self.assertEqual(viewed, own)
+        self.assertEqual(len(viewed["history"]), 2)
+        self.assertEqual(viewed["focus"]["activityIds"], ["001 KC (123)"])
+        for private in ("Private Other Name", "other@example.test", '"id": "202"'):
+            self.assertNotIn(private, json.dumps(viewed))
+
+    def test_student_view_is_read_only_and_never_binds(self):
+        self.publish()
+        before = self.student_view_state()
+        self.call(self.admin, "student-view", {"studentId": "101"})
+        self.assertEqual(self.student_view_state(), before)
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
+        self.assertEqual(self.repo.list("USER#admin", "STUDY#"), [])
+        # O aluno real continua podendo se vincular normalmente depois da visualização.
+        self.assertEqual(self.call(self.student, "report", method="GET")["student"]["id"], "101")
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "OWNER#101")["userId"], "student")
+
+    def test_student_view_audits_each_opening_without_secrets(self):
+        self.publish()
+        self.call(self.admin, "student-view", {"studentId": "101"})
+        self.call(self.admin, "student-view", {"studentId": "101"})
+        audits = self.view_audits()
+        self.assertEqual(len(audits), 2)
+        self.assertEqual(set(audits[0]), {"action", "by", "byEmail", "studentId", "cohort", "at"})
+        self.assertEqual((audits[0]["by"], audits[0]["byEmail"], audits[0]["studentId"], audits[0]["cohort"]),
+                         ("admin", "admin@example.test", "101", "BRSA0267"))
+
+    def test_student_view_requires_admin(self):
+        self.publish()
+        self.call(self.student, "report", method="GET")
+        self.repo.put("USER#teacher", "TEACH#BRSA0267", {"code": "BRSA0267"})
+        for actor in (self.student, self.instructor):
+            with self.subTest(actor=actor.uid), self.assertRaises(APIError) as err:
+                self.call(actor, "student-view", {"studentId": "101"})
+            self.assertEqual(err.exception.status, 403)
+        self.assertEqual(self.view_audits(), [])
+
+    def test_student_view_rejects_unknown_or_other_cohort_students(self):
+        self.publish()
+        self.admin.dispatch("POST", "/cohorts", {"code": "BRSA0268"})
+        draft = self.call(self.admin, "preview", {"csv": canvas_csv(student_id="303", email="outro@example.test")},
+                          code="BRSA0268")
+        self.call(self.admin, "publish", {"draftId": draft["draft"]["id"], "acknowledgeRemoved": True}, code="BRSA0268")
+        before = self.student_view_state()
+        cases = [("BRSA0267", {"studentId": "999999"}, 404), ("BRSA0267", {"studentId": "303"}, 404),
+                 ("BRSA0268", {"studentId": "101"}, 404), ("BRSA0267", {"studentId": 101}, 400),
+                 ("BRSA0267", {"studentId": "101 "}, 400), ("BRSA0267", {"studentId": "../101"}, 400),
+                 ("BRSA0267", {"studentId": ["101"]}, 400), ("BRSA0267", {"studentId": "101", "role": "student"}, 400),
+                 ("BRSA0267", {}, 400), ("BRSA9999", {"studentId": "101"}, 404)]
+        for code, body, status in cases:
+            with self.subTest(code=code, body=body), self.assertRaises(APIError) as err:
+                self.admin.dispatch("POST", f"/cohorts/{code}/student-view", body)
+            self.assertEqual(err.exception.status, status)
+            self.assertNotIn("Marina", err.exception.message)
+        self.assertEqual(self.student_view_state(), before)
+        self.assertEqual(self.view_audits(), [])
+
+    def test_student_view_route_through_handler(self):
+        self.publish()
+        event = {"rawPath": "/cohorts/BRSA0267/student-view", "requestContext": {"http": {"method": "POST"}},
+                 "body": json.dumps({"studentId": "101"})}
+        env = patch.dict("os.environ", {"INSTRUCTOR_EMAIL_DOMAIN": "escoladanuvem.org"})
+        for actor, status in ((self.admin, 200), (self.student, 403), (self.instructor, 403)):
+            with self.subTest(actor=actor.uid), env, patch("portal.authenticate", return_value=actor.user), \
+                    patch("portal.Repository", return_value=self.repo):
+                result = handler(event, None)
+                self.assertEqual(result["statusCode"], status)
+                self.assertEqual(result["headers"]["Cache-Control"], "no-store")
+                if status != 200:
+                    self.assertNotIn("Marina", result["body"])
+        with env, patch("portal.authenticate", return_value=self.admin.user), patch("portal.Repository", return_value=self.repo):
+            self.assertEqual(handler({**event, "body": json.dumps({"studentId": "999999"})}, None)["statusCode"], 404)
+            self.assertEqual(handler({**event, "requestContext": {"http": {"method": "GET"}}}, None)["statusCode"], 404)
+        self.assertEqual(len(self.view_audits()), 1)
+
+    def test_student_view_without_publication_is_not_found(self):
+        with self.assertRaises(APIError) as err:
+            self.call(self.admin, "student-view", {"studentId": "101"})
+        self.assertEqual(err.exception.status, 404)
+
     def test_display_name_updates_and_audits(self):
         self.publish()
         result = self.call(self.admin, "display-name", {"canvasId": "101", "displayName": "Apelido"})

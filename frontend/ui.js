@@ -136,6 +136,9 @@ export let state = {
   batchError: "",
   batchResults: null,
   classReport: null,
+  // "Visualizar como aluno": { code, studentId, name } só nesta aba (sessionStorage), nunca em
+  // avanca.context. O admin continua autenticado como admin; o servidor revalida a cada abertura.
+  studentView: null,
   classFilter: "all",
   classSearch: "",
 };
@@ -197,7 +200,8 @@ export function current() {
   return state.cohorts.find((c) => c.code === state.code);
 }
 export function teacher() {
-  return !!current()?.canTeach;
+  // Na visualização como aluno o admin vê exatamente as telas do aluno.
+  return !state.studentView && !!current()?.canTeach;
 }
 export function admin() {
   return state.me?.roles.includes("admin");
@@ -210,9 +214,16 @@ export function roleLabel() {
       : "Aluno";
 }
 export function sessionContext() {
+  if (state.me && state.studentView)
+    return `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>Admin: ${e(state.me.email)}</small><small class="viewing-as">Visualizando: ${e(state.studentView.name || "carregando…")}</small></div>`;
   return state.me
     ? `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>${e(state.me.email)}</small></div>`
     : "";
+}
+// Faixa fixa enquanto o admin visualiza a conta de um aluno: deixa claro quem é quem e como sair.
+export function studentViewBanner() {
+  if (!state.studentView) return "";
+  return `<section class="student-view-banner" role="region" aria-label="Visualização como aluno"><div><strong>Visualizando como: ${e(state.studentView.name || "carregando…")}</strong><small>Modo administrador · somente leitura</small></div><button class="button secondary" data-action="exit-student-view">Sair da visualização</button></section>`;
 }
 export function pageLabel() {
   return (

@@ -105,6 +105,7 @@ resource "aws_apigatewayv2_route" "portal" {
     "POST /cohorts/{code}/pending-preview-batch", "POST /cohorts/{code}/send-reminders",
     "GET /cohorts/{code}/reminder-settings", "POST /cohorts/{code}/verify-sender",
     "POST /cohorts/{code}/students-search", "POST /cohorts/{code}/unlink-student",
+    "POST /cohorts/{code}/student-view",
     "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject",
     "POST /cohorts/{code}/settings"
   ])

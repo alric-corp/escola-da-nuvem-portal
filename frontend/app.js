@@ -1,5 +1,5 @@
 import { callback, clearSession, login, logout, session, validSession } from "./auth.js";
-import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, state, teacher } from "./ui.js";
+import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, state, studentViewBanner, teacher } from "./ui.js";
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";
@@ -19,12 +19,65 @@ let renderedView = "";
 let lastFocusSelector = "";
 const drafts = new Map();
 let draftOwner = "";
+// "Visualizar como aluno" vale só para esta aba: registro em sessionStorage e a marca
+// ?modo=visualizar-aluno na URL. Os dois precisam existir para retomar ao recarregar; uma aba
+// nova abre como admin normal. O aluno visualizado nunca vai para a URL nem para avanca.context.
+const STUDENT_VIEW_KEY = "avanca.student-view";
+const STUDENT_VIEW_MARK = "visualizar-aluno";
+const studentViews = ["overview", "activities", "history"];
 
 function saveContext() {
-  if (!state.me || demo) return;
+  if (!state.me || demo || state.studentView) return;
   localStorage.setItem("avanca.context", JSON.stringify({ owner: state.me.email, code: state.code,
     view: ["student-pending", "reminders-batch"].includes(state.view) ? "overview" : state.view,
     filter: state.filter, search: state.search, sort: state.sort, activityKind: state.activityKind, activityModule: state.activityModule }));
+}
+function persistStudentView() {
+  try {
+    sessionStorage.setItem(STUDENT_VIEW_KEY, JSON.stringify({ owner: state.me.email, code: state.studentView.code,
+      studentId: state.studentView.studentId, view: studentViews.includes(state.view) ? state.view : "overview" }));
+  } catch { /* Sem sessionStorage a visualização apenas não sobrevive ao recarregar. */ }
+}
+function storedStudentView() {
+  if (new URLSearchParams(location.search).get("modo") !== STUDENT_VIEW_MARK) return null;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(STUDENT_VIEW_KEY) || "null");
+    if (saved?.owner === state.me.email && typeof saved.code === "string" && /^\d{1,32}$/.test(saved.studentId)) return saved;
+  } catch { /* Registro danificado: abre como admin normal. */ }
+  return null;
+}
+function forgetStudentView() {
+  state.studentView = null;
+  try { sessionStorage.removeItem(STUDENT_VIEW_KEY); } catch { /* Nada a limpar. */ }
+  if (new URLSearchParams(location.search).get("modo") === STUDENT_VIEW_MARK) history.replaceState({}, "", location.pathname);
+}
+function resetStudentFilters() {
+  Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all" });
+}
+async function enterStudentView(studentId) {
+  if (!admin() || demo || !state.code || !/^\d{1,32}$/.test(studentId)) return;
+  state.studentView = { code: state.code, studentId, name: "" };
+  state.view = "overview";
+  resetStudentFilters();
+  history.replaceState({}, "", `${location.pathname}?modo=${STUDENT_VIEW_MARK}`);
+  persistStudentView();
+  window.scrollTo(0, 0);
+  await loadReport();
+}
+async function exitStudentView(message = "") {
+  forgetStudentView();
+  reportRequest++; // descarta uma resposta de visualização ainda em andamento
+  state.report = null;
+  state.reportError = "";
+  state.view = "access";
+  resetStudentFilters();
+  if (message) notice(message, true);
+  await loadAccess();
+}
+// Na visualização como aluno só navegação e leitura: nenhuma ação é executada em nome do aluno.
+function allowedWhileViewing(button) {
+  return studentViews.includes(button.dataset.view) || !!button.dataset.filter ||
+    ["exit-student-view", "refresh-report", "clear-filters", "retry-boot", "logout"].includes(button.dataset.action);
 }
 function saveDraft() {
   if (state.code) drafts.set(state.code, Object.fromEntries(
@@ -88,14 +141,16 @@ function render() {
   renderedView = state.view;
   const name =
     state.report?.student?.name?.split(" ")[0] || state.me.email.split("@")[0];
+  // A conta no menu é sempre de quem está autenticado, mesmo visualizando um aluno.
+  const accountName = state.studentView ? state.me.email.split("@")[0] : name;
   $("#app").innerHTML =
     `${demo ? `<div class="demo-bar">Demonstração · dados fictícios <button data-action="demo-role">Ver como ${demoRole === "student" ? "instrutor" : "aluno"} ${icon("arrow", 14)}</button><a href="./">Sair da demonstração</a></div>` : ""}
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a><div class="layout"><aside class="sidebar"><a href="./" class="brand"><img class="brand-logo" src="./logo.png" alt="Escola da Nuvem" width="112" height="112" /></a><div class="workspace-label">PORTAL AWS RE/START</div>
   <label class="cohort-label" for="cohort">${teacher() || admin() ? "Turma selecionada" : "Minha turma"}</label><select id="cohort">${state.cohorts.length ? state.cohorts.map((c) => `<option value="${e(c.code)}" ${c.code === state.code ? "selected" : ""}>${e(c.code)}</option>`).join("") : "<option>Nenhuma turma vinculada</option>"}</select>
-  <nav aria-label="Menu principal">${nav("overview", teacher() ? "Painel do instrutor" : "Meu desempenho", "grid", teacher() ? "Painel" : "Desempenho")}${!teacher() ? nav("activities", "Minhas atividades", "book", "Atividades") : ""}${nav("history", teacher() ? "Publicações da turma" : "Meu histórico", "clock", teacher() ? "Publicações" : "Histórico")}${teacher() ? nav("import", "Atualizar notas", "upload", "Notas") + nav("reminders", "Lembretes", "out") : ""}${admin() ? nav("access", "Turmas e acessos", "users", "Acessos") : ""}</nav>
-  <div class="sidebar-bottom"><div class="support-card">${icon("network", 28)}<strong>Aprender abre caminhos.</strong><p>Cada atividade é mais um passo na sua jornada.</p></div><div class="account"><span class="avatar">${e(name.slice(0, 2).toUpperCase())}</span><div><strong>${e(name)}</strong><small>${roleLabel()}</small></div><button class="icon-button" data-action="logout" aria-label="Sair da conta">${icon("out")}</button></div></div></aside>
+  <nav aria-label="Menu principal">${nav("overview", teacher() ? "Painel do instrutor" : "Meu desempenho", "grid", teacher() ? "Painel" : "Desempenho")}${!teacher() ? nav("activities", "Minhas atividades", "book", "Atividades") : ""}${nav("history", teacher() ? "Publicações da turma" : "Meu histórico", "clock", teacher() ? "Publicações" : "Histórico")}${teacher() ? nav("import", "Atualizar notas", "upload", "Notas") + nav("reminders", "Lembretes", "out") : ""}${admin() && !state.studentView ? nav("access", "Turmas e acessos", "users", "Acessos") : ""}</nav>
+  <div class="sidebar-bottom"><div class="support-card">${icon("network", 28)}<strong>Aprender abre caminhos.</strong><p>Cada atividade é mais um passo na sua jornada.</p></div><div class="account"><span class="avatar">${e(accountName.slice(0, 2).toUpperCase())}</span><div><strong>${e(accountName)}</strong><small>${roleLabel()}</small></div><button class="icon-button" data-action="logout" aria-label="Sair da conta">${icon("out")}</button></div></div></aside>
   <main class="main" id="main-content" tabindex="-1"><header class="topline"><div class="location-context"><span>${state.view === "access" ? "Administração do portal" : state.code ? `Turma ${e(state.code)}` : "Minha conta"}${demo ? " · Demonstração" : ""}</span><strong>${e(pageLabel())}</strong></div>${sessionContext()}</header>
-  ${content(name)}<footer class="main-footer"><span>Escola da Nuvem · AWS re/Start</span><span>Seu aprendizado, uma semana de cada vez.</span></footer></main></div>`;
+  ${studentViewBanner()}${content(name)}<footer class="main-footer"><span>Escola da Nuvem · AWS re/Start</span><span>Seu aprendizado, uma semana de cada vez.</span></footer></main></div>`;
   if (changedView) {
     const title = $("main h1") || $("main");
     title?.setAttribute("tabindex", "-1");
@@ -105,12 +160,13 @@ function render() {
     next.focus({ preventScroll: true });
     if (selection != null && ["search", "text"].includes(next.type)) next.setSelectionRange(selection, selection);
   } else if (lastFocusSelector) $(lastFocusSelector)?.focus({ preventScroll: true });
+  if (state.studentView) persistStudentView();
   saveContext();
 }
 
 function content(name) {
   if (state.bootError) return errorPanel(state.bootError, "retry-boot");
-  if (state.view === "access" && admin()) return accessPage();
+  if (state.view === "access" && admin() && !state.studentView) return accessPage();
   if (!state.code)
     return `${heading("PRIMEIRO ACESSO", `Olá, ${e(name)}.`, "Sua conta está confirmada. Vamos localizar sua turma.")}<section class="panel onboarding"><h2>Ainda não encontramos notas para esta conta</h2><p>Você entrou com <strong>${e(state.me.email)}</strong>.</p><ol><li>Confira se este é o mesmo e-mail cadastrado no Canvas.</li><li>Se estiver correto, peça ao instrutor para conferir sua matrícula e a primeira publicação de notas.</li><li>Uma conta confirmada não cria automaticamente uma matrícula.</li></ol><div class="form-footer"><button class="button primary" data-action="retry-boot">Verificar novamente</button><button class="button secondary" data-action="switch-account">Entrar com outra conta</button></div>${state.me.instructorCandidate ? `<p>É instrutor? Solicite seu acesso e aguarde o vínculo com a turma.</p><button class="button secondary" data-action="request" ${state.me.request ? "disabled" : ""}>${state.me.request ? "Solicitação enviada ao administrador" : "Solicitar acesso de instrutor"}</button>` : ""}</section>`;
   if (state.view === "reminders" && teacher()) return senderPage();
@@ -203,18 +259,27 @@ async function loadSender() {
 async function loadReport() {
   const code = state.code;
   const request = ++reportRequest;
+  const viewing = state.studentView;
   state.report = null;
   state.reportError = "";
   render();
   try {
     if (code) {
-      const report = await api(`/cohorts/${encodeURIComponent(code)}/report`);
-      if (state.code !== code || request !== reportRequest || !state.me) return;
+      // Visualização como aluno: o servidor confere admin, turma e matrícula a cada abertura.
+      const report = viewing
+        ? await api(`/cohorts/${encodeURIComponent(code)}/student-view`, { method: "POST", body: { studentId: viewing.studentId } })
+        : await api(`/cohorts/${encodeURIComponent(code)}/report`);
+      if (state.code !== code || request !== reportRequest || !state.me || state.studentView !== viewing) return;
+      if (viewing) viewing.name = report.viewAs?.name || "";
       state.report = report;
       state.focusDraft = null;
     }
   } catch (err) {
-    if (state.code !== code || request !== reportRequest) return;
+    if (state.code !== code || request !== reportRequest || state.studentView !== viewing) return;
+    if (viewing && state.me) {
+      await exitStudentView(`Não foi possível visualizar este aluno: ${err.message || "tente novamente."}`);
+      return;
+    }
     state.reportError = err.message || "Confira sua conexão e tente novamente.";
   }
   if (state.me && request === reportRequest) render();
@@ -296,6 +361,15 @@ async function boot() {
       } catch { /* Ignore a damaged navigation preference. */ }
     }
     state.cohorts = (await api("/cohorts")).cohorts;
+    if (!wasSignedIn && !demo) {
+      const resume = admin() ? storedStudentView() : null;
+      if (resume && state.cohorts.some((c) => c.code === resume.code)) {
+        state.code = resume.code;
+        state.view = studentViews.includes(resume.view) ? resume.view : "overview";
+        state.studentView = { code: resume.code, studentId: resume.studentId, name: "" };
+        resetStudentFilters();
+      } else forgetStudentView();
+    }
     if (!state.cohorts.some((c) => c.code === state.code)) {
       state.code = state.cohorts[0]?.code || "";
       state.view = "overview";
@@ -399,6 +473,7 @@ const actions = {
     else render();
   },
   logout: () => signOut(),
+  "exit-student-view": () => exitStudentView(),
   "switch-account": () => signOut(),
   "demo-role": async () => {
     demoRole = demoRole === "student" ? "instructor" : "student";
@@ -439,6 +514,7 @@ function signOut() {
   if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
   drafts.clear();
   state.csv = "";
+  forgetStudentView();
   localStorage.removeItem("avanca.context");
   if (demo) location.assign("./");
   else logout(config);
@@ -447,7 +523,10 @@ function signOut() {
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
+  if (state.studentView && !allowedWhileViewing(button)) return;
   const action = button.dataset.action;
+  if (button.dataset.viewAsStudent)
+    return busy(button, () => enterStudentView(button.dataset.viewAsStudent));
   if (button.dataset.studentPending)
     return busy(button, () => loadPending(button.dataset.studentPending));
   if (button.dataset.addFocus) {
@@ -552,6 +631,10 @@ document.addEventListener("change", (event) => {
   const target = event.target;
   if (target.id === "cohort")
     busy(null, async () => {
+      if (state.studentView) {
+        forgetStudentView();
+        state.view = "overview";
+      }
       saveDraft();
       state.code = target.value;
       state.report = null;
@@ -647,6 +730,7 @@ document.addEventListener("input", (event) => {
 });
 document.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (state.studentView) return;
   const form = event.target;
   busy(
     form.querySelector('button[type="submit"], button:not([type])'),
