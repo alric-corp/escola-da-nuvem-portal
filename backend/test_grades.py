@@ -75,6 +75,41 @@ class GradesTests(unittest.TestCase):
         self.assertEqual(snapshot_changes(before, same)["gradesChanged"], 0)
         self.assertEqual(snapshot_changes(before, other)["gradesChanged"], 1)
 
+    def test_max_score_changes_compare_numbers_not_text(self):
+        from changes import same_points, snapshot_changes
+        for a, b in (("10", "10.00"), ("10.0", 10), ("100.00", "100"), ("2.50", "2.5")):
+            self.assertTrue(same_points(a, b), (a, b))
+        for a, b in (("10", "20"), ("10", "10.5")):
+            self.assertFalse(same_points(a, b), (a, b))
+        ids = ["001 KC (123)", "002 Lab (456)"]
+        scaled = lambda kc, lab, grade="2": parse_csv(canvas_csv(kc=grade).replace(
+            "Points Possible,,,10,100,1", f"Points Possible,,,{kc},{lab},1"), ids)
+        before = scaled("10.00", "100.00")
+        self.assertEqual(before["activities"][0]["points"], "10.00")  # o valor guardado não muda
+        for kc, lab in (("10", "100"), ("10.0", "100.0"), ("10.000", "100")):
+            self.assertEqual(snapshot_changes(before, scaled(kc, lab))["scalesChanged"], [], (kc, lab))
+        self.assertEqual(snapshot_changes(scaled("2.50", "100", "2"), scaled("2.5", "100", "2"))["scalesChanged"], [])
+        for kc in ("20", "10.5"):
+            changed = snapshot_changes(before, scaled(kc, "100"))["scalesChanged"]
+            self.assertEqual([c["id"] for c in changed], ["001 KC (123)"], kc)
+
+    def test_student_history_compares_max_score_as_number(self):
+        from changes import student_changes
+        ids = ["001 KC (123)", "002 Lab (456)"]
+        scaled = lambda kc, lab, grade="2": parse_csv(canvas_csv(kc=grade).replace(
+            "Points Possible,,,10,100,1", f"Points Possible,,,{kc},{lab},1"), ids)
+        changes = lambda before, after: student_changes(before["students"][0], before["activities"],
+                                                        after["students"][0], after["activities"])
+        # A e B: só o formato da pontuação máxima muda; nota igual → nenhuma atividade alterada.
+        self.assertEqual(changes(scaled("10", "100.00"), scaled("10", "100"))["activities"], [])
+        self.assertEqual(changes(scaled("2.50", "100"), scaled("2.5", "100"))["activities"], [])
+        # C: pontuação máxima realmente diferente → mudança registrada.
+        c = changes(scaled("10", "100"), scaled("20", "100"))["activities"]
+        self.assertEqual([(a["name"], a["before"], a["after"]) for a in c], [("001 KC", 20.0, 10.0)])
+        # D: nota mudou e a pontuação só mudou de formato → a mudança de nota continua registrada.
+        d = changes(scaled("10.00", "100.00", grade="2"), scaled("10", "100", grade="3"))["activities"]
+        self.assertEqual([(a["name"], a["before"], a["after"]) for a in d], [("001 KC", 20.0, 30.0)])
+
     def test_blank_lines_and_bom_are_ignored(self):
         self.assertEqual(len(parse_csv("\ufeff" + canvas_csv() + "\n\n")["students"]), 1)
 

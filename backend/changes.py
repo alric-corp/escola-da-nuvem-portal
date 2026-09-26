@@ -11,6 +11,11 @@ def same_grade(a, b):
     return Decimal(a) == Decimal(b)
 
 
+def same_points(a, b):
+    """Pontuação máxima como número: o CSV exportado traz "10.00" e a API do Canvas, "10"."""
+    return Decimal(str(a)) == Decimal(str(b))
+
+
 def snapshot_changes(before, after):
     before = before or {"students": [], "activities": []}
     old = {s["id"]: s for s in before["students"]}
@@ -43,7 +48,7 @@ def snapshot_changes(before, after):
             "activitiesPaused": [activity_ref(old_a[k]) for k in old_a
                                  if old_a[k]["active"] and not new_a.get(k, {}).get("active")],
             "scalesChanged": [activity_ref(new_a[k]) for k in sorted(old_a.keys() & new_a.keys())
-                              if old_a[k]["points"] != new_a[k]["points"]],
+                              if not same_points(old_a[k]["points"], new_a[k]["points"])],
             "gradesChanged": grade_count, "gradesAdded": added, "gradesRemoved": removed, "gradeDetails": grades}
 
 
@@ -78,7 +83,8 @@ def student_changes(before_student, before_activities, student, activities, thre
     updates = []
     for aid, activity in new.items():
         prior = old.get(aid)
-        if not prior or any(prior.get(k) != activity.get(k) for k in ("state", "percent", "points")):
+        if (not prior or any(prior.get(k) != activity.get(k) for k in ("state", "percent"))
+                or not same_points(prior["points"], activity["points"])):
             updates.append({"name": activity["name"], "before": prior["percent"] if prior else None,
                             "after": activity["percent"], "previousState": prior["state"] if prior else None,
                             "state": activity["state"]})

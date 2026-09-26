@@ -199,7 +199,7 @@ class SyncTests(unittest.TestCase):
         text, count = self.csv(lab_scores=(100, 90, 50))
         rows = list(csv.reader(io.StringIO(text)))
         grade_cols = [i for i, h in enumerate(rows[0]) if "(" in h]
-        for row in rows[2:]:  # formato do CSV exportado pelo Canvas: "7.00", "100.00"
+        for row in rows[1:]:  # formato do CSV exportado pelo Canvas: "7.00", "100.00", inclusive Points Possible
             for i in grade_cols:
                 row[i] = f"{float(row[i]):.2f}" if row[i] not in ("", "EX") else row[i]
         out = io.StringIO()
@@ -209,9 +209,35 @@ class SyncTests(unittest.TestCase):
         # Turma com Canvas: o envio manual só publica com a matrícula já gravada pelo canvas_sync.
         save_roster(self.repo, "4436", course_students(CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()})), "4436"))
         admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
-        draft = admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": csv_like_export})["draft"]
-        admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"]})
+        self.assertIn("Points Possible,,,10.00,100.00", csv_like_export)
+        sync_from_canvas(self.repo, "BRSA0267", text, count)  # publicação atual vinda da API ("10", "100")
+        preview = admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": csv_like_export})
+        self.assertEqual((preview["changes"]["scalesChanged"], preview["changes"]["gradesChanged"]), ([], 0))
+        admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": preview["draft"]["id"]})
         self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", text, count)["status"], "unchanged")
+
+    def test_manual_export_then_sync_does_not_add_false_changes_to_student_history(self):
+        text, count = self.csv(lab_scores=(100, 90, 50))
+        rows = list(csv.reader(io.StringIO(text)))
+        cols = [i for i, h in enumerate(rows[0]) if "(" in h]
+        for row in rows[1:]:  # export do Canvas: pontuação máxima e notas com duas casas
+            for i in cols:
+                row[i] = f"{float(row[i]):.2f}" if row[i] not in ("", "EX") else row[i]
+        out = io.StringIO()
+        csv.writer(out).writerows(rows)
+        save_roster(self.repo, "4436", course_students(CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()})), "4436"))
+        admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        draft = admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": out.getvalue()})["draft"]
+        admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"]})
+        # A sincronização publica por causa de outro aluno; as pontuações vêm como "10" e "100".
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", *self.csv(kc_scores=(7, 8, 10), lab_scores=(100, 90, 50)))["status"], "published")
+        student = Portal(self.repo, {"sub": "s0", "email": "aluno0@example.test", "groups": []})
+        history = student.dispatch("GET", "/cohorts/BRSA0267/report", {})["history"]
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0]["changes"]["activities"], [])  # nada mudou para este aluno
+        other = Portal(self.repo, {"sub": "s2", "email": "aluno2@example.test", "groups": []})
+        changed = other.dispatch("GET", "/cohorts/BRSA0267/report", {})["history"][0]["changes"]["activities"]
+        self.assertEqual([(a["name"], a["before"], a["after"]) for a in changed], [("001 KC Introdução", 90.0, 100.0)])
 
     def test_empty_or_shrunken_roster_is_not_published(self):
         sync_from_canvas(self.repo, "BRSA0267", *self.csv(students=5, kc_scores=(7,) * 5, lab_scores=(100,) * 5))
