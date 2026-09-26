@@ -21,6 +21,12 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
+// Só a parte da URL que o portal controla (caminho, query e hash); a porta aleatória do servidor
+// de teste pode conter "101" sem que o ID do aluno esteja exposto.
+const appUrlPart = (url) => { const u = new URL(url); return u.pathname + u.search + u.hash; };
+assert.doesNotMatch(appUrlPart("http://127.0.0.1:61101/?modo=visualizar-aluno"), /101/);
+for (const leaked of ["http://127.0.0.1:5000/?studentId=101", "http://127.0.0.1:5000/aluno/101", "http://127.0.0.1:5000/#101"])
+  assert.match(appUrlPart(leaked), /101/, leaked);
 
 const activity = (n, name, kind, percent, state, module) => ({ id: `${name} (${n})`, name, kind, points: "100", active: state !== "unreleased",
   filled: 10, score: percent, percent, state, needsReview: false, module, moduleOrder: n < 3 ? 0 : 1 });
@@ -168,7 +174,7 @@ try {
 
     // Estado só nesta aba: URL sem o ID do aluno, nada em avanca.context.
     assert.equal(new URL(page.url()).search, "?modo=visualizar-aluno");
-    assert.doesNotMatch(page.url(), /101/);
+    assert.doesNotMatch(appUrlPart(page.url()), /101/);
     const stored = await page.evaluate(() => ({ local: localStorage.getItem("avanca.context") || "", session: sessionStorage.getItem("avanca.student-view") }));
     assert.doesNotMatch(stored.local, /101|studentView|student-view/);
     assert.equal(JSON.parse(stored.session).studentId, "101");
