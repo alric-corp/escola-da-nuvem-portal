@@ -16,8 +16,10 @@ import binascii
 import hashlib
 import json
 import re
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 TYPES = ("BUG", "SUGGESTION", "IMPROVEMENT", "OTHER")
 STATUSES = ("NEW", "IN_REVIEW", "RESOLVED", "ARCHIVED")
@@ -130,4 +132,82 @@ def with_status(item, status, by, at):
 
 def own_view(item):
     """O que o autor vê do próprio feedback (sem e-mail, sub de admin ou histórico interno)."""
-    return {k: item.get(k) for k in ("id", "type", "title", "description", "status", "createdAt", "cohort", "page", "updatedAt")}
+    return {k: item.get(k) for k in ("id", "type", "title", "description", "status", "createdAt", "cohort", "page", "updatedAt")} | {
+        "attachments": item.get("attachments", 0)}
+
+
+# Anexos (imagens) do feedback. O arquivo vai do navegador direto ao S3 por presigned POST
+# (bucket próprio, privado); o DynamoDB guarda só metadados, em três slots fixos por feedback:
+# FEEDBACK-ATTACHMENT#<feedbackId> / SLOT#1..3. O limite de 3 vem da própria chave.
+ATTACHMENT_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
+ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024  # 5 MiB
+ATTACHMENT_SLOTS = 3
+ATTACHMENT_NAME_MAX = 180
+OPEN_STATUSES = ("NEW", "IN_REVIEW")
+UPLOAD_SECONDS = 300          # validade do presigned POST
+PENDING_WINDOW = timedelta(minutes=15)  # depois disso o slot PENDING é considerado livre
+PENDING_TTL = timedelta(days=1)
+REJECTED_TTL = timedelta(days=7)
+DOWNLOAD_SECONDS = 300        # validade do link de leitura
+ATTACHMENT_ID = re.compile(r"[0-9a-f]{32}")
+CLIENT_TOKEN = re.compile(r"[A-Za-z0-9-]{16,64}")
+SLOT_FIELDS = {"fileName", "contentType", "size", "clientToken"}
+
+
+def attachment_pk(feedback_id):
+    return "FEEDBACK-ATTACHMENT#" + feedback_id
+
+
+def tmp_key(feedback_id, attachment_id):
+    return f"tmp/{feedback_id}/{attachment_id}"
+
+
+def final_key(feedback_id, attachment_id):
+    return f"feedback/{feedback_id}/{attachment_id}"
+
+
+def clean_filename(name, mime):
+    """Nome só para exibição: nunca vira chave no S3 nem entra cru em cabeçalho."""
+    text = unicodedata.normalize("NFC", name if isinstance(name, str) else "")
+    text = re.split(r"[\\/]", text)[-1]  # basename: descarta qualquer caminho (../../)
+    text = "".join(ch for ch in text if unicodedata.category(ch)[0] != "C")  # controles, CR/LF, bidi
+    text = " ".join(text.split()).strip(" .")
+    return text[:ATTACHMENT_NAME_MAX].strip() or f"imagem.{ATTACHMENT_TYPES[mime]}"
+
+
+def clean_slot_request(body):
+    if not isinstance(body, dict) or set(body) != SLOT_FIELDS:
+        raise Invalid("Solicitação inválida.")
+    mime = body["contentType"]
+    if mime not in ATTACHMENT_TYPES:
+        raise Invalid("Envie imagens PNG, JPEG ou WebP.")
+    size = body["size"]
+    if isinstance(size, bool) or not isinstance(size, int) or not 1 <= size <= ATTACHMENT_MAX_BYTES:
+        raise Invalid("Cada imagem deve ter até 5 MB.")
+    token = body["clientToken"]
+    if not isinstance(token, str) or not CLIENT_TOKEN.fullmatch(token):
+        raise Invalid("Identificador do arquivo inválido.")
+    if not isinstance(body["fileName"], str) or len(body["fileName"]) > 1000:
+        raise Invalid("Nome de arquivo inválido.")
+    return {"originalName": clean_filename(body["fileName"], mime), "mimeType": mime, "size": size, "clientToken": token}
+
+
+def detect_image(head):
+    """Tipo real pelos primeiros bytes (assinatura), sem biblioteca de imagem."""
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if len(head) >= 12 and head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def content_disposition(name):
+    """inline; filename="<ASCII seguro>"; filename*=UTF-8''<percent-encoded>. Nada cru do usuário."""
+    ascii_name = "".join(ch if 32 <= ord(ch) < 127 and ch not in '"\;' else "_" for ch in name) or "imagem"
+    return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
+
+
+def attachment_view(slot):
+    return {k: slot.get(k) for k in ("attachmentId", "originalName", "mimeType", "size", "createdAt")}

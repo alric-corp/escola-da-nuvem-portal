@@ -1,5 +1,5 @@
-import { date, e, heading, state } from "../ui.js";
-import { feedbackStatuses, feedbackTypes, originLabel, shortDate, statusBadge } from "./feedback.js";
+import { date, e, heading, plural, state } from "../ui.js";
+import { attachmentGallery, feedbackStatuses, feedbackTypes, originLabel, shortDate, statusBadge } from "./feedback.js";
 
 // Área administrativa de feedbacks. Filtros e paginação são aplicados no backend; a tela só
 // monta os parâmetros. Conteúdo do usuário sempre como texto (e()).
@@ -24,7 +24,7 @@ function listItems() {
   if (a.error)
     return `<div class="empty compact" role="alert"><p>${e(a.error)}</p><button class="button secondary" data-action="admin-feedback-retry">Tentar novamente</button></div>`;
   if (!a.items.length) return a.loading ? '<p class="small" role="status">Carregando feedbacks…</p>' : '<p class="empty compact">Nenhum feedback neste filtro.</p>';
-  return `<ul class="feedback-list">${a.items.map((f) => `<li><button type="button" class="feedback-card fb-open" data-fb-open="${e(f.id)}"><div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div><strong class="fb-title">${e(f.title)}</strong><small>${e(f.cohort || "Sem turma")} · ${e(author(f))} · ${e(shortDate(f.createdAt))}</small></button></li>`).join("")}</ul>${a.nextCursor ? `<button class="button secondary fb-more" data-action="admin-feedback-more" ${a.loading ? "disabled" : ""}>${a.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
+  return `<ul class="feedback-list">${a.items.map((f) => `<li><button type="button" class="feedback-card fb-open" data-fb-open="${e(f.id)}"><div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div><strong class="fb-title">${e(f.title)}</strong><small>${e(f.cohort || "Sem turma")} · ${e(author(f))} · ${e(shortDate(f.createdAt))}${f.attachments ? ` · ${plural(f.attachments, "anexo", "anexos")}` : ""}</small></button></li>`).join("")}</ul>${a.nextCursor ? `<button class="button secondary fb-more" data-action="admin-feedback-more" ${a.loading ? "disabled" : ""}>${a.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
 }
 
 function detail(f) {
@@ -34,6 +34,7 @@ function detail(f) {
   <div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div>
   <h2 id="fb-detail-title" class="fb-title">${e(f.title)}</h2><p class="fb-description">${e(f.description)}</p>
   <dl class="fb-facts">${row("Aluno", student)}${row("E-mail", e(f.createdByEmail || "—"))}${row("Turma", e(f.cohort || "Sem turma"))}${row("Enviado em", e(date(f.createdAt)))}${row("Página de origem", e(originLabel(f.page, !!f.canvasId) || "—"))}${row("Publicação", f.publicationId ? `<code>${e(f.publicationId)}</code>` : "—")}${f.updatedBy && f.updatedAt !== f.createdAt ? row("Última mudança de status", e(date(f.updatedAt))) : ""}</dl>
+  <section class="fb-detail-attachments" aria-labelledby="fb-attachments-heading"><h3 id="fb-attachments-heading">Anexos</h3>${f.attachments ? attachmentGallery(f.id) : '<p class="small">Nenhuma imagem anexada.</p>'}</section>
   <div class="fb-actions"><label for="fb-status-select">Status <select id="fb-status-select">${Object.entries(feedbackStatuses).map(([k, v]) => `<option value="${k}" ${k === f.status ? "selected" : ""}>${v}</option>`).join("")}</select></label><button type="button" class="button primary" data-fb-save="${e(f.id)}">Salvar status</button>
   ${f.canViewAsStudent ? `<button type="button" class="button secondary" data-fb-view-as="${e(f.id)}">Visualizar como aluno</button>` : ""}</div></section>`;
 }

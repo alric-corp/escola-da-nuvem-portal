@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import unittest
+import uuid
 from unittest.mock import patch
 
 from grades import parse_csv
@@ -59,6 +60,9 @@ class MemoryRepository:
         self.expires = {}
         self.counters = {}
         self.fail_transaction = False
+        # Bucket de anexos em memória: chave -> {"body", "contentType", "versions"}.
+        self.feedback_files = {}
+        self.file_calls = []
 
     def get(self, pk, sk):
         return copy.deepcopy(self.items.get((pk, sk)))
@@ -125,6 +129,37 @@ class MemoryRepository:
 
     def mark(self, key, status):
         self.tags[key] = status
+
+    def presign_upload(self, key, content_type, max_bytes, expires):
+        self.file_calls.append(("presign_upload", key, content_type, max_bytes, expires))
+        return {"url": "https://feedback-files.example.test/", "fields": {"key": key, "Content-Type": content_type, "policy": "p"}}
+
+    def upload(self, key, body, content_type):
+        """Simula o POST do navegador direto ao S3."""
+        self.feedback_files[key] = {"body": body, "contentType": content_type, "version": uuid.uuid4().hex}
+
+    def file_head(self, key):
+        f = self.feedback_files.get(key)
+        return {"size": len(f["body"]), "contentType": f["contentType"]} if f else None
+
+    def file_start(self, key, length):
+        return self.feedback_files[key]["body"][:length]
+
+    def promote_file(self, source, target, content_type):
+        self.file_calls.append(("promote_file", source, target, content_type))
+        version = uuid.uuid4().hex
+        self.feedback_files[target] = {**self.feedback_files[source], "contentType": content_type, "version": version}
+        return version
+
+    def delete_file(self, key, version_id=None):
+        self.file_calls.append(("delete_file", key, version_id))
+        f = self.feedback_files.get(key)
+        if f and (version_id is None or f["version"] == version_id):
+            del self.feedback_files[key]
+
+    def presign_download(self, key, content_type, disposition, expires):
+        self.file_calls.append(("presign_download", key, content_type, disposition, expires))
+        return f"https://feedback-files.example.test/{key}?X-Amz-Expires={expires}"
 
 
 class NoopMailer:
@@ -1025,7 +1060,7 @@ class FeedbackTests(unittest.TestCase):
         self.assertEqual(item["statusHistory"], [{"status": "NEW", "by": "student", "at": self.T0.isoformat()}])
         self.assertNotIn("Marina", json.dumps(item))  # o nome não é guardado
         self.assertTrue(feedback_module.ID_PATTERN.fullmatch(item["id"]))
-        self.assertEqual(set(created), {"id", "type", "title", "description", "status", "createdAt", "cohort", "page", "updatedAt"})
+        self.assertEqual(set(created), {"id", "type", "title", "description", "status", "createdAt", "cohort", "page", "updatedAt", "attachments"})
         # Sem turma (tela de primeiro acesso) e por admin/instrutor também é permitido.
         self.at += timedelta(minutes=1)
         self.assertIsNone(self.send(cohort=..., page="onboarding", title="Sem turma")["feedback"]["cohort"])
@@ -1258,6 +1293,288 @@ class FeedbackTests(unittest.TestCase):
             self.assertEqual(handler(event, None)["statusCode"], 400)
             self.assertEqual(handler({**event, "queryStringParameters": {"limit": "5"}}, None)["statusCode"], 200)
             self.assertEqual(handler({**event, "queryStringParameters": None}, None)["statusCode"], 200)
+
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+WEBP = b"RIFF\x40\x00\x00\x00WEBPVP8 " + b"\x00" * 64
+
+
+class FeedbackAttachmentTests(unittest.TestCase):
+    """Anexos do feedback: slots, presigned POST, validação na conclusão, leitura e rollback."""
+    setUp_feedback = FeedbackTests.setUp
+    send = FeedbackTests.send
+    T0 = FeedbackTests.T0
+
+    def setUp(self):
+        self.setUp_feedback()
+        self.repo.files_bucket = "feedback-test"
+        self.fid = self.send()["feedback"]["id"]
+
+    def assert_status(self, fn, status):
+        with self.assertRaises(APIError) as err:
+            fn()
+        self.assertEqual(err.exception.status, status)
+        return err.exception
+
+    def slot(self, actor=None, fid=None, token=None, **fields):
+        body = {"fileName": "captura-erro.png", "contentType": "image/png", "size": len(PNG),
+                "clientToken": token or uuid.uuid4().hex, **fields}
+        with patch("feedback.clock", return_value=self.at):
+            return (actor or self.student).dispatch("POST", f"/feedback/{fid or self.fid}/attachments", body)
+
+    def upload(self, slot, body, content_type=None):
+        fields = slot["upload"]["fields"]
+        self.repo.upload(fields["key"], body, content_type or fields["Content-Type"])
+
+    def complete(self, aid, actor=None, fid=None):
+        with patch("feedback.clock", return_value=self.at):
+            return (actor or self.student).dispatch("POST", f"/feedback/{fid or self.fid}/attachments/{aid}/complete", {})
+
+    def attach(self, body=PNG, mime="image/png", name="captura-erro.png", actor=None):
+        s = self.slot(actor, contentType=mime, size=len(body), fileName=name)
+        self.upload(s, body)
+        return self.complete(s["attachment"]["attachmentId"], actor)
+
+    def listing(self, actor=None, fid=None):
+        return (actor or self.student).dispatch("GET", f"/feedback/{fid or self.fid}/attachments", {})
+
+    def download(self, aid, actor=None):
+        return (actor or self.student).dispatch("GET", f"/feedback/{self.fid}/attachments/{aid}", {})
+
+    def slots(self):
+        return {s["slot"]: s for s in self.repo.list(feedback_module.attachment_pk(self.fid), "SLOT#")}
+
+    def count(self):
+        return self.repo.get("FEEDBACK", "FEEDBACK#" + self.fid).get("attachments", 0)
+
+    def test_png_jpeg_and_webp_become_ready_with_the_right_keys(self):
+        results = [self.attach(PNG, "image/png"), self.attach(JPEG, "image/jpeg", "foto.jpg"), self.attach(WEBP, "image/webp", "tela.webp")]
+        self.assertEqual([r["status"] for r in results], ["READY"] * 3)
+        self.assertEqual(self.count(), 3)
+        for slot in self.slots().values():
+            self.assertEqual(slot["objectKey"], f"feedback/{self.fid}/{slot['attachmentId']}")
+            self.assertNotIn("pendingUntil", slot)
+            self.assertIn(slot["objectKey"], self.repo.feedback_files)
+            self.assertEqual(self.repo.feedback_files[slot["objectKey"]]["contentType"], slot["mimeType"])
+        self.assertFalse(any(k.startswith("tmp/") for k in self.repo.feedback_files))  # temporários removidos
+        presign = [c for c in self.repo.file_calls if c[0] == "presign_upload"]
+        self.assertEqual([c[1].split("/")[0] for c in presign], ["tmp"] * 3)
+        self.assertEqual({(c[3], c[4]) for c in presign}, {(5_242_880, 300)})  # 5 MiB, 5 minutos
+        self.assertTrue(all(("SLOT#%d" % n) for n in (1, 2, 3)))
+        # O limite de feedbacks por hora não é consumido pelos anexos.
+        pk, sk, _ = feedback_module.rate_key("student", self.at)
+        self.assertEqual(self.repo.counter(pk, sk), {"count": 1})
+
+    def test_only_png_jpeg_webp_up_to_5_mib_are_accepted(self):
+        bad = [{"contentType": "image/svg+xml"}, {"contentType": "application/pdf"}, {"contentType": "application/zip"},
+               {"contentType": "text/html"}, {"contentType": "application/octet-stream"}, {"contentType": "video/mp4"},
+               {"contentType": "audio/mpeg"}, {"contentType": "IMAGE/PNG"}, {"size": 0}, {"size": 5_242_881}, {"size": True},
+               {"size": "10"}, {"clientToken": "curto"}, {"clientToken": "x" * 65}, {"clientToken": "../../etc/passwd-aaaaaaaa"},
+               {"fileName": 12}, {"objectKey": "feedback/outro/arquivo"}]
+        for fields in bad:
+            with self.subTest(fields):
+                self.assert_status(lambda: self.slot(**fields), 400)
+        self.assert_status(lambda: self.student.dispatch("POST", f"/feedback/{self.fid}/attachments", {"contentType": "image/png"}), 400)
+        self.assertEqual(self.slots(), {})
+        self.assertEqual(self.slot(size=5_242_880)["status"], "PENDING")  # exatamente 5 MiB é permitido
+
+    def test_fourth_attachment_is_rejected_and_expired_pending_frees_a_slot(self):
+        for _ in range(3):
+            self.slot()
+        self.assert_status(lambda: self.slot(), 409)
+        self.at += timedelta(minutes=16)  # os três PENDING venceram (upload abandonado)
+        self.assertEqual(self.slot()["status"], "PENDING")
+        self.assertEqual(len(self.slots()), 3)
+        for _ in range(2):
+            self.attach()
+        self.assert_status(lambda: self.slot(), 409)
+        self.assertEqual(self.count(), 2)
+
+    def test_spoofed_type_bad_signature_and_size_mismatch_are_rejected_and_cleaned(self):
+        same_size = lambda body: body.ljust(len(PNG), b" ")[:len(PNG)]
+        cases = [(same_size(JPEG), "image/png", None, "não é uma imagem"),     # bytes de JPEG declarados como PNG
+                 (same_size(b"<svg onload=alert(1)>"), "image/png", None, "não é uma imagem"),
+                 (same_size(b"%PDF-1.7"), "image/png", None, "não é uma imagem"),
+                 (PNG, "image/png", "image/jpeg", "tipo da imagem"),          # Content-Type no S3 diferente do declarado
+                 (PNG + b"x", "image/png", None, "tamanho")]                  # tamanho diferente do declarado
+        for body, mime, stored_type, message in cases:
+            with self.subTest(message=message, body=body[:8]):
+                s = self.slot(contentType=mime, size=len(PNG))
+                self.upload(s, body, stored_type)
+                err = self.assert_status(lambda: self.complete(s["attachment"]["attachmentId"]), 400)
+                self.assertIn(message, err.message)
+                slot = next(x for x in self.slots().values() if x["attachmentId"] == s["attachment"]["attachmentId"])
+                self.assertEqual(slot["status"], "REJECTED")
+                self.assertNotIn(s["upload"]["fields"]["key"], self.repo.feedback_files)  # temporário apagado
+                self.assertNotIn(slot["objectKey"], self.repo.feedback_files)
+        self.assertEqual(self.count(), 0)
+        self.assertEqual(self.listing()["items"], [])
+        # Nada enviado ao S3: recusado também.
+        s = self.slot()
+        self.assert_status(lambda: self.complete(s["attachment"]["attachmentId"]), 400)
+        self.assertEqual(self.attach()["status"], "READY")  # as recusadas liberaram os slots
+
+    def test_authorization_and_idor(self):
+        ready = self.attach()["attachment"]["attachmentId"]
+        pending = self.slot()["attachment"]["attachmentId"]
+        # Outro aluno e o admin não anexam no feedback de outra pessoa.
+        for actor in (self.other, self.admin, self.instructor):
+            with self.subTest(actor=actor.uid):
+                self.assert_status(lambda: self.slot(actor), 403)
+                self.assert_status(lambda: self.complete(pending, actor), 403)
+        # Leitura: outro aluno e instrutor recebem o mesmo 404 de um feedback inexistente.
+        for actor in (self.other, self.instructor):
+            with self.subTest(actor=actor.uid):
+                self.assertEqual(self.assert_status(lambda: self.listing(actor), 404).message, "Feedback não encontrado.")
+                self.assertEqual(self.assert_status(lambda: self.download(ready, actor), 404).message, "Feedback não encontrado.")
+        missing = "20260926T120000000000-deadbeef"
+        self.assertEqual(self.assert_status(lambda: self.listing(fid=missing), 404).message, "Feedback não encontrado.")
+        # Admin lê.
+        self.assertEqual([a["attachmentId"] for a in self.listing(self.admin)["items"]], [ready])
+        self.assertIn("downloadUrl", self.download(ready, self.admin))
+        self.assertFalse(self.listing(self.admin)["canAdd"])
+        # IDs manipulados: formato inválido, anexo de outro feedback, PENDING.
+        other_fid = self.send(self.other)["feedback"]["id"]
+        self.assert_status(lambda: self.student.dispatch("GET", f"/feedback/{self.fid}/attachments/../x", {}), 404)
+        self.assert_status(lambda: self.student.dispatch("GET", f"/feedback/{other_fid}/attachments/{ready}", {}), 404)
+        self.assert_status(lambda: self.download(pending), 404)
+        self.assert_status(lambda: self.download("0" * 32), 404)
+
+    def test_list_has_only_ready_metadata_and_download_url_lasts_300_seconds(self):
+        ready = self.attach(name="captura final.png")["attachment"]["attachmentId"]
+        self.slot()  # PENDING não aparece
+        listing = self.listing()
+        self.assertEqual(listing["items"], [{"attachmentId": ready, "originalName": "captura final.png", "mimeType": "image/png",
+                                             "size": len(PNG), "createdAt": self.T0.isoformat()}])
+        self.assertTrue(listing["canAdd"])
+        self.assertNotIn("http", json.dumps(listing))  # nenhuma URL na listagem
+        result = self.download(ready)
+        self.assertEqual(result["expiresIn"], 300)
+        call = [c for c in self.repo.file_calls if c[0] == "presign_download"][-1]
+        self.assertEqual((call[1], call[2], call[4]), (f"feedback/{self.fid}/{ready}", "image/png", 300))
+        self.assertEqual(call[3], "inline; filename=\"captura final.png\"; filename*=UTF-8''captura%20final.png")
+        self.assertEqual([k for k in self.repo.items if "URL" in json.dumps(self.repo.items[k]).upper() and "HTTP" in json.dumps(self.repo.items[k]).upper()], [])
+
+    def test_filenames_are_display_only_and_never_reach_keys_or_headers_raw(self):
+        evil = self.attach(name='../../<img src=x onerror=alert(1)>\r\nX-Evil: 1‮.png')
+        slot = next(iter(self.slots().values()))
+        self.assertEqual(slot["originalName"], "<img src=x onerror=alert(1)>X-Evil: 1.png")
+        self.assertEqual(slot["objectKey"], f"feedback/{self.fid}/{evil['attachment']['attachmentId']}")
+        self.download(evil["attachment"]["attachmentId"])
+        disposition = [c for c in self.repo.file_calls if c[0] == "presign_download"][-1][3]
+        self.assertNotIn("\r", disposition)
+        self.assertNotIn("\n", disposition)
+        self.assertTrue(disposition.startswith('inline; filename="<img src=x onerror=alert(1)>X-Evil: 1.png"; filename*=UTF-8\'\''))
+        for raw, mime, expected in (("\r\n../", "image/png", "imagem.png"), ("  ..\\..\\  ", "image/webp", "imagem.webp"),
+                                    ("", "image/jpeg", "imagem.jpg"), ("a" * 300 + ".png", "image/png", "a" * 180)):
+            self.assertEqual(feedback_module.clean_filename(raw, mime), expected)
+
+    def test_complete_is_idempotent_and_counts_once(self):
+        s = self.slot()
+        self.upload(s, PNG)
+        aid = s["attachment"]["attachmentId"]
+        self.assertEqual(self.complete(aid)["status"], "READY")
+        self.assertEqual(self.complete(aid)["status"], "READY")
+        self.assertEqual(self.count(), 1)
+        self.assertEqual(len([c for c in self.repo.file_calls if c[0] == "promote_file"]), 1)
+
+    def test_simultaneous_completes_make_a_single_transition(self):
+        s = self.slot()
+        self.upload(s, PNG)
+        aid = s["attachment"]["attachmentId"]
+        original, inner = self.repo.promote_file, []
+
+        def racing(source, target, content_type):
+            version = original(source, target, content_type)
+            if not inner:  # a outra conclusão roda inteira entre a cópia e a gravação desta
+                inner.append(None)
+                inner[0] = self.complete(aid)
+            return version
+        with patch.object(self.repo, "promote_file", side_effect=racing):
+            outer = self.complete(aid)
+        self.assertEqual((inner[0]["status"], outer["status"]), ("READY", "READY"))
+        self.assertEqual(self.count(), 1)
+        self.assertEqual([x["status"] for x in self.slots().values()], ["READY"])
+        self.assertIn(f"feedback/{self.fid}/{aid}", self.repo.feedback_files)
+
+    def test_same_client_token_returns_the_same_slot(self):
+        first = self.slot(token="a" * 32)
+        again = self.slot(token="a" * 32)
+        self.assertEqual(first["attachment"]["attachmentId"], again["attachment"]["attachmentId"])
+        self.assertEqual(len(self.slots()), 1)
+        self.upload(again, PNG)
+        self.complete(again["attachment"]["attachmentId"])
+        done = self.slot(token="a" * 32)
+        self.assertEqual((done["status"], done["upload"]), ("READY", None))
+        self.assertEqual((len(self.slots()), self.count()), (1, 1))
+
+    def test_feedback_status_rules(self):
+        s = self.slot()
+        self.upload(s, PNG)
+        self.admin.dispatch("POST", f"/admin/feedback/{self.fid}/status", {"status": "RESOLVED", "expectedStatus": "NEW"})
+        # Slot criado com o feedback aberto e ainda no prazo: conclui mesmo depois de RESOLVED.
+        self.assertEqual(self.complete(s["attachment"]["attachmentId"])["status"], "READY")
+        self.assertEqual(self.count(), 1)
+        self.assertEqual(self.assert_status(lambda: self.slot(), 409).message, "Este feedback não aceita mais imagens.")
+        self.assertFalse(self.listing()["canAdd"])
+        self.admin.dispatch("POST", f"/admin/feedback/{self.fid}/status", {"status": "ARCHIVED", "expectedStatus": "RESOLVED"})
+        self.assert_status(lambda: self.slot(), 409)
+        self.assertEqual(len(self.listing()["items"]), 1)  # continuam visíveis
+        self.assertEqual(self.repo.get("FEEDBACK", "FEEDBACK#" + self.fid)["attachments"], 1)  # status preservou a contagem
+        # IN_REVIEW continua aceitando; PENDING vencido não conclui.
+        self.admin.dispatch("POST", f"/admin/feedback/{self.fid}/status", {"status": "IN_REVIEW", "expectedStatus": "ARCHIVED"})
+        late = self.slot()
+        self.upload(late, PNG)
+        self.at += timedelta(minutes=16)
+        self.assert_status(lambda: self.complete(late["attachment"]["attachmentId"]), 409)
+
+    def test_duplicate_feedback_can_receive_a_new_attachment(self):
+        self.attach()
+        self.at += timedelta(minutes=2)
+        again = self.send()
+        self.assertTrue(again["duplicate"])
+        self.assertEqual(again["feedback"]["attachments"], 1)
+        self.assertEqual(self.attach(JPEG, "image/jpeg")["status"], "READY")
+        self.assertEqual(self.count(), 2)
+        self.assertEqual(self.student.dispatch("GET", "/feedback", {}, {})["items"][0]["attachments"], 2)
+
+    def test_database_failure_after_copy_deletes_only_the_new_version(self):
+        s = self.slot()
+        self.upload(s, PNG)
+        aid, final = s["attachment"]["attachmentId"], f"feedback/{self.fid}/{s['attachment']['attachmentId']}"
+        with patch.object(self.repo, "transaction", side_effect=RuntimeError("DynamoDB indisponível")):
+            with self.assertRaises(RuntimeError) as err, self.assertLogs(level="ERROR"):
+                self.complete(aid)
+        self.assertEqual(str(err.exception), "DynamoDB indisponível")
+        promote_version = [c for c in self.repo.file_calls if c[0] == "delete_file" and c[1] == final]
+        self.assertEqual(len(promote_version), 1)
+        self.assertIsNotNone(promote_version[0][2])  # apagou com VersionId, não a chave inteira
+        self.assertNotIn(final, self.repo.feedback_files)
+        self.assertEqual(next(iter(self.slots().values()))["status"], "PENDING")
+        self.assertEqual(self.count(), 0)
+
+    def test_cleanup_failure_is_logged_without_hiding_the_original_error(self):
+        s = self.slot()
+        self.upload(s, PNG)
+        original_delete = self.repo.delete_file
+
+        def failing_delete(key, version_id=None):
+            if version_id:
+                raise RuntimeError("S3 recusou a exclusão")
+            return original_delete(key, version_id)
+        with patch.object(self.repo, "transaction", side_effect=RuntimeError("DynamoDB indisponível")), \
+                patch.object(self.repo, "delete_file", side_effect=failing_delete):
+            with self.assertRaises(RuntimeError) as err, self.assertLogs(level="ERROR") as logs:
+                self.complete(s["attachment"]["attachmentId"])
+        self.assertEqual(str(err.exception), "DynamoDB indisponível")
+        self.assertTrue(any("Falha ao remover a versão" in line for line in logs.output))
+        self.assertEqual(self.count(), 0)
+        self.assertEqual(self.listing()["items"], [])  # sem falsa confirmação
+
+    def test_upload_routes_require_the_bucket_configuration(self):
+        self.repo.files_bucket = None
+        self.assert_status(lambda: self.slot(), 503)
 
 
 class AuthenticationTests(unittest.TestCase):

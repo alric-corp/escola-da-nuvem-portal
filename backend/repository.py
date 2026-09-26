@@ -13,8 +13,13 @@ class Repository:
         import boto3
         self.table = boto3.resource("dynamodb").Table(os.environ["TABLE_NAME"])
         self.db = boto3.client("dynamodb")
-        self.s3 = boto3.client("s3")
+        from botocore.config import Config
+        # SigV4: presigned POST/GET dos anexos com as credenciais temporárias da Lambda e
+        # validade explícita (X-Amz-Expires).
+        self.s3 = boto3.client("s3", config=Config(signature_version="s3v4"))
         self.bucket = os.environ["IMPORTS_BUCKET"]
+        # Anexos do feedback: bucket próprio, privado (storage.tf). Só a identity usa.
+        self.files_bucket = os.environ.get("FEEDBACK_BUCKET")
 
     @staticmethod
     def decode(item):
@@ -163,3 +168,42 @@ class Repository:
         """Marca o arquivo para a regra de ciclo de vida do S3 (rascunho expira; publicado fica)."""
         self.s3.put_object_tagging(Bucket=self.bucket, Key=key,
                                    Tagging={"TagSet": [{"Key": "portal-status", "Value": status}]})
+
+    # Arquivos do feedback. Chaves sempre montadas pelo backend (feedback.tmp_key/final_key).
+    def presign_upload(self, key, content_type, max_bytes, expires):
+        """Presigned POST: a política fixa a chave, o Content-Type e a faixa de tamanho."""
+        return self.s3.generate_presigned_post(
+            Bucket=self.files_bucket, Key=key, Fields={"Content-Type": content_type},
+            Conditions=[{"Content-Type": content_type}, ["content-length-range", 1, max_bytes]], ExpiresIn=expires)
+
+    def file_head(self, key):
+        """{"size", "contentType"} do objeto, ou None se não existe (sem ListBucket o S3 responde 403)."""
+        from botocore.exceptions import ClientError
+        try:
+            head = self.s3.head_object(Bucket=self.files_bucket, Key=key)
+        except ClientError as err:
+            if err.response.get("Error", {}).get("Code") in ("404", "403", "NoSuchKey", "NotFound", "Forbidden"):
+                return None
+            raise
+        return {"size": head["ContentLength"], "contentType": head.get("ContentType")}
+
+    def file_start(self, key, length):
+        return self.s3.get_object(Bucket=self.files_bucket, Key=key, Range=f"bytes=0-{length - 1}")["Body"].read()
+
+    def promote_file(self, source, target, content_type):
+        """Copia o arquivo validado para a chave final e devolve o VersionId da versão criada."""
+        result = self.s3.copy_object(Bucket=self.files_bucket, Key=target, CopySource={"Bucket": self.files_bucket, "Key": source},
+                                     ContentType=content_type, MetadataDirective="REPLACE", ServerSideEncryption="AES256")
+        return result.get("VersionId")
+
+    def delete_file(self, key, version_id=None):
+        """Com VersionId, apaga só aquela versão (sem deixar marcador nem apagar versões anteriores)."""
+        args = {"Bucket": self.files_bucket, "Key": key}
+        if version_id:
+            args["VersionId"] = version_id
+        self.s3.delete_object(**args)
+
+    def presign_download(self, key, content_type, disposition, expires):
+        return self.s3.generate_presigned_url("get_object", ExpiresIn=expires, Params={
+            "Bucket": self.files_bucket, "Key": key, "ResponseContentType": content_type,
+            "ResponseContentDisposition": disposition})

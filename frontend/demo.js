@@ -109,6 +109,7 @@ export function demoAPI(role) {
       };
     if (path === "/requests") return { requests: [] };
     // Feedback de demonstração: nada é gravado.
+    if (/^\/feedback\/[^/]+\/attachments/.test(path)) return { items: [], canAdd: false };
     if (path.startsWith("/feedback") && options.method === "POST")
       return { duplicate: false, feedback: { id: "demo", ...options.body, status: "NEW", createdAt: new Date().toISOString() } };
     if (path.startsWith("/feedback"))

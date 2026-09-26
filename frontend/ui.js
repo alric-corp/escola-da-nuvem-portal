@@ -147,6 +147,12 @@ export let state = {
   feedbackOrigin: "",
   feedbackSending: false,
   feedbackSent: false,
+  // Imagens do formulário ({id (clientToken), file, name, size, type, previewUrl, status}), o envio
+  // em andamento, as galerias carregadas por feedback e o envio pelos cards de "Meus feedbacks".
+  feedbackFiles: [],
+  feedbackUpload: { feedbackId: null, progress: "", failed: false },
+  feedbackAttachments: {},
+  feedbackCardUpload: {},
   myFeedback: { items: [], nextCursor: null, loading: false, error: "" },
   adminFeedback: { items: [], nextCursor: null, summary: null, loading: false, error: "", filters: { status: "", type: "", cohort: "" }, selectedId: null },
   classFilter: "all",

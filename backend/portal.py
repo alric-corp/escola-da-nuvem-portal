@@ -210,7 +210,7 @@ class Portal:
     def dispatch(self, method, path, body, query=None):
         if method == "GET" and path == "/me":
             return self.me()
-        if path in ("/feedback", "/admin/feedback") or path.startswith("/admin/feedback/"):
+        if path in ("/feedback", "/admin/feedback") or path.startswith(("/admin/feedback/", "/feedback/")):
             try:
                 return self._feedback_route(method, path, body, query or {})
             except feedback.Invalid as err:
@@ -318,6 +318,10 @@ class Portal:
                                                 feedback.decode_cursor(query.get("cursor")),
                                                 lambda item: item["createdBy"] == self.uid)
             return {"items": [feedback.own_view(i) for i in items], "nextCursor": cursor}
+        if path.startswith("/feedback/"):
+            match = re.fullmatch(r"/feedback/([^/]+)/attachments(?:/([^/]+)(/complete)?)?", path)
+            require(match is not None, 404, "Rota não encontrada.")
+            return self._attachment_route(method, *match.groups(), body)
         require(self.admin)
         if path == "/admin/feedback" and method == "GET":
             return self._admin_feedback(query)
@@ -325,6 +329,162 @@ class Portal:
         if match and method == "POST":
             return self._feedback_status(match.group(1), body)
         raise APIError(404, "Rota não encontrada.")
+
+    # Anexos do feedback (feedback.py). Criar slot e concluir: só o autor. Ler: autor ou admin;
+    # para qualquer outro, 404 genérico. A chave no S3 vem sempre do item gravado, nunca do cliente.
+    def _attachment_route(self, method, feedback_id, attachment_id, complete, body):
+        require(feedback.ID_PATTERN.fullmatch(feedback_id) is not None, 404, "Feedback não encontrado.")
+        require(attachment_id is None or feedback.ATTACHMENT_ID.fullmatch(attachment_id) is not None, 404, "Imagem não encontrada.")
+        require(bool(self.repo.files_bucket), 503, "Anexos indisponíveis no momento.")
+        item = self.repo.get("FEEDBACK", "FEEDBACK#" + feedback_id)
+        if attachment_id is None and method == "POST":
+            return self._attachment_slot(item, body)
+        if complete and method == "POST":
+            require(not body, 400, "Solicitação inválida.")
+            return self._attachment_complete(item, feedback_id, attachment_id)
+        require(method == "GET" and not complete, 404, "Rota não encontrada.")
+        require(item is not None and (item["createdBy"] == self.uid or self.admin), 404, "Feedback não encontrado.")
+        slots = self.repo.list(feedback.attachment_pk(feedback_id), "SLOT#")
+        ready = sorted((s for s in slots if s["status"] == "READY"), key=lambda s: s["slot"])
+        if attachment_id is None:
+            active = self._active_slots(slots)
+            return {"items": [feedback.attachment_view(s) for s in ready],
+                    "canAdd": item["createdBy"] == self.uid and item["status"] in feedback.OPEN_STATUSES and len(active) < feedback.ATTACHMENT_SLOTS}
+        slot = next((s for s in ready if s["attachmentId"] == attachment_id), None)
+        require(slot is not None, 404, "Imagem não encontrada.")
+        url = self.repo.presign_download(slot["objectKey"], slot["mimeType"], feedback.content_disposition(slot["originalName"]),
+                                         feedback.DOWNLOAD_SECONDS)
+        return {"downloadUrl": url, "expiresIn": feedback.DOWNLOAD_SECONDS}
+
+    @staticmethod
+    def _active_slots(slots, at=None):
+        """READY e PENDING ainda dentro do prazo ocupam vaga; REJECTED e PENDING vencido não."""
+        at = at or feedback.clock()
+        return [s for s in slots if s["status"] == "READY"
+                or (s["status"] == "PENDING" and datetime.fromisoformat(s["pendingUntil"]) > at)]
+
+    def _attachment_slot(self, item, body):
+        require(item is not None, 404, "Feedback não encontrado.")
+        require(item["createdBy"] == self.uid, 403, "Só quem enviou o feedback pode anexar imagens.")
+        data = feedback.clean_slot_request(body)
+        require(item["status"] in feedback.OPEN_STATUSES, 409, "Este feedback não aceita mais imagens.")
+        pk = feedback.attachment_pk(item["id"])
+        at = feedback.clock()
+        slots = {s["slot"]: s for s in self.repo.list(pk, "SLOT#")}
+        active = self._active_slots(slots.values(), at)
+        same = next((s for s in active if s["clientToken"] == data["clientToken"]), None)
+        if same:  # repetição do mesmo pedido (duplo clique, nova tentativa): mesmo slot, sem criar outro
+            return self._slot_response(same)
+        require(len(active) < feedback.ATTACHMENT_SLOTS, 409, "Este feedback já tem 3 imagens.")
+        taken = {s["slot"] for s in active}
+        number = next(n for n in range(1, feedback.ATTACHMENT_SLOTS + 1) if n not in taken)
+        attachment_id = uuid.uuid4().hex
+        slot = {"attachmentId": attachment_id, "feedbackId": item["id"], "slot": number, **data,
+                "objectKey": feedback.final_key(item["id"], attachment_id), "status": "PENDING",
+                "createdAt": at.isoformat(), "createdBy": self.uid,
+                "pendingUntil": (at + feedback.PENDING_WINDOW).isoformat()}
+        try:  # vaga livre, ou a mesma vaga vencida/recusada que foi lida (condição de igualdade)
+            self.repo.transaction([(pk, f"SLOT#{number}", slot, slots.get(number), int((at + feedback.PENDING_TTL).timestamp()))])
+        except Conflict:
+            raise APIError(409, "Outra imagem foi enviada ao mesmo tempo. Tente novamente.") from None
+        return self._slot_response(slot)
+
+    def _slot_response(self, slot):
+        if slot["status"] == "READY":
+            return {"attachment": feedback.attachment_view(slot), "status": "READY", "upload": None}
+        upload = self.repo.presign_upload(feedback.tmp_key(slot["feedbackId"], slot["attachmentId"]), slot["mimeType"],
+                                          feedback.ATTACHMENT_MAX_BYTES, feedback.UPLOAD_SECONDS)
+        return {"attachment": feedback.attachment_view(slot), "status": "PENDING", "upload": upload}
+
+    def _attachment_complete(self, item, feedback_id, attachment_id):
+        require(item is not None, 404, "Feedback não encontrado.")
+        require(item["createdBy"] == self.uid, 403, "Só quem enviou o feedback pode anexar imagens.")
+        pk = feedback.attachment_pk(feedback_id)
+        slot = next((s for s in self.repo.list(pk, "SLOT#") if s["attachmentId"] == attachment_id), None)
+        require(slot is not None, 404, "Imagem não encontrada.")
+        if slot["status"] == "READY":  # conclusão repetida: sucesso, sem contar de novo
+            return {"attachment": feedback.attachment_view(slot), "status": "READY"}
+        require(slot["status"] == "PENDING", 409, "Esta imagem foi recusada. Envie de novo.")
+        # Slot criado com o feedback aberto e ainda no prazo pode concluir mesmo que o status tenha
+        # mudado depois (não quebra um envio em andamento); slots novos é que exigem feedback aberto.
+        require(datetime.fromisoformat(slot["pendingUntil"]) > feedback.clock(), 409, "O envio desta imagem expirou. Envie de novo.")
+        tmp, final = feedback.tmp_key(feedback_id, attachment_id), slot["objectKey"]
+        head = self.repo.file_head(tmp)
+        if head is None:
+            if self.repo.file_head(final) is not None:  # outra conclusão simultânea já copiou
+                again = self.repo.get(pk, f"SLOT#{slot['slot']}")
+                if again and again["attachmentId"] == attachment_id and again["status"] == "READY":
+                    return {"attachment": feedback.attachment_view(again), "status": "READY"}
+                raise APIError(409, "A imagem está sendo concluída. Tente novamente em instantes.")
+            self._reject_attachment(pk, slot, tmp, "Imagem não recebida. Envie de novo.")
+        problem = None
+        if not 0 < head["size"] <= feedback.ATTACHMENT_MAX_BYTES or head["size"] != slot["size"]:
+            problem = "O tamanho da imagem não confere com o arquivo selecionado."
+        elif head["contentType"] != slot["mimeType"]:
+            problem = "O tipo da imagem não confere com o arquivo selecionado."
+        elif feedback.detect_image(self.repo.file_start(tmp, 32)) != slot["mimeType"]:
+            problem = "O arquivo não é uma imagem PNG, JPEG ou WebP válida."
+        if problem:
+            self._reject_attachment(pk, slot, tmp, problem)
+        try:
+            version_id = self.repo.promote_file(tmp, final, slot["mimeType"])
+        except Exception:
+            logging.exception("Falha ao promover anexo %s", final)
+            raise APIError(502, "Não foi possível concluir o envio da imagem. Tente novamente.") from None
+        try:
+            self.repo.delete_file(tmp)
+        except Exception:  # o lifecycle de tmp/ remove depois; a imagem final já está pronta
+            logging.exception("Falha ao remover temporário %s", tmp)
+        return self._mark_attachment_ready(pk, slot, feedback_id, final, version_id)
+
+    def _mark_attachment_ready(self, pk, slot, feedback_id, final, version_id):
+        """PENDING -> READY e attachments + 1 na mesma transação. A condição sobre o slot garante uma
+        única transição (e um único incremento) mesmo com conclusões simultâneas. Se não gravar, apaga
+        só a versão que esta tentativa criou no S3 (bucket versionado: sem marcador, sem tocar versões
+        anteriores). S3 e DynamoDB não têm transação distribuída: se a Lambda morrer entre a cópia e
+        esta gravação, sobra um objeto final não referenciado (nunca servido, porque o download exige READY)."""
+        sk = f"SLOT#{slot['slot']}"
+        ready = {**slot, "status": "READY", "readyAt": now()}
+        ready.pop("pendingUntil", None)
+        try:
+            for _ in range(3):
+                current = self.repo.get(pk, sk)
+                if current and current["attachmentId"] == slot["attachmentId"] and current["status"] == "READY":
+                    return {"attachment": feedback.attachment_view(current), "status": "READY"}  # a outra conclusão venceu
+                if current != slot:
+                    raise APIError(409, "Esta imagem mudou durante o envio. Envie de novo.")
+                item = self.repo.get("FEEDBACK", "FEEDBACK#" + feedback_id)
+                try:
+                    self.repo.transaction([(pk, sk, ready, slot), ("FEEDBACK", "FEEDBACK#" + feedback_id,
+                                                                   {**item, "attachments": item.get("attachments", 0) + 1}, item)])
+                    return {"attachment": feedback.attachment_view(ready), "status": "READY"}
+                except Conflict:
+                    continue  # o feedback mudou (status, outra imagem): relê e tenta de novo
+            raise APIError(409, "Não foi possível registrar a imagem agora. Tente novamente.")
+        except Exception as error:
+            again = self.repo.get(pk, sk)
+            if not (again and again["attachmentId"] == slot["attachmentId"] and again["status"] == "READY"):
+                logging.error("Anexo %s não registrado (%s); removendo a versão criada", final, type(error).__name__)
+                try:
+                    self.repo.delete_file(final, version_id)
+                except Exception:
+                    logging.exception("Falha ao remover a versão %s de %s após erro de gravação", version_id, final)
+            raise
+
+    def _reject_attachment(self, pk, slot, tmp, message):
+        """Apaga o temporário, marca REJECTED (libera o slot) e responde 400. Nada é contado."""
+        try:
+            self.repo.delete_file(tmp)
+        except Exception:
+            logging.exception("Falha ao remover temporário recusado %s", tmp)
+        rejected = {**slot, "status": "REJECTED", "rejectedAt": now()}
+        rejected.pop("pendingUntil", None)
+        try:
+            self.repo.transaction([(pk, f"SLOT#{slot['slot']}", rejected, slot,
+                                    int((feedback.clock() + feedback.REJECTED_TTL).timestamp()))])
+        except Conflict:
+            pass  # o slot já mudou (outra conclusão); a resposta continua sendo a recusa deste envio
+        raise APIError(400, message)
 
     def _feedback_page(self, limit, after_id, keep):
         """Até `limit` feedbacks que passam em `keep`, do mais recente ao mais antigo. O próximo

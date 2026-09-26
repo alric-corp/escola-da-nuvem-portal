@@ -46,6 +46,7 @@ resource "aws_lambda_function" "identity" {
     variables = {
       TABLE_NAME                 = aws_dynamodb_table.portal.name
       IMPORTS_BUCKET             = aws_s3_bucket.imports.id
+      FEEDBACK_BUCKET            = aws_s3_bucket.feedback.id
       INSTRUCTOR_EMAIL_DOMAIN    = var.instructor_email_domain
       REMINDERS_ENABLED          = tostring(var.reminders_enabled)
       REMINDER_CONFIGURATION_SET = aws_sesv2_configuration_set.reminders.configuration_set_name
@@ -108,7 +109,9 @@ resource "aws_apigatewayv2_route" "portal" {
     "POST /cohorts/{code}/student-view",
     "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject",
     "POST /cohorts/{code}/settings",
-    "POST /feedback", "GET /feedback", "GET /admin/feedback", "POST /admin/feedback/{id}/status"
+    "POST /feedback", "GET /feedback", "GET /admin/feedback", "POST /admin/feedback/{id}/status",
+    "POST /feedback/{feedbackId}/attachments", "POST /feedback/{feedbackId}/attachments/{attachmentId}/complete",
+    "GET /feedback/{feedbackId}/attachments", "GET /feedback/{feedbackId}/attachments/{attachmentId}"
   ])
   api_id               = aws_apigatewayv2_api.portal.id
   route_key            = each.value
@@ -135,6 +138,24 @@ resource "aws_iam_role_policy" "portal_data" {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging"]
         Resource = "${aws_s3_bucket.imports.arn}/cohorts/*"
+      },
+      {
+        # Anexos do feedback: assinar o POST de upload (tmp/), ler para validar e promover, gerar
+        # links de leitura (feedback/) e apagar o temporário.
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = ["${aws_s3_bucket.feedback.arn}/tmp/*", "${aws_s3_bucket.feedback.arn}/feedback/*"]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:DeleteObject"]
+        Resource = "${aws_s3_bucket.feedback.arn}/tmp/*"
+      },
+      {
+        # Rollback de uma promoção cuja gravação no DynamoDB falhou: apaga só a versão criada.
+        Effect   = "Allow"
+        Action   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
+        Resource = "${aws_s3_bucket.feedback.arn}/feedback/*"
       }
     ]
   })

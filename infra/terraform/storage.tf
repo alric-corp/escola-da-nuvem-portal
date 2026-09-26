@@ -11,10 +11,21 @@ resource "aws_s3_bucket" "imports" {
   }
 }
 
+# Anexos do feedback (imagens): privado, só a API (identity) lê e grava, pelos prefixos tmp/ e
+# feedback/. O navegador envia direto por presigned POST (CORS só POST, só das origens do portal).
+resource "aws_s3_bucket" "feedback" {
+  bucket        = "${local.suffix}-feedback"
+  force_destroy = false
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 locals {
   buckets = {
-    portal  = aws_s3_bucket.portal.id
-    imports = aws_s3_bucket.imports.id
+    portal   = aws_s3_bucket.portal.id
+    imports  = aws_s3_bucket.imports.id
+    feedback = aws_s3_bucket.feedback.id
   }
 }
 
@@ -99,6 +110,69 @@ resource "aws_s3_bucket_policy" "imports" {
     Statement = [{
       Sid       = "DenyInsecureTransport", Effect = "Deny", Principal = "*", Action = "s3:*"
       Resource  = [aws_s3_bucket.imports.arn, "${aws_s3_bucket.imports.arn}/*"]
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+  })
+}
+
+# Uploads não concluídos (tmp/) somem em 1 dia, junto com as versões antigas. Imagens aceitas
+# (feedback/) não expiram; só versões antigas, em 90 dias.
+resource "aws_s3_bucket_lifecycle_configuration" "feedback" {
+  bucket     = aws_s3_bucket.feedback.id
+  depends_on = [aws_s3_bucket_versioning.private]
+  rule {
+    id     = "temporarios"
+    status = "Enabled"
+    filter {
+      prefix = "tmp/"
+    }
+    expiration {
+      days = 1
+    }
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+  rule {
+    id     = "versoes-antigas-de-anexos"
+    status = "Enabled"
+    filter {
+      prefix = "feedback/"
+    }
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+  }
+  rule {
+    id     = "marcadores-e-multipart"
+    status = "Enabled"
+    filter {}
+    expiration {
+      expired_object_delete_marker = true
+    }
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 1
+    }
+  }
+}
+
+resource "aws_s3_bucket_cors_configuration" "feedback" {
+  bucket = aws_s3_bucket.feedback.id
+  cors_rule {
+    allowed_methods = ["POST"]
+    allowed_origins = local.allowed_origins
+    allowed_headers = ["*"]
+    max_age_seconds = 300
+  }
+}
+
+resource "aws_s3_bucket_policy" "feedback" {
+  bucket = aws_s3_bucket.feedback.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport", Effect = "Deny", Principal = "*", Action = "s3:*"
+      Resource  = [aws_s3_bucket.feedback.arn, "${aws_s3_bucket.feedback.arn}/*"]
       Condition = { Bool = { "aws:SecureTransport" = "false" } }
     }]
   })

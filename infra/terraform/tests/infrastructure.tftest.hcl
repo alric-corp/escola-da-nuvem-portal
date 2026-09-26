@@ -47,6 +47,16 @@ run "private_storage_and_authenticated_api" {
     override_during = plan
     values          = { arn = "arn:aws:s3:::portal-imports-test" }
   }
+  override_resource {
+    target          = aws_s3_bucket.feedback
+    override_during = plan
+    values          = { arn = "arn:aws:s3:::portal-feedback-test", id = "portal-feedback-test" }
+  }
+  override_resource {
+    target          = aws_cloudfront_distribution.portal
+    override_during = plan
+    values          = { domain_name = "d111111abcdef8.cloudfront.net" }
+  }
 
   assert {
     condition = alltrue([
@@ -70,6 +80,41 @@ run "private_storage_and_authenticated_api" {
       && jsondecode(aws_iam_role_policy.portal_data.policy).Statement[0].Resource == "arn:aws:dynamodb:us-east-1:123456789012:table/portal-test"
     )
     error_message = "A API precisa de dynamodb:UpdateItem na tabela do portal (e só nela) para as transações do feedback."
+  }
+
+  assert {
+    # Anexos do feedback: só os prefixos tmp/ e feedback/ do bucket próprio, sem curinga nem ListBucket.
+    condition = (
+      jsonencode([for s in jsondecode(aws_iam_role_policy.portal_data.policy).Statement : s if can(regex("portal-feedback-test", jsonencode(s.Resource)))]) == jsonencode([
+        { Effect = "Allow", Action = ["s3:PutObject", "s3:GetObject"], Resource = ["arn:aws:s3:::portal-feedback-test/tmp/*", "arn:aws:s3:::portal-feedback-test/feedback/*"] },
+        { Effect = "Allow", Action = ["s3:DeleteObject"], Resource = "arn:aws:s3:::portal-feedback-test/tmp/*" },
+        { Effect = "Allow", Action = ["s3:DeleteObject", "s3:DeleteObjectVersion"], Resource = "arn:aws:s3:::portal-feedback-test/feedback/*" },
+      ])
+      && !strcontains(aws_iam_role_policy.portal_data.policy, "s3:*")
+      && !strcontains(aws_iam_role_policy.portal_data.policy, "ListBucket")
+      && !strcontains(aws_iam_role_policy.portal_data.policy, "DeleteBucket")
+    )
+    error_message = "Anexos: a API só pode gravar/ler tmp/ e feedback/, apagar tmp/ e apagar versões em feedback/ (sem s3:*, ListBucket ou outros buckets)."
+  }
+
+  assert {
+    condition = (
+      aws_s3_bucket_public_access_block.private["feedback"].block_public_acls && aws_s3_bucket_public_access_block.private["feedback"].block_public_policy
+      && aws_s3_bucket_public_access_block.private["feedback"].ignore_public_acls && aws_s3_bucket_public_access_block.private["feedback"].restrict_public_buckets
+      && aws_s3_bucket_ownership_controls.private["feedback"].rule[0].object_ownership == "BucketOwnerEnforced"
+      && aws_s3_bucket_versioning.private["feedback"].versioning_configuration[0].status == "Enabled"
+    )
+    error_message = "O bucket de anexos deve ser privado, sem ACLs e versionado."
+  }
+
+  assert {
+    condition = (
+      one(aws_s3_bucket_cors_configuration.feedback.cors_rule).allowed_methods == toset(["POST"])
+      && one(aws_s3_bucket_cors_configuration.feedback.cors_rule).allowed_origins == toset(["https://d111111abcdef8.cloudfront.net"])
+      && one([for r in aws_s3_bucket_lifecycle_configuration.feedback.rule : r if r.id == "temporarios"]).filter[0].prefix == "tmp/"
+      && one([for r in aws_s3_bucket_lifecycle_configuration.feedback.rule : r if r.id == "temporarios"]).expiration[0].days == 1
+    )
+    error_message = "CORS dos anexos: só POST das origens do portal; temporários expiram em 1 dia."
   }
 
   assert {

@@ -243,6 +243,50 @@ class AWSPersistenceTests(unittest.TestCase):
         self.assertEqual(listed["summary"], {"NEW": 5, "IN_REVIEW": 0, "RESOLVED": 1, "ARCHIVED": 0})
         self.assertEqual(len(listed["items"]), 6)
 
+    def test_feedback_attachment_flow_on_real_s3_with_versioning(self):
+        import base64
+        import json as jsonlib
+        from datetime import datetime, timedelta, timezone
+        s3 = boto3.client("s3", region_name="us-east-1")
+        s3.create_bucket(Bucket="portal-feedback-test")
+        s3.put_bucket_versioning(Bucket="portal-feedback-test", VersioningConfiguration={"Status": "Enabled"})
+        with patch.dict(os.environ, {"FEEDBACK_BUCKET": "portal-feedback-test"}):
+            repo = Repository()
+        student = Portal(repo, {"sub": "s1", "email": "aluno@example.test", "groups": []})
+        admin = Portal(repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        at = datetime.now(timezone.utc)
+        with patch("feedback.clock", return_value=at):
+            fid = student.dispatch("POST", "/feedback", {"type": "BUG", "title": "Com imagem", "description": "Descrição do problema."})["feedback"]["id"]
+            png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+            slot = student.dispatch("POST", f"/feedback/{fid}/attachments",
+                                    {"fileName": "../../tela.png", "contentType": "image/png", "size": len(png), "clientToken": "a" * 32})
+        fields, aid = slot["upload"]["fields"], slot["attachment"]["attachmentId"]
+        self.assertEqual(fields["key"], f"tmp/{fid}/{aid}")
+        policy = jsonlib.loads(base64.b64decode(fields["policy"]))
+        self.assertIn(["content-length-range", 1, 5_242_880], policy["conditions"])
+        self.assertIn({"Content-Type": "image/png"}, policy["conditions"])
+        self.assertIn({"key": f"tmp/{fid}/{aid}"}, policy["conditions"])
+        expires = datetime.fromisoformat(policy["expiration"].replace("Z", "+00:00"))
+        self.assertLessEqual(abs((expires - datetime.now(timezone.utc)).total_seconds() - 300), 30)
+        s3.put_object(Bucket="portal-feedback-test", Key=fields["key"], Body=png, ContentType="image/png")  # o POST do navegador
+        with patch("feedback.clock", return_value=at):
+            self.assertEqual(student.dispatch("POST", f"/feedback/{fid}/attachments/{aid}/complete", {})["status"], "READY")
+        final = f"feedback/{fid}/{aid}"
+        self.assertEqual(s3.head_object(Bucket="portal-feedback-test", Key=final)["ContentType"], "image/png")
+        self.assertNotIn("Contents", s3.list_objects_v2(Bucket="portal-feedback-test", Prefix="tmp/"))
+        self.assertEqual(self.repo.get("FEEDBACK", "FEEDBACK#" + fid)["attachments"], 1)
+        url = admin.dispatch("GET", f"/feedback/{fid}/attachments/{aid}", {})["downloadUrl"]
+        self.assertIn("X-Amz-Expires=300", url)
+        self.assertIn("response-content-type=image%2Fpng", url)
+        # Rollback: apaga só a versão criada pela cópia, sem marcador e sem tocar a versão anterior.
+        first = s3.list_object_versions(Bucket="portal-feedback-test", Prefix=final)["Versions"]
+        version = repo.promote_file(final, final, "image/png")
+        self.assertTrue(version)
+        repo.delete_file(final, version)
+        versions = s3.list_object_versions(Bucket="portal-feedback-test", Prefix=final)
+        self.assertEqual([v["VersionId"] for v in versions["Versions"]], [v["VersionId"] for v in first])
+        self.assertNotIn("DeleteMarkers", versions)
+
     def test_draft_retention_tags_and_ttl_on_real_services(self):
         s3 = boto3.client("s3", region_name="us-east-1")
         db = boto3.client("dynamodb", region_name="us-east-1")
