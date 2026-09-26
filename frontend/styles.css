@@ -2641,3 +2641,21 @@ details ul, .onboarding ol { padding-left: 24px; }
   .student-view-banner { padding: 10px 12px; }
   .student-view-banner .button { width: 100%; }
 }
+
+/* Integridade da publicação manual (backend/integrity.py): o que o servidor conferiu antes de
+   permitir publicar. Crítico bloqueia; aviso só informa. */
+.integrity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 12px 0 16px; }
+.integrity-grid h3 { margin: 0 0 6px; font-size: .8125rem; color: var(--text-secondary); font-weight: 600; }
+.integrity-grid ul, .integrity-checks, .integrity-critical ul, .integrity-warnings ul { list-style: none; margin: 0; padding: 0; }
+.integrity-grid li { font-size: .875rem; line-height: 1.6; }
+.integrity-roster { font-size: .8125rem; color: var(--text-secondary); margin: 0 0 12px; overflow-wrap: anywhere; }
+.integrity-checks { display: grid; gap: 4px; margin-bottom: 4px; font-size: .875rem; }
+.integrity-checks .ok span { color: var(--success); }
+.integrity-checks .fail { color: var(--warning); font-weight: 600; }
+.integrity-critical, .integrity-warnings { margin-top: 16px; padding: 14px 16px; background: var(--surface-1); border-left: 4px solid var(--danger); border-radius: 6px; }
+.integrity-warnings { border-left-color: var(--warning); }
+.integrity-critical li, .integrity-warnings li { margin-top: 8px; overflow-wrap: anywhere; }
+.integrity-critical li small, .integrity-warnings li small { display: block; color: var(--text-secondary); font-size: .75rem; }
+@media (max-width: 600px) {
+  .integrity-grid { grid-template-columns: 1fr; gap: 10px; }
+}

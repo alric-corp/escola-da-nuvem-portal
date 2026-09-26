@@ -8,7 +8,9 @@ from unittest.mock import patch
 from canvas import CanvasClient, CanvasError, course_catalog, course_csv
 from canvas_sync import NO_EXPIRY_DAYS, report_token_expiry, run, token_days_left
 from grades import parse_csv
-from portal import APIError, Portal, save_catalog, sync_from_canvas
+from canvas import course_students
+from integrity import email_hash
+from portal import APIError, Portal, save_catalog, save_roster, sync_from_canvas
 from test_portal import MemoryRepository
 
 BASE = "https://canvas.example.test"
@@ -204,6 +206,8 @@ class SyncTests(unittest.TestCase):
         csv.writer(out).writerows(rows)
         csv_like_export = out.getvalue()
         self.assertIn("7.00", csv_like_export)
+        # Turma com Canvas: o envio manual só publica com a matrícula já gravada pelo canvas_sync.
+        save_roster(self.repo, "4436", course_students(CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()})), "4436"))
         admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
         draft = admin.dispatch("POST", "/cohorts/BRSA0267/preview", {"csv": csv_like_export})["draft"]
         admin.dispatch("POST", "/cohorts/BRSA0267/publish", {"draftId": draft["id"]})
@@ -291,6 +295,73 @@ class RunTests(unittest.TestCase):
         self.assertIsNone(repo.get("CATALOG#9999", "METADATA"))
         self.assertEqual(repo.get("COHORT#TURMAB", "SYNC")["status"], "failed")
         self.assertIsNone(repo.get("COHORT#TURMAC", "SYNC"))
+
+    def test_roster_is_saved_on_every_successful_run_even_when_grades_are_unchanged(self):
+        repo = MemoryRepository()
+        repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        fake = FakeCanvas({"4436": course()})
+        with patch("portal.now", return_value="2026-09-26T09:00:00+00:00"):
+            self.assertEqual(run(repo, CanvasClient(BASE, "t", opener=fake))[0], {"TURMAA": "published"})
+        roster = repo.get("ROSTER#4436", "METADATA")
+        self.assertEqual((roster["count"], sorted(roster["students"]), roster["capturedAt"]),
+                         (3, ["100", "101", "102"], "2026-09-26T09:00:00+00:00"))
+        self.assertEqual(roster["students"]["100"], email_hash("aluno0@example.test"))
+        self.assertNotIn("@", json.dumps(roster))
+        # A matrícula é lida uma vez só por execução e reaproveitada no CSV da sincronização.
+        self.assertEqual(sum("/users?" in c for c in fake.calls), 2)  # 3 alunos, páginas de 2
+        with patch("portal.now", return_value="2026-09-26T21:00:00+00:00"):
+            self.assertEqual(run(repo, CanvasClient(BASE, "t", opener=fake))[0], {"TURMAA": "unchanged"})
+        self.assertEqual(repo.get("ROSTER#4436", "METADATA")["capturedAt"], "2026-09-26T21:00:00+00:00")
+
+    def test_new_enrollment_updates_the_roster(self):
+        repo = MemoryRepository()
+        repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        repo.put("COHORT#TURMAC", "METADATA", {"code": "TURMAC", "current": None, "canvasCourseId": "4413", "autoSync": False})
+        fake = FakeCanvas({"4436": course(students=5, kc_scores=(7,) * 5, lab_scores=(100,) * 5),
+                           "4413": course(students=5, kc_scores=(7,) * 5, lab_scores=(100,) * 5)})
+        run(repo, CanvasClient(BASE, "t", opener=fake))
+        pubs = len(repo.list("COHORT#TURMAA", "PUB#"))
+        # Um aluno entra nos dois cursos, sem nenhuma nota.
+        for code in ("4436", "4413"):
+            fake.courses[code] = course(students=6, kc_scores=(7,) * 5, lab_scores=(100,) * 5)
+        results, failures = run(repo, CanvasClient(BASE, "t", opener=fake))
+        for code in ("4436", "4413"):
+            self.assertIn("105", repo.get("ROSTER#" + code, "METADATA")["students"])
+        # Turma sem autoSync: a matrícula muda e nenhuma publicação é criada.
+        self.assertEqual(repo.list("COHORT#TURMAC", "PUB#"), [])
+        self.assertIsNone(repo.get("COHORT#TURMAC", "SYNC"))
+        # Com autoSync, o comportamento acadêmico é o de antes: aluno novo é mudança e publica.
+        self.assertEqual((results, failures), ({"TURMAA": "published"}, []))
+        self.assertEqual(len(repo.list("COHORT#TURMAA", "PUB#")), pubs + 1)
+
+    def test_canvas_failure_keeps_the_previous_roster(self):
+        repo = MemoryRepository()
+        repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        repo.put("COHORT#TURMAC", "METADATA", {"code": "TURMAC", "current": None, "canvasCourseId": "4413", "autoSync": False})
+        fake = FakeCanvas({"4436": course(), "4413": course()})
+        run(repo, CanvasClient(BASE, "t", opener=fake))
+        saved = {c: repo.get("ROSTER#" + c, "METADATA") for c in ("4436", "4413")}
+        fake.fail = urllib.error.HTTPError(BASE, 401, "Unauthorized", {}, None)
+        results, failures = run(repo, CanvasClient(BASE, "t", opener=fake))
+        self.assertEqual({c: repo.get("ROSTER#" + c, "METADATA") for c in ("4436", "4413")}, saved)
+        # Tratamento de erro de antes: SYNC falhou na turma com autoSync; a outra falha também é reportada.
+        self.assertEqual(results, {"TURMAA": "failed"})
+        self.assertEqual(repo.get("COHORT#TURMAA", "SYNC")["status"], "failed")
+        self.assertTrue(any(f.startswith("TURMAC: matrícula do curso 4413") for f in failures))
+
+    def test_roster_from_sync_lets_a_manual_upload_of_the_same_class_publish(self):
+        repo = MemoryRepository()
+        repo.put("COHORT#TURMAA", "METADATA", {"code": "TURMAA", "current": None, "canvasCourseId": "4436", "autoSync": False})
+        fake = FakeCanvas({"4436": course(students=5, kc_scores=(7,) * 5, lab_scores=(100,) * 5)})
+        admin = Portal(repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        text, _ = course_csv(CanvasClient(BASE, "t", opener=fake), "4436")
+        preview = admin.dispatch("POST", "/cohorts/TURMAA/preview", {"csv": text})
+        self.assertEqual([i["code"] for i in preview["integrity"]["critical"]], ["rosterUnavailable"])
+        run(repo, CanvasClient(BASE, "t", opener=fake))  # só grava catálogo e matrícula (sem autoSync)
+        preview = admin.dispatch("POST", "/cohorts/TURMAA/preview", {"csv": text})
+        self.assertEqual(preview["integrity"]["critical"], [])
+        admin.dispatch("POST", "/cohorts/TURMAA/publish", {"draftId": preview["draft"]["id"]})
+        self.assertIsNotNone(repo.get("COHORT#TURMAA", "METADATA")["current"])
 
 
 if __name__ == "__main__":

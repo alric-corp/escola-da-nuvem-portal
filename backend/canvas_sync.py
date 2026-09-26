@@ -10,8 +10,8 @@ import json
 import logging
 import os
 
-from canvas import CanvasClient, CanvasError, course_catalog, course_csv, token_expires_at
-from portal import APIError, save_catalog, sync_from_canvas
+from canvas import CanvasClient, CanvasError, course_catalog, course_csv, course_students, token_expires_at
+from portal import APIError, save_catalog, save_roster, sync_from_canvas
 from grades import ValidationError
 from repository import Conflict, Repository
 
@@ -34,7 +34,7 @@ def read_token(secret_arn):
 
 
 def run(repo, client):
-    results, failures, catalogs = {}, [], set()
+    results, failures, catalogs, rosters = {}, [], set(), {}
     for cohort in repo.cohorts():
         code, course = cohort["code"], cohort.get("canvasCourseId")
         if course and course not in catalogs:
@@ -43,10 +43,22 @@ def run(repo, client):
                 save_catalog(repo, course_catalog(client, course))
             except CanvasError as err:
                 failures.append(f"{code}: catálogo do curso {course}: {err}")
+        if course and course not in rosters:
+            # Matrícula gravada a cada execução, com ou sem autoSync e mesmo que as notas não mudem
+            # (integrity.py). Se o Canvas falhar, o ROSTER anterior fica como está.
+            try:
+                rosters[course] = course_students(client, course)
+                save_roster(repo, course, rosters[course])
+            except CanvasError as err:
+                rosters[course] = err
+                if not cohort.get("autoSync"):
+                    failures.append(f"{code}: matrícula do curso {course}: {err}")
         if not cohort.get("autoSync") or not course:
             continue
         try:
-            csv_text, count = course_csv(client, course)
+            if isinstance(rosters[course], CanvasError):
+                raise rosters[course]
+            csv_text, count = course_csv(client, course, rosters[course])
             results[code] = sync_from_canvas(repo, code, csv_text, count)["status"]
         except (CanvasError, APIError, ValidationError, Conflict) as err:
             message = (err.message if isinstance(err, APIError) else

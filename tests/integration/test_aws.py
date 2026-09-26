@@ -9,9 +9,10 @@ import boto3
 from moto import mock_aws
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "backend"))
-from portal import Portal, class_report
+from portal import APIError, Portal, class_report, save_roster
 from repository import Conflict, Repository
 from test_grades import canvas_csv
+from test_portal import class_csv
 
 
 @mock_aws
@@ -163,7 +164,7 @@ class AWSPersistenceTests(unittest.TestCase):
         self.call("unlink-student", {"canvasId": "101"})
         self.assertIsNone(self.repo.get("USER#s1", "STUDY#BRSA0267"))
         self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
-        self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUDIT#")), 2)
+        self.assertEqual(len([a for a in self.repo.list("COHORT#BRSA0267", "AUDIT#") if a["action"] != "publish"]), 2)
         self.assertEqual(self.repo.keys("COHORT#BRSA0267", "OWNER#"), [])
 
         other = Portal(Repository(), {"sub": "s2", "email": "aluno@example.test", "groups": []})
@@ -177,10 +178,37 @@ class AWSPersistenceTests(unittest.TestCase):
         self.assertEqual(viewed.pop("viewAs"), {"studentId": "101", "name": "Marina Costa"})
         self.assertEqual(self.repo.keys("COHORT#BRSA0267", "OWNER#"), [])
         self.assertEqual(self.repo.list("USER#admin", "STUDY#"), [])
-        audits = self.repo.list("COHORT#BRSA0267", "AUDIT#")
+        audits = [a for a in self.repo.list("COHORT#BRSA0267", "AUDIT#") if a["action"] != "publish"]
         self.assertEqual([(a["action"], a["studentId"], a["by"]) for a in audits], [("STUDENT_VIEW_AS_ADMIN", "101", "admin")])
         student = Portal(Repository(), {"sub": "s1", "email": "aluno@example.test", "groups": []})
         self.assertEqual(student.dispatch("GET", "/cohorts/BRSA0267/report", {}), viewed)
+
+    def test_manual_publication_integrity_roster_audit_and_restore_on_real_services(self):
+        legacy = self.call("preview", {"csv": class_csv(["202", "203", "204", "999999"]), "filename": "BRSA0267-demo.csv"})["draft"]
+        self.call("publish", {"draftId": legacy["id"]})  # turma ainda sem Canvas: publicação antiga com 999999
+        cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+        self.repo.put("COHORT#BRSA0267", "METADATA", {**{k: v for k, v in cohort.items() if not k.startswith("_")}, "canvasCourseId": "4436"})
+        blocked = self.call("preview", {"csv": class_csv(["202", "203", "204"])})
+        self.assertEqual([i["code"] for i in blocked["integrity"]["critical"]], ["rosterUnavailable"])
+        with self.assertRaises(APIError):
+            self.call("publish", {"draftId": blocked["draft"]["id"], "acknowledgeRemoved": True})
+        save_roster(self.repo, "4436", [{"id": 101, "login_id": "Aluno@Example.test"}]
+                    + [{"id": int(i), "login_id": f"colega{i}@example.test"} for i in ("202", "203", "204")])
+        roster = self.repo.get("ROSTER#4436", "METADATA")
+        self.assertEqual((roster["count"], sorted(roster["students"])), (4, ["101", "202", "203", "204"]))
+        self.assertNotIn("@", str(roster))
+        ok = self.call("preview", {"csv": class_csv(["202", "203", "204"])})
+        self.assertEqual(ok["integrity"]["critical"], [])
+        self.call("publish", {"draftId": ok["draft"]["id"], "acknowledgeRemoved": True})
+        audits = [a for a in self.repo.list("COHORT#BRSA0267", "AUDIT#") if a["action"] == "publish"]
+        self.assertEqual(sorted((a["publicationId"], a["origin"], a["students"]) for a in audits),
+                         sorted([(legacy["id"], "manual", 5), (ok["draft"]["id"], "manual", 4)]))
+        current = self.repo.get("COHORT#BRSA0267", "METADATA")
+        with self.assertRaises(APIError) as err:
+            self.call("restore", {"publicationId": legacy["id"], "expectedCurrent": current["current"]})
+        self.assertEqual(err.exception.status, 409)
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA"), current)
+        self.assertIsNotNone(self.repo.get("COHORT#BRSA0267", "PUB#" + legacy["id"]))
 
     def test_draft_retention_tags_and_ttl_on_real_services(self):
         s3 = boto3.client("s3", region_name="us-east-1")

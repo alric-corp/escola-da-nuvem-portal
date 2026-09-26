@@ -61,11 +61,11 @@ class JourneyTests(unittest.TestCase):
         self.assertFalse(any(a["needsReview"] for a in activities))
 
     def test_preview_lists_removed_students_and_publish_requires_acknowledgment(self):
-        self.publish(canvas_csv(extra=["Outro Aluno", "202", "other@example.test", "8", "100", "0"]))
-        preview = self.call(self.admin, "preview", {"csv": canvas_csv(kc="9")})
+        self.publish(test_portal.class_csv(["202", "203", "204", "205"]))
+        preview = self.call(self.admin, "preview", {"csv": test_portal.class_csv(["203", "204", "205"], kc="9")})
         c = preview["changes"]
-        self.assertEqual((c["previousCount"], c["currentCount"], c["gradesChanged"]), (2, 1, 1))
-        self.assertEqual(c["studentsRemoved"], [{"id": "202", "name": "Outro Aluno"}])
+        self.assertEqual((c["previousCount"], c["currentCount"], c["gradesChanged"]), (5, 4, 1))
+        self.assertEqual(c["studentsRemoved"], [{"id": "202", "name": "Colega Aluno202"}])
         for acknowledgment in (None, False, "true"):
             with self.assertRaises(APIError) as err:
                 self.call(self.admin, "publish", {"draftId": preview["draft"]["id"], "acknowledgeRemoved": acknowledgment})

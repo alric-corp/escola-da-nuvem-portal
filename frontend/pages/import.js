@@ -1,4 +1,33 @@
-import { badge, current, demo, e, heading, icon, nextCanvasSync, percent, state } from "../ui.js";
+import { badge, current, date, demo, e, heading, icon, nextCanvasSync, percent, plural, state } from "../ui.js";
+
+// Resultado das validações de integridade calculadas pelo backend (backend/integrity.py). A tela só
+// apresenta: a publicação é recalculada e bloqueada no servidor, com ou sem esta prévia.
+export function blockedByIntegrity(p) {
+  return !!p?.integrity?.critical?.length;
+}
+const studentCodes = ["rosterUnavailable", "studentNotInRoster", "emailBelongsToOtherStudent", "rosterShrink", "publicationShrink"];
+const issueItem = (i) => `<li><strong>${e(i.message)}</strong>${i.ids?.length ? `<small>${i.ids.length === 1 ? "Canvas ID" : "Canvas IDs"} ${e(i.ids.join(", "))}${i.count > i.ids.length ? ` e mais ${i.count - i.ids.length}` : ""}</small>` : ""}</li>`;
+
+export function integrityPanel(p) {
+  const r = p?.integrity;
+  if (!r) return "";
+  const s = r.summary, c = p.changes || {};
+  const has = (codes) => r.critical.some((i) => codes.includes(i.code));
+  const check = (ok, label, failed) => `<li class="${ok ? "ok" : "fail"}"><span aria-hidden="true">${ok ? "✓" : "⚠"}</span> ${ok ? label : failed}</li>`;
+  const students = s.studentsExpected == null
+    ? `<li>${plural(s.studentsFound, "aluno encontrado", "alunos encontrados")}</li>`
+    : `<li>${s.studentsExpected} esperados</li><li>${s.studentsFound} encontrados</li><li>${plural(s.studentsExtra, "extra", "extras")}</li><li>${plural(s.studentsMissing, "ausente", "ausentes")}</li>`;
+  const activities = `<li>${plural(s.activitiesFound, "encontrada", "encontradas")}</li>${s.activitiesKnown == null ? "" : r.critical.some((i) => i.code === "activitiesFromOtherCourse") ? `<li>${s.activitiesKnown} de ${s.activitiesFound} no curso da turma</li>` : `<li>IDs compatíveis com o ${s.activitiesReference === "catalog" ? "curso" : "arquivo publicado"}</li>`}`;
+  const changes = `<li>${plural(c.gradesAdded ?? 0, "nota nova", "notas novas")}</li><li>${plural(c.gradesRemoved ?? 0, "removida", "removidas")}</li><li>${plural(c.activitiesReleased?.length ?? 0, "atividade será liberada", "atividades serão liberadas")}</li>`;
+  const roster = s.canvasConfigured
+    ? s.rosterCapturedAt ? `<p class="integrity-roster">Matrícula conferida com o Canvas em <strong>${e(date(s.rosterCapturedAt))}</strong>. Alunos matriculados depois disso só aparecem após a próxima sincronização automática.</p>` : ""
+    : "";
+  return `<section class="panel integrity-panel" aria-labelledby="integrity-heading"><h2 id="integrity-heading">Integridade</h2>
+  <div class="integrity-grid"><div><h3>Alunos</h3><ul>${students}</ul></div><div><h3>Atividades</h3><ul>${activities}</ul></div><div><h3>Mudanças</h3><ul>${changes}</ul></div></div>
+  ${roster}<ul class="integrity-checks">${s.canvasConfigured ? check(!has(studentCodes), "IDs conferem com a matrícula do Canvas", has(["rosterUnavailable"]) ? "matrícula do Canvas ainda não conferida" : "IDs não conferem com a matrícula do Canvas") : check(!has(studentCodes), "quantidade de alunos compatível com a publicação atual", "quantidade de alunos bem menor que a da publicação atual")}${check(!has(["activitiesFromOtherCourse"]), "atividades compatíveis com a turma", "atividades não pertencem ao curso desta turma")}${check(true, "estrutura válida")}</ul>
+  ${r.critical.length ? `<div class="integrity-critical" role="alert"><strong>Publicação bloqueada: corrija o arquivo e confira de novo.</strong><ul>${r.critical.map(issueItem).join("")}</ul></div>` : ""}
+  ${r.warnings.length ? `<div class="integrity-warnings" role="status"><strong>Avisos (não impedem publicar)</strong><ul>${r.warnings.map(issueItem).join("")}</ul></div>` : ""}</section>`;
+}
 
 export function importComparison(c) {
   if (!c) return '<p class="small">A comparação não está disponível nesta prévia.</p>';
@@ -18,8 +47,8 @@ export function importPage() {
   <section class="panel"><form id="import-form"><label class="drop-zone" for="csv-file">${icon("upload", 36)}<strong>Selecione o CSV exportado do Canvas</strong><span>Arquivo original UTF-8, com a linha Points Possible · até 2 MB</span><input id="csv-file" type="file" accept=".csv,text/csv" ${demo || state.importLoading ? "disabled" : ""}></label><div class="form-footer"><span class="small">${e(state.filename || "Nenhum arquivo selecionado")}</span><button class="button primary" type="submit" ${demo || state.importLoading ? "disabled" : ""}>${state.importLoading ? "Conferindo…" : p ? "Atualizar prévia" : "Conferir arquivo"} ${icon("arrow")}</button></div></form></section>
   ${
     p
-      ? `${importComparison(p.changes)}${p.warnings?.length ? `<section class="panel import-warnings" role="status"><h2>Avisos da importação</h2><ul>${p.warnings.map((w) => `<li>${e(w)}</li>`).join("")}</ul></section>` : ""}<section class="panel"><div class="panel-title"><div><span class="eyebrow">ATIVIDADES DESTA SEMANA</span><h2>O que já foi liberado?</h2><p class="small">A seleção inicial usa as notas preenchidas. Confirme as atividades que entram no cálculo.</p></div><span class="count-chip">${p.count} alunos</span></div><div class="activity-options">${p.activities.map((a) => `<label><input type="checkbox" data-activity="${e(a.id)}" ${state.importLoading ? "disabled" : ""} ${a.active ? "checked" : ""}><span><strong>${e(a.name)}</strong><small>${a.filled} notas preenchidas · máximo ${e(a.points)} pontos</small></span></label>`).join("")}</div></section>
-  <section class="panel"><div class="panel-title"><div><h2>Conferência dos resultados</h2><p class="small">${state.dirty ? "Você alterou a seleção. Atualize a prévia antes de publicar." : "Confira os alunos e indicadores antes de disponibilizar a atualização."}</p></div></div><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>KC</th><th>Lab</th><th>Pendências</th><th>Situação</th></tr></thead><tbody>${p.students.map((s) => `<tr><td>${e(s.name)}${!s.email ? '<small class="muted">E-mail ausente no Canvas</small>' : ""}</td><td>${percent(s.kc)}</td><td>${percent(s.lab)}</td><td>${s.pending}</td><td>${badge(s.status)}</td></tr>`).join("")}</tbody></table></div><div class="publish-footer"><p>Publicar substitui as notas atuais da turma pelo arquivo completo da <strong>${e(state.code)}</strong>.</p><button class="button primary" data-action="publish" ${state.importLoading || state.dirty || (p.changes?.studentsRemoved.length && !state.acknowledgeRemoved) ? "disabled" : ""}>Publicar atualização ${icon("check")}</button></div></section>`
+      ? `${integrityPanel(p)}${importComparison(p.changes)}${p.warnings?.length ? `<section class="panel import-warnings" role="status"><h2>Avisos da importação</h2><ul>${p.warnings.map((w) => `<li>${e(w)}</li>`).join("")}</ul></section>` : ""}<section class="panel"><div class="panel-title"><div><span class="eyebrow">ATIVIDADES DESTA SEMANA</span><h2>O que já foi liberado?</h2><p class="small">A seleção inicial usa as notas preenchidas. Confirme as atividades que entram no cálculo.</p></div><span class="count-chip">${p.count} alunos</span></div><div class="activity-options">${p.activities.map((a) => `<label><input type="checkbox" data-activity="${e(a.id)}" ${state.importLoading ? "disabled" : ""} ${a.active ? "checked" : ""}><span><strong>${e(a.name)}</strong><small>${a.filled} notas preenchidas · máximo ${e(a.points)} pontos</small></span></label>`).join("")}</div></section>
+  <section class="panel"><div class="panel-title"><div><h2>Conferência dos resultados</h2><p class="small">${state.dirty ? "Você alterou a seleção. Atualize a prévia antes de publicar." : "Confira os alunos e indicadores antes de disponibilizar a atualização."}</p></div></div><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>KC</th><th>Lab</th><th>Pendências</th><th>Situação</th></tr></thead><tbody>${p.students.map((s) => `<tr><td>${e(s.name)}${!s.email ? '<small class="muted">E-mail ausente no Canvas</small>' : ""}</td><td>${percent(s.kc)}</td><td>${percent(s.lab)}</td><td>${s.pending}</td><td>${badge(s.status)}</td></tr>`).join("")}</tbody></table></div><div class="publish-footer"><p>${blockedByIntegrity(p) ? "<strong>Publicação bloqueada pelas validações de integridade.</strong> Confira os itens críticos no início da prévia." : `Publicar substitui as notas atuais da turma pelo arquivo completo da <strong>${e(state.code)}</strong>.`}</p><button class="button primary" data-action="publish" ${state.importLoading || state.dirty || blockedByIntegrity(p) || (p.changes?.studentsRemoved.length && !state.acknowledgeRemoved) ? "disabled" : ""}>Publicar atualização ${icon("check")}</button></div></section>`
       : ""
   }`;
 }

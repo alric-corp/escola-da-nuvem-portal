@@ -6,9 +6,24 @@ import unittest
 from unittest.mock import patch
 
 from grades import parse_csv
+from integrity import SYNC_MIN_ROSTER, check as integrity_check, email_hash, roster_record
 from portal import APIError, Portal, authenticate, handler, class_report
 from repository import Conflict
 from test_grades import canvas_csv
+
+
+def class_csv(extra_ids=(), kc="7", marina=True):
+    """Marina (101, aluno@example.test) e um colega por ID extra; turmas com mais de dois alunos
+    permitem remover um sem cair abaixo do mínimo de 80% (integrity.SYNC_MIN_ROSTER)."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["Student", "ID", "SIS Login ID", "001 KC (123)", "002 Lab (456)", "Graduated Final Points"])
+    writer.writerow(["Points Possible", "", "", "10", "100", "1"])
+    if marina:
+        writer.writerow(["Costa, Marina", "101", "aluno@example.test", kc, "50", "0"])
+    for i in extra_ids:
+        writer.writerow([f"Aluno{i}, Colega", i, f"colega{i}@example.test", "8", "100", "0"])
+    return out.getvalue()
 
 
 def sparse_lab_csv(lab_filled, students=6, extra_activity=False):
@@ -60,7 +75,8 @@ class MemoryRepository:
         return [s for (p, s) in self.items if p == pk and s.startswith(prefix)]
 
     def cohorts(self):
-        return [copy.deepcopy(v) for (p, s), v in self.items.items() if s == "METADATA"]
+        # Como Repository.cohorts: só COHORT#…/METADATA (CATALOG# e ROSTER# também usam METADATA).
+        return [copy.deepcopy(v) for (p, s), v in self.items.items() if s == "METADATA" and p.startswith("COHORT#")]
 
     def transaction(self, writes):
         if self.fail_transaction or any(self.get(p, s) != old for p, s, data, old in writes):
@@ -322,11 +338,11 @@ class PortalTests(unittest.TestCase):
                     repo.assert_not_called()
 
     def test_class_report_requires_current_membership_or_teaching_access(self):
-        self.publish(canvas_csv(extra=["Outro Aluno", "202", "other@example.test", "8", "100", "0"]))
+        self.publish(class_csv(["202", "203", "204", "205"]))
         with self.assertRaises(APIError) as err:
             self.call(self.student, "class-report", method="GET")
         self.assertEqual(err.exception.status, 403)
-        self.assertEqual(len(self.call(self.admin, "class-report", method="GET")["students"]), 2)
+        self.assertEqual(len(self.call(self.admin, "class-report", method="GET")["students"]), 5)
         outsider = Portal(self.repo, {"sub": "outsider", "email": "outsider@example.test", "groups": []})
         for actor in (outsider, self.instructor):
             with self.assertRaises(APIError) as err:
@@ -334,11 +350,11 @@ class PortalTests(unittest.TestCase):
             self.assertEqual(err.exception.status, 403)
         self.instructor.dispatch("POST", "/access-request", {})
         self.call(self.admin, "instructors", {"userId": "teacher"})
-        self.assertEqual(len(self.call(self.instructor, "class-report", method="GET")["students"]), 2)
+        self.assertEqual(len(self.call(self.instructor, "class-report", method="GET")["students"]), 5)
         self.call(self.admin, "revoke-instructor", {"userId": "teacher"})
         with self.assertRaises(APIError):
             self.call(self.instructor, "class-report", method="GET")
-        self.publish(canvas_csv(email="other@example.test", student_id="202"))
+        self.publish(class_csv(["202", "203", "204", "205"], marina=False))
         with self.assertRaises(APIError):
             self.call(self.student, "class-report", method="GET")
 
@@ -384,7 +400,7 @@ class PortalTests(unittest.TestCase):
         self.call(self.admin, "unlink-student", {"canvasId": "101"})
         self.assertIsNone(self.repo.get("USER#student", "STUDY#BRSA0267"))
         self.assertIsNone(self.repo.get("COHORT#BRSA0267", "OWNER#101"))
-        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#") and v["action"] != "publish"]
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0]["action"], "unlink-student")
         other = Portal(self.repo, {"sub": "student2", "email": "aluno@example.test", "groups": []}, mailer=self.mailer)
@@ -511,7 +527,7 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(result, {"canvasId": "101", "displayName": "Apelido"})
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "PROFILE#101"), {"canvasId": "101", "displayName": "Apelido"})
         self.assertEqual(self.call(self.admin, "report", method="GET")["students"][0]["name"], "Apelido")
-        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#") and v["action"] != "publish"]
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0]["action"], "display-name")
 
@@ -572,7 +588,7 @@ class PortalTests(unittest.TestCase):
         self.assertEqual(student_report["thresholds"], {"kc": 60, "lab": 40})
         self.assertEqual(student_report["canvasCourseId"], "4436")
 
-        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#")]
+        audits = [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#") and v["action"] != "publish"]
         self.assertEqual(len(audits), 1)
         self.assertEqual(audits[0]["action"], "settings")
 
@@ -607,6 +623,325 @@ class PortalTests(unittest.TestCase):
         with self.assertRaises(APIError) as err:
             self.admin.dispatch("POST", "/requests/teacher/reject", {})
         self.assertEqual(err.exception.status, 409)
+
+
+
+# IDs reais das tarefas (só números) dos dois cursos em produção em 26/09/2026: catálogo de
+# módulos (CATALOG#) e colunas KC/LAB do CSV de cada turma. Servem para provar que a regra de
+# maioria separa as duas turmas sem exigir que o catálogo esteja completo.
+def _ids(*ranges):
+    return [str(i) for a, b in ranges for i in range(a, b + 1)]
+
+
+CATALOG_4413 = _ids((639129, 639205), (639207, 639210))
+CATALOG_4436 = _ids((643101, 643271), (643273, 643278), (643280, 643280))
+CSV_BRSA0257 = _ids((639129, 639203))
+CSV_BRSA0267 = _ids((643101, 643266))
+CAPTURED_AT = "2026-09-26T04:45:58+00:00"
+
+
+def course_file(student_ids, assignment_ids=CSV_BRSA0267[:6], emails=None, section="BRSAO267"):
+    """CSV como o export do Canvas (com Section), um aluno por ID; e-mail padrão alunoID@."""
+    emails = emails or {}
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["Student", "ID", "SIS User ID", "SIS Login ID", "Section"]
+                    + [f"{i:03d} KC Atividade ({a})" for i, a in enumerate(assignment_ids, 1)] + ["Graduated Final Points"])
+    writer.writerow(["Points Possible", "", "", "", ""] + ["10"] * len(assignment_ids) + ["1"])
+    for sid in student_ids:
+        writer.writerow([f"Aluno{sid}, Nome", sid, "", emails.get(sid, f"aluno{sid}@example.test"), section]
+                        + ["8"] + [""] * (len(assignment_ids) - 1) + ["0"])
+    return out.getvalue()
+
+
+def enrolled(student_ids, emails=None):
+    emails = emails or {}
+    return [{"id": int(sid), "login_id": emails.get(sid, f"aluno{sid}@example.test")} for sid in student_ids]
+
+
+STUDENTS = [str(126400 + i) for i in range(10)]
+
+
+class IntegrityRuleTests(unittest.TestCase):
+    def report(self, csv_text, roster_ids=STUDENTS, catalog=CATALOG_4436, current=None, filename="notas.csv",
+               roster_emails=None, course="4436"):
+        roster = roster_record(course, enrolled(roster_ids, roster_emails), CAPTURED_AT) if roster_ids is not None else None
+        cat = {"courseId": course, "modules": ["M"], "items": {a: {"module": 0, "url": "u"} for a in catalog}} if catalog else None
+        return integrity_check(parse_csv(csv_text), canvas_course_id=course, roster=roster, catalog=cat,
+                               current=current, filename=filename)
+
+    codes = staticmethod(lambda items: [i["code"] for i in items])
+
+    def test_email_hash_normalizes_trim_and_case(self):
+        self.assertEqual(email_hash("  Upper@Email.com "), email_hash("upper@email.com"))
+        self.assertNotEqual(email_hash("upper@email.com"), email_hash("other@email.com"))
+        self.assertIsNone(email_hash(""))
+        self.assertIsNone(email_hash(None))
+        record = roster_record("4436", [{"id": 1, "login_id": "Upper@Email.com"}, {"id": 2, "email": "b@x.test"}], CAPTURED_AT)
+        self.assertEqual(record, {"courseId": "4436", "capturedAt": CAPTURED_AT, "count": 2,
+                                  "students": {"1": email_hash("upper@email.com"), "2": email_hash("b@x.test")}})
+        self.assertNotIn("@", json.dumps(record))  # sem e-mail em claro
+
+    def test_valid_complete_file_has_no_issues(self):
+        r = self.report(course_file(STUDENTS))
+        self.assertEqual((r["critical"], r["warnings"]), ([], []))
+        self.assertEqual({k: r["summary"][k] for k in ("studentsExpected", "studentsFound", "studentsExtra", "studentsMissing",
+                                                        "activitiesFound", "activitiesKnown", "rosterCapturedAt")},
+                         {"studentsExpected": 10, "studentsFound": 10, "studentsExtra": 0, "studentsMissing": 0,
+                          "activitiesFound": 6, "activitiesKnown": 6, "rosterCapturedAt": CAPTURED_AT})
+
+    def test_extra_student_like_999999_is_critical_and_listed_by_canvas_id(self):
+        r = self.report(course_file(STUDENTS + ["999999"], emails={"999999": "conta.ficticia@example.test"}))
+        self.assertEqual(self.codes(r["critical"]), ["studentNotInRoster"])
+        self.assertEqual(r["critical"][0]["ids"], ["999999"])
+        self.assertNotIn("conta.ficticia", json.dumps(r))
+        self.assertEqual(r["summary"]["studentsExtra"], 1)
+
+    def test_missing_student_is_a_warning_until_the_class_drops_below_the_sync_limit(self):
+        r = self.report(course_file(STUDENTS[:9]))
+        self.assertEqual((self.codes(r["critical"]), self.codes(r["warnings"])), ([], ["studentsMissingFromFile"]))
+        self.assertEqual(r["warnings"][0]["ids"], [STUDENTS[9]])
+        self.assertEqual(SYNC_MIN_ROSTER, 0.8)
+        self.assertEqual(self.codes(self.report(course_file(STUDENTS[:8]))["critical"]), [])  # 8/10 = limite
+        self.assertEqual(self.codes(self.report(course_file(STUDENTS[:7]))["critical"]), ["rosterShrink"])
+
+    def test_half_of_a_59_student_class_is_blocked_against_roster_and_current_publication(self):
+        class_59 = [str(126400 + i) for i in range(59)]
+        current = parse_csv(course_file(class_59))
+        r = self.report(course_file(class_59[:30]), roster_ids=class_59, current=current)
+        self.assertEqual(self.codes(r["critical"]), ["rosterShrink", "publicationShrink"])
+
+    def test_same_canvas_id_with_different_email_is_only_a_warning(self):
+        r = self.report(course_file(STUDENTS, emails={STUDENTS[0]: "novo.email@example.test"}))
+        self.assertEqual((self.codes(r["critical"]), self.codes(r["warnings"])), ([], ["emailDiffersFromRoster"]))
+
+    def test_email_of_another_enrolled_student_is_critical(self):
+        # O dono do e-mail (STUDENTS[1]) não está no arquivo; senão o próprio parse_csv recusaria o duplicado.
+        others = [sid for sid in STUDENTS if sid != STUDENTS[1]]
+        stolen = {STUDENTS[0]: f"aluno{STUDENTS[1]}@example.test"}
+        r = self.report(course_file(others, emails=stolen))
+        self.assertEqual(self.codes(r["critical"]), ["emailBelongsToOtherStudent"])
+        self.assertEqual(r["critical"][0]["ids"], [STUDENTS[0]])
+        # Mesma comparação com maiúsculas e espaços (hash normalizado).
+        shouting = {STUDENTS[0]: f"  ALUNO{STUDENTS[1]}@Example.TEST "}
+        self.assertIn("emailBelongsToOtherStudent", self.codes(self.report(course_file(others, emails=shouting))["critical"]))
+        self.assertEqual(self.codes(self.report(course_file(STUDENTS, emails={STUDENTS[0]: f"ALUNO{STUDENTS[0]}@EXAMPLE.TEST"}))["warnings"]), [])
+
+    def test_real_assignment_ids_separate_the_two_classes(self):
+        own = self.report(course_file(STUDENTS, CSV_BRSA0267))
+        self.assertEqual((own["critical"], own["summary"]["activitiesKnown"]), ([], 166))
+        other = self.report(course_file(STUDENTS, CSV_BRSA0257))
+        self.assertEqual(self.codes(other["critical"]), ["activitiesFromOtherCourse"])
+        self.assertEqual(other["summary"]["activitiesKnown"], 0)
+        # O contrário também: CSV da 0267 contra o catálogo da 0257, e a 0257 contra o próprio curso.
+        self.assertEqual(self.codes(self.report(course_file(STUDENTS, CSV_BRSA0267), catalog=CATALOG_4413, course="4413")["critical"]),
+                         ["activitiesFromOtherCourse"])
+        self.assertEqual(self.report(course_file(STUDENTS, CSV_BRSA0257), catalog=CATALOG_4413, course="4413")["critical"], [])
+
+    def test_new_assignments_missing_from_the_catalog_are_not_a_false_positive(self):
+        new = [str(700000 + i) for i in range(20)]
+        r = self.report(course_file(STUDENTS, CSV_BRSA0267 + new))
+        self.assertEqual((r["critical"], r["summary"]["activitiesKnown"], r["summary"]["activitiesFound"]), ([], 166, 186))
+
+    def test_other_course_rule_scenarios(self):
+        """Tarefas em comum < 50% do menor conjunto (arquivo ou referência) = arquivo de outra turma."""
+        other_100 = [str(800000 + i) for i in range(100)]
+        catalog_55 = CSV_BRSA0267[:55]
+        scenarios = {
+            "A mesmo curso, catálogo completo": (CSV_BRSA0267, CSV_BRSA0267, 166, False),
+            "B CSV da 0257 contra o curso da 0267": (CSV_BRSA0257, CSV_BRSA0267, 0, True),
+            "C 166 + 20 tarefas novas fora do catálogo": (CSV_BRSA0267 + [str(700000 + i) for i in range(20)], CSV_BRSA0267, 166, False),
+            "D catálogo incompleto, 55 de 166": (CSV_BRSA0267, catalog_55, 55, False),
+            "E outro curso, nenhuma em comum": (other_100, catalog_55, 0, True),
+            "F outro curso, 3 coincidências": (other_100[:97] + catalog_55[:3], catalog_55, 3, True),
+            "G arquivo legítimo com só 30 tarefas": (CSV_BRSA0267[:30], CSV_BRSA0267, 30, False),
+        }
+        for name, (csv_ids, catalog_ids, overlap, blocked) in scenarios.items():
+            with self.subTest(name):
+                r = self.report(course_file(STUDENTS, csv_ids), catalog=catalog_ids)
+                self.assertEqual(r["summary"]["activitiesKnown"], overlap)
+                self.assertEqual("activitiesFromOtherCourse" in self.codes(r["critical"]), blocked)
+
+    def test_test_like_filename_is_only_a_warning(self):
+        for name in ("BRSA0267-demo-tomas.csv", "notas_TESTE.csv", "mock.csv", "fixture-1.csv", "Test Export.csv"):
+            r = self.report(course_file(STUDENTS), filename=name)
+            self.assertEqual((r["critical"], self.codes(r["warnings"])), ([], ["testFilename"]), name)
+            self.assertEqual(r["warnings"][0]["message"], "Este arquivo parece ser de teste.")
+        for name in ("notas.csv", "2026-09-25T2147_Notas-BRSAO267.csv", "latest.csv", "contest.csv"):
+            self.assertEqual(self.report(course_file(STUDENTS), filename=name)["warnings"], [], name)
+
+    def test_normal_filename_does_not_hide_an_invalid_student(self):
+        r = self.report(course_file(STUDENTS + ["999999"]), filename="notas.csv")
+        self.assertEqual(self.codes(r["critical"]), ["studentNotInRoster"])
+
+    def test_canvas_class_without_roster_is_blocked(self):
+        r = self.report(course_file(STUDENTS), roster_ids=None)
+        self.assertEqual(self.codes(r["critical"]), ["rosterUnavailable"])
+        self.assertIn("Aguarde a próxima sincronização automática", r["critical"][0]["message"])
+
+    def test_class_without_canvas_uses_the_current_publication(self):
+        check = lambda text, current=None: integrity_check(parse_csv(text), current=current, filename="notas.csv")
+        first = check(course_file(STUDENTS))  # primeira publicação: só a estrutura do parse_csv
+        self.assertEqual((first["critical"], self.codes(first["warnings"])), ([], ["rosterNotVerified"]))
+        self.assertEqual(first["warnings"][0]["message"], "Matrícula não conferida: turma sem curso Canvas configurado.")
+        current = parse_csv(course_file(STUDENTS, CSV_BRSA0267))
+        self.assertEqual(check(course_file(STUDENTS, CSV_BRSA0267), current)["critical"], [])
+        self.assertEqual(self.codes(check(course_file(STUDENTS[:7], CSV_BRSA0267), current)["critical"]), ["publicationShrink"])
+        self.assertEqual(self.codes(check(course_file(STUDENTS, CSV_BRSA0257), current)["critical"]), ["activitiesFromOtherCourse"])
+
+
+class IntegrityPortalTests(unittest.TestCase):
+    """Envio manual e Restore numa turma com Canvas (curso 4436), como a BRSA0267."""
+
+    def setUp(self):
+        self.repo = MemoryRepository()
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "name": "Turma 267", "current": None, "canvasCourseId": "4436"})
+        self.repo.put("CATALOG#4436", "METADATA", {"courseId": "4436", "modules": ["M"],
+                                                    "items": {a: {"module": 0, "url": "u"} for a in CATALOG_4436}})
+        self.save_roster(STUDENTS)
+        self.admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+
+    def save_roster(self, ids, emails=None):
+        self.repo.put("ROSTER#4436", "METADATA", roster_record("4436", enrolled(ids, emails), CAPTURED_AT))
+
+    def call(self, operation, body=None, method="POST"):
+        return self.admin.dispatch(method, f"/cohorts/BRSA0267/{operation}", body or {})
+
+    def preview(self, text, filename="notas.csv", **extra):
+        return self.call("preview", {"csv": text, "filename": filename, **extra})
+
+    def publish(self, text, filename="notas.csv"):
+        return self.call("publish", {"draftId": self.preview(text, filename)["draft"]["id"], "acknowledgeRemoved": True})["publication"]
+
+    def state(self):
+        return copy.deepcopy(self.repo.items), copy.deepcopy(self.repo.files)
+
+    def audits(self, action="publish"):
+        return [v for (p, s), v in self.repo.items.items() if s.startswith("AUDIT#") and v["action"] == action]
+
+    def test_valid_manual_publication_writes_audit_in_the_same_transaction(self):
+        preview = self.preview(course_file(STUDENTS))
+        self.assertEqual((preview["integrity"]["critical"], preview["integrity"]["summary"]["rosterCapturedAt"]), ([], CAPTURED_AT))
+        with patch.object(self.repo, "transaction", wraps=self.repo.transaction) as tx:
+            publication = self.call("publish", {"draftId": preview["draft"]["id"]})["publication"]
+        keys = [sk.split("#")[0] for _, sk, _, _ in tx.call_args.args[0]]
+        self.assertEqual(keys, ["METADATA", "DRAFT", "PUB", "AUDIT"])
+        [audit] = self.audits()
+        self.assertEqual(set(audit), {"action", "origin", "by", "byEmail", "cohort", "publicationId", "at", "filename",
+                                      "students", "activities", "warnings"})
+        self.assertEqual({k: audit[k] for k in ("action", "origin", "by", "byEmail", "cohort", "publicationId", "filename", "students", "activities", "warnings")},
+                         {"action": "publish", "origin": "manual", "by": "admin", "byEmail": "admin@example.test", "cohort": "BRSA0267",
+                          "publicationId": publication["id"], "filename": "notas.csv", "students": 10, "activities": 6, "warnings": []})
+        self.assertEqual(audit["at"], publication["publishedAt"])
+        text = json.dumps(audit).lower()
+        for private in ("aluno", "1264", "grades", "csv\":", "token"):  # sem nome, e-mail, ID de aluno, notas, CSV
+            self.assertNotIn(private, text)
+
+    def test_audit_keeps_only_warning_codes_and_counts(self):
+        self.publish(course_file(STUDENTS))
+        self.publish(course_file(STUDENTS[:9] + [], emails={STUDENTS[0]: "novo@example.test"}), filename="BRSA0267-demo.csv")
+        audit = max(self.audits(), key=lambda a: a["at"])
+        self.assertEqual(sorted(audit["warnings"], key=lambda w: w["code"]),
+                         [{"code": "emailDiffersFromRoster", "count": 1}, {"code": "studentsMissingFromFile", "count": 1},
+                          {"code": "testFilename", "count": 1}])
+        self.assertNotIn("novo@", json.dumps(audit))
+        self.assertNotIn(STUDENTS[9], json.dumps(audit))
+
+    def test_demo_like_file_with_999999_is_blocked_even_when_publish_is_called_directly(self):
+        valid = self.publish(course_file(STUDENTS))
+        demo = course_file(STUDENTS + ["999999"], emails={"999999": "conta.ficticia@example.test"})
+        preview = self.preview(demo, filename="BRSA0267-demo-tomas.csv")
+        self.assertEqual([i["code"] for i in preview["integrity"]["critical"]], ["studentNotInRoster"])
+        self.assertEqual(preview["integrity"]["critical"][0]["ids"], ["999999"])
+        self.assertEqual([i["code"] for i in preview["integrity"]["warnings"]], ["testFilename"])
+        before = self.state()
+        # Chamada direta ao backend, sem interface e mandando uma "integridade" forjada: o mesmo bloqueio.
+        for body in ({"draftId": preview["draft"]["id"], "acknowledgeRemoved": True},
+                     {"draftId": preview["draft"]["id"], "acknowledgeRemoved": True, "integrity": {"critical": []}}):
+            with self.assertRaises(APIError) as err:
+                self.call("publish", body)
+            self.assertEqual(err.exception.status, 409)
+            self.assertIn("999999", err.exception.message)
+            self.assertNotIn("conta.ficticia", err.exception.message)
+        self.assertEqual(self.state(), before)  # nada gravado: nem PUB, nem AUDIT, nem history.json
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], valid["id"])
+
+    def test_preview_ignores_integrity_sent_by_the_client(self):
+        forged = {"critical": [], "warnings": [], "summary": {"studentsExtra": 0}}
+        preview = self.preview(course_file(STUDENTS + ["999999"]), integrity=forged)
+        self.assertEqual(preview["integrity"]["summary"]["studentsExtra"], 1)
+
+    def test_other_class_file_and_shrunken_class_are_blocked(self):
+        self.publish(course_file(STUDENTS))
+        for text in (course_file(STUDENTS, CSV_BRSA0257), course_file(STUDENTS[:7])):
+            draft = self.preview(text)["draft"]["id"]
+            with self.assertRaises(APIError) as err:
+                self.call("publish", {"draftId": draft, "acknowledgeRemoved": True})
+            self.assertEqual(err.exception.status, 409)
+
+    def test_canvas_class_without_roster_previews_but_cannot_publish(self):
+        del self.repo.items[("ROSTER#4436", "METADATA")]
+        preview = self.preview(course_file(STUDENTS))
+        self.assertEqual([i["code"] for i in preview["integrity"]["critical"]], ["rosterUnavailable"])
+        self.assertIsNotNone(self.repo.get("COHORT#BRSA0267", "DRAFT#" + preview["draft"]["id"]))
+        with self.assertRaises(APIError) as err:
+            self.call("publish", {"draftId": preview["draft"]["id"]})
+        self.assertEqual(err.exception.status, 409)
+        self.assertIn("Matrícula do Canvas ainda não disponível para validação", err.exception.message)
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "METADATA")["current"])
+
+    def restore(self, publication_id):
+        return self.call("restore", {"publicationId": publication_id,
+                                     "expectedCurrent": self.repo.get("COHORT#BRSA0267", "METADATA")["current"]})
+
+    def test_restore_of_a_valid_publication_still_works(self):
+        first = self.publish(course_file(STUDENTS))
+        self.publish(course_file(STUDENTS, CSV_BRSA0267[:7]))
+        self.assertEqual(self.restore(first["id"]), {"restored": True})
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], first["id"])
+        self.assertEqual(len(self.audits("restore")), 1)
+
+    def test_restore_of_the_demo_publication_is_blocked_and_history_stays_visible(self):
+        # Publicação equivalente à BRSA0267-demo-tomas.csv, feita antes destas validações
+        # (turma ainda sem Canvas configurado), e depois a publicação real atual.
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "name": "Turma 267", "current": None})
+        demo = self.publish(course_file(STUDENTS + ["999999"], emails={"999999": "conta.ficticia@example.test"}), "BRSA0267-demo-tomas.csv")
+        self.repo.put("COHORT#BRSA0267", "METADATA", {**self.repo.get("COHORT#BRSA0267", "METADATA"), "canvasCourseId": "4436"})
+        current = self.publish(course_file(STUDENTS))
+        before = self.state()
+        with self.assertRaises(APIError) as err:
+            self.restore(demo["id"])
+        self.assertEqual(err.exception.status, 409)
+        self.assertTrue(err.exception.message.startswith(
+            "Esta publicação não pode ser restaurada porque não atende às validações atuais de integridade."))
+        self.assertIn("999999", err.exception.message)
+        self.assertEqual(self.state(), before)  # estado corrente idêntico, sem AUDIT de restore
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], current["id"])
+        # O histórico continua consultável e imutável.
+        history = self.call("report", method="GET")["history"]
+        self.assertIn(demo["id"], [p["id"] for p in history])
+        self.assertIn("999999", {s["id"] for s in self.repo.snapshot(demo["snapshot"])["students"]})
+
+    def test_restore_is_blocked_when_a_student_left_the_canvas_class(self):
+        old = self.publish(course_file(STUDENTS))
+        self.save_roster(STUDENTS[:9] + ["126499"])  # um aluno saiu e outro entrou no Canvas
+        self.publish(course_file(STUDENTS[:9] + ["126499"]))
+        with self.assertRaises(APIError) as err:
+            self.restore(old["id"])
+        self.assertEqual(err.exception.status, 409)
+        self.assertIn(STUDENTS[9], err.exception.message)
+
+    def test_restore_allows_warnings(self):
+        old = self.publish(course_file(STUDENTS[:9]), filename="teste.csv")  # 1 ausente + nome de teste
+        self.publish(course_file(STUDENTS))
+        self.assertEqual(self.restore(old["id"]), {"restored": True})
+
+    def test_automatic_sync_is_not_checked_against_itself(self):
+        from portal import sync_from_canvas
+        # Mesmo sem ROSTER, a sincronização publica: os dados dela são a própria matrícula.
+        del self.repo.items[("ROSTER#4436", "METADATA")]
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", course_file(STUDENTS), len(STUDENTS))["status"], "published")
+        self.assertEqual(self.audits(), [])  # a sincronização continua registrando só em SYNC
 
 
 class AuthenticationTests(unittest.TestCase):

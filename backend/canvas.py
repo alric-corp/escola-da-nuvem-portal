@@ -61,10 +61,18 @@ def _number(value):
     return "0" if text in ("-0", "") else text
 
 
-def course_csv(client, course_id):
-    """CSV no formato da exportação de notas do Canvas, só com o que parse_csv usa."""
+def course_students(client, course_id):
+    """Alunos matriculados no curso: a mesma lista que vira as linhas do CSV da sincronização
+    e a matrícula (ROSTER) usada nas validações do envio manual."""
+    return client.get_all(f"/courses/{course_id}/users?enrollment_type[]=student&include[]=email&per_page=100")
+
+
+def course_csv(client, course_id, students=None):
+    """CSV no formato da exportação de notas do Canvas, só com o que parse_csv usa. Recebe os
+    alunos já lidos por course_students, se houver, para não pedir a matrícula duas vezes."""
     assignments = client.get_all(f"/courses/{course_id}/assignments?per_page=100")
-    students = client.get_all(f"/courses/{course_id}/users?enrollment_type[]=student&include[]=email&per_page=100")
+    if students is None:
+        students = course_students(client, course_id)
     submissions = client.get_all(
         f"/courses/{course_id}/students/submissions?student_ids[]=all&workflow_state=graded&per_page=100")
     graduated = next((a for a in assignments if a["name"].strip().lower() == "graduated"), None)

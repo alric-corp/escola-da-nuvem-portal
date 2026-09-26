@@ -14,6 +14,8 @@ from identity import groups_from_claim, response
 from repository import Conflict, Repository
 from reminders import SESMailer, SendFailure, message_for
 from changes import snapshot_changes, change_counts, student_changes, student_history
+from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
+from integrity import check as integrity_check
 
 
 class APIError(Exception):
@@ -55,6 +57,13 @@ def save_catalog(repo, catalog):
         return False
     repo.put(key, "METADATA", {**catalog, "updatedAt": now()})
     return True
+
+
+def save_roster(repo, course_id, students):
+    """Grava a matrícula do Canvas (ROSTER#<curso>) a cada execução do canvas_sync que conseguiu
+    lê-la, mesmo sem mudança de notas. É a referência das validações do envio manual e do Restore
+    (integrity.py); o portal nunca chama o Canvas. Só IDs e hash do e-mail, sem e-mail em claro."""
+    repo.put("ROSTER#" + str(course_id), "METADATA", roster_record(course_id, students, now()))
 
 
 def with_catalog(repo, cohort, snapshot):
@@ -558,7 +567,19 @@ class Portal:
     def _preview(self, code, cohort, pk, teach, body):
         require(teach)
         snapshot, before = self._prepare(code, cohort, body)
-        return self._save_draft(code, cohort, pk, body, snapshot, before)
+        result = self._save_draft(code, cohort, pk, body, snapshot, before)
+        # Só para exibir: _publish recalcula tudo e ignora qualquer "integrity" vindo do cliente.
+        result["integrity"] = self._integrity(cohort, snapshot, before, result["draft"]["filename"])
+        return result
+
+    def _integrity(self, cohort, snapshot, current, filename, compare_size_with_current=True):
+        """Integridade contra a matrícula e o catálogo do Canvas gravados pelo canvas_sync."""
+        course = cohort.get("canvasCourseId")
+        return integrity_check(snapshot, canvas_course_id=course,
+                               roster=self.repo.get("ROSTER#" + course, "METADATA") if course else None,
+                               catalog=self.repo.get("CATALOG#" + course, "METADATA") if course else None,
+                               current=current, filename=filename,
+                               compare_size_with_current=compare_size_with_current)
 
     def _prepare(self, code, cohort, body):
         """Lê o CSV e a publicação atual, sem gravar nada."""
@@ -603,6 +624,14 @@ class Portal:
         require(not changes["studentsRemoved"] or body.get("acknowledgeRemoved") is True, 400,
                 "Confirme a remoção de alunos antes de publicar o arquivo completo da turma.")
         require(any(a["active"] for a in snap["activities"]), 400, "Libere ao menos uma atividade antes de publicar.")
+        report = None
+        if kind == "publish":
+            # Envio manual: recalculado aqui com o rascunho gravado e a matrícula, o catálogo e a
+            # publicação atuais, antes de qualquer escrita. A sincronização (kind="canvas") não passa
+            # por aqui: os dados dela são a própria matrícula do Canvas.
+            report = self._integrity(cohort, snap, before, draft.get("filename", ""))
+            require(not report["critical"], 409,
+                    blocking_message(report, "Publicação bloqueada pelas validações de integridade."))
         # Resumo por aluno gravado agora, com o que já está em memória (snap e before), para
         # que _report não precise reler dezenas de snapshots a cada carregamento do histórico.
         history_key = draft["snapshot"].rsplit("/", 1)[0] + "/history.json"
@@ -625,17 +654,32 @@ class Portal:
                        "changes": change_counts(changes), "history": history_key, "releasedAt": released}
         next_cohort = {k: v for k, v in cohort.items() if not k.startswith("_")}
         next_cohort.update(current=draft["id"], updatedAt=publication["publishedAt"], updateKind=kind)
-        self.repo.transaction([
+        writes = [
             (pk, "METADATA", next_cohort, cohort),
             (pk, "DRAFT#" + draft["id"], publication, draft),
             (pk, "PUB#" + draft["id"], publication, None),
-        ])
+        ]
+        if kind == "publish":
+            # Na mesma transação: não existe publicação manual sem AUDIT nem AUDIT sem publicação.
+            writes.append((pk, "AUDIT#" + uuid.uuid4().hex, {
+                "action": "publish", "origin": "manual", "by": self.uid, "byEmail": self.user["email"],
+                "cohort": cohort["code"], "publicationId": draft["id"], "at": published_at,
+                "filename": draft.get("filename"), "students": len(snap["students"]),
+                "activities": len(snap["activities"]), "warnings": issue_counts(report, snap.get("warnings", []))}, None))
+        self.repo.transaction(writes)
         return {"publication": publication}
 
     def _restore(self, cohort, pk, teach, body):
         require(teach)
         publication = self.publication(cohort["code"], str(body.get("publicationId", "")))
         require(body.get("expectedCurrent") == cohort.get("current"), 409, "A turma foi atualizada. Recarregue o histórico.")
+        # O histórico é imutável e continua consultável; só não volta a ser o estado oficial se
+        # não passar nas validações atuais (matrícula e catálogo de agora).
+        current = self.snapshot(self.publication(cohort["code"], cohort["current"])) if cohort.get("current") else None
+        report = self._integrity(cohort, self.snapshot(publication), current, publication.get("filename", ""),
+                                 compare_size_with_current=False)
+        require(not report["critical"], 409, blocking_message(
+            report, "Esta publicação não pode ser restaurada porque não atende às validações atuais de integridade."))
         updated = {k: v for k, v in cohort.items() if not k.startswith("_")}
         updated.update(current=publication["id"], updatedAt=now(), updateKind="restore")
         self.repo.transaction([(pk, "METADATA", updated, cohort),
@@ -711,7 +755,6 @@ class Portal:
 
 
 SYNC_USER = {"sub": "system:canvas-sync", "email": "canvas-sync@system", "groups": ["admin"]}
-SYNC_MIN_ROSTER = 0.8
 
 
 def sync_from_canvas(repo, code, csv_text, api_students):

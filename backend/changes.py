@@ -20,12 +20,14 @@ def snapshot_changes(before, after):
     student_ref = lambda s: {"id": s["id"], "name": s["name"]}
     activity_ref = lambda a: {"id": a["id"], "name": a["name"]}
     grades = []
-    grade_count = 0
+    grade_count = added = removed = 0
     for sid in sorted(old.keys() & new.keys()):
         for aid in sorted(old_a.keys() & new_a.keys()):
             previous, current = old[sid]["grades"].get(aid), new[sid]["grades"].get(aid)
             if not same_grade(previous, current):
                 grade_count += 1
+                added += previous is None
+                removed += current is None
                 if len(grades) < 100:
                     grades.append({"student": new[sid]["name"], "activity": new_a[aid]["name"],
                                    "before": previous, "after": current})
@@ -42,7 +44,7 @@ def snapshot_changes(before, after):
                                  if old_a[k]["active"] and not new_a.get(k, {}).get("active")],
             "scalesChanged": [activity_ref(new_a[k]) for k in sorted(old_a.keys() & new_a.keys())
                               if old_a[k]["points"] != new_a[k]["points"]],
-            "gradesChanged": grade_count, "gradeDetails": grades}
+            "gradesChanged": grade_count, "gradesAdded": added, "gradesRemoved": removed, "gradeDetails": grades}
 
 
 def change_counts(changes):

@@ -7,7 +7,7 @@ import { filteredStudents, studentsCsv, teacherPage } from "./pages/teacher.js";
 import { activityOverviewPage } from "./pages/activities-overview.js";
 import { batchPage, pendingPage, senderPage } from "./pages/reminders.js";
 import { historyPage } from "./pages/history.js";
-import { importPage } from "./pages/import.js";
+import { blockedByIntegrity, importPage } from "./pages/import.js";
 import { accessPage } from "./pages/access.js";
 
 let demoRole = "student",
@@ -492,6 +492,8 @@ const actions = {
   publish: async () => {
     const code = state.code, preview = state.preview;
     if (!preview || state.dirty) return;
+    if (blockedByIntegrity(preview))
+      throw new Error("Publicação bloqueada pelas validações de integridade. Confira os itens críticos da prévia.");
     if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
       throw new Error("Confira e confirme os alunos removidos antes de publicar.");
     if (!confirm(`Publicar as notas para ${state.preview.count} alunos da ${state.code}?`)) return;
