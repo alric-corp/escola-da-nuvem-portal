@@ -37,6 +37,16 @@ run "private_storage_and_authenticated_api" {
     override_during = plan
     values          = { id = "us-east-1_test", arn = "arn:aws:cognito-idp:us-east-1:123456789012:userpool/us-east-1_test" }
   }
+  override_resource {
+    target          = aws_dynamodb_table.portal
+    override_during = plan
+    values          = { arn = "arn:aws:dynamodb:us-east-1:123456789012:table/portal-test" }
+  }
+  override_resource {
+    target          = aws_s3_bucket.imports
+    override_during = plan
+    values          = { arn = "arn:aws:s3:::portal-imports-test" }
+  }
 
   assert {
     condition = alltrue([
@@ -49,6 +59,17 @@ run "private_storage_and_authenticated_api" {
   assert {
     condition     = aws_cloudfront_origin_access_control.portal.signing_behavior == "always"
     error_message = "CloudFront deve assinar os acessos ao S3."
+  }
+
+  assert {
+    # Transações do feedback usam UpdateItem (contadores); sem ele a API responde 500. Só na
+    # tabela do portal, sem curinga.
+    condition = (
+      contains(jsondecode(aws_iam_role_policy.portal_data.policy).Statement[0].Action, "dynamodb:UpdateItem")
+      && !contains(jsondecode(aws_iam_role_policy.portal_data.policy).Statement[0].Action, "dynamodb:*")
+      && jsondecode(aws_iam_role_policy.portal_data.policy).Statement[0].Resource == "arn:aws:dynamodb:us-east-1:123456789012:table/portal-test"
+    )
+    error_message = "A API precisa de dynamodb:UpdateItem na tabela do portal (e só nela) para as transações do feedback."
   }
 
   assert {

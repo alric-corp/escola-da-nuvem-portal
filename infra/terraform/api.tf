@@ -126,8 +126,9 @@ resource "aws_iam_role_policy" "portal_data" {
     Statement = [
       {
         Effect = "Allow"
-        # Transações usam as permissões PutItem/DeleteItem das ações subjacentes.
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"]
+        # Transações usam as permissões das ações subjacentes: PutItem/DeleteItem e, nos
+        # contadores atômicos do feedback (limite por hora e resumo por status), UpdateItem.
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.portal.arn
       },
       {
