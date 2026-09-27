@@ -1,3 +1,6 @@
+/* =========================================================
+   01. Design tokens (:root)
+   ========================================================= */
 :root {
   color-scheme: dark;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
@@ -22,6 +25,9 @@
   color: var(--text-primary);
   background: var(--bg-page);
 }
+/* =========================================================
+   02. Reset / base
+   ========================================================= */
 * {
   box-sizing: border-box;
 }
@@ -115,6 +121,9 @@ small,
   text-align: center;
   color: var(--text-secondary);
 }
+/* =========================================================
+   03. Botões, links e pills (genérico)
+   ========================================================= */
 .button {
   border: 1px solid transparent;
   display: inline-flex;
@@ -173,6 +182,9 @@ small,
   border-radius: 5px;
   color: var(--text-secondary);
 }
+/* =========================================================
+   04. Marca e barra de demonstração
+   ========================================================= */
 .brand {
   display: flex;
   align-items: center;
@@ -217,6 +229,9 @@ small,
 .demo-bar a {
   font-size: 0.6875rem;
 }
+/* =========================================================
+   05. Layout global, barra lateral e navegação (base)
+   ========================================================= */
 .layout {
   display: flex;
   min-height: 100vh;
@@ -349,6 +364,9 @@ select {
   padding: 5px;
   margin-left: auto;
 }
+/* =========================================================
+   06. Cabeçalho de conteúdo (.main, .topline, sessão)
+   ========================================================= */
 .main {
   padding: 0 42px;
   width: calc(100% - 244px);
@@ -415,6 +433,9 @@ select {
   background: var(--surface-1);
   border-radius: 50%;
 }
+/* =========================================================
+   07. Título de página (.page-heading)
+   ========================================================= */
 .page-heading {
   margin: 35px 0 29px;
   display: flex;
@@ -426,6 +447,9 @@ select {
   font-size: 0.8125rem;
   margin-bottom: 0;
 }
+/* =========================================================
+   08. Cartões e indicadores compartilhados (.journey, .ring, .metric, .panel)
+   ========================================================= */
 .journey {
   display: flex;
   justify-content: space-between;
@@ -592,6 +616,9 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* =========================================================
+   09. Atividades (.activity-card, .activity-module, .focus-editor) — base
+   ========================================================= */
 .activity-card {
   display: flex;
   align-items: center;
@@ -710,6 +737,9 @@ select {
   color: var(--primary);
   white-space: nowrap;
 }
+/* =========================================================
+   10. Badges de situação (.badge) — base
+   ========================================================= */
 .badge {
   display: inline-block;
   font-size: 0.5625rem;
@@ -744,6 +774,9 @@ select {
   background: var(--surface-1);
   color: var(--text-secondary);
 }
+/* =========================================================
+   11. Gráfico simples e rodapé (.chart, .main-footer)
+   ========================================================= */
 .chart {
   height: 180px;
   display: flex;
@@ -795,6 +828,9 @@ select {
   color: var(--text-secondary);
   font-size: 0.625rem;
 }
+/* =========================================================
+   12. Tabelas e ferramentas de listagem (base)
+   ========================================================= */
 .table-tools {
   display: flex;
   justify-content: space-between;
@@ -904,6 +940,9 @@ tbody tr:last-child td {
 .steps .active {
   color: var(--text-secondary);
 }
+/* =========================================================
+   13. Formulários e ações (.drop-zone, .stack-form, .approve-form)
+   ========================================================= */
 .drop-zone {
   display: flex;
   align-items: center;
@@ -1034,6 +1073,9 @@ tbody tr:last-child td {
 .approve-form .button {
   font-size: 0.6875rem;
 }
+/* =========================================================
+   14. Utilitários de acessibilidade e notificações (.sr-only, #notices, .notice)
+   ========================================================= */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1067,6 +1109,10 @@ tbody tr:last-child td {
 .notice.error {
   background: var(--surface-1);
 }
+/* =========================================================
+   15. Landing / primeiro acesso (.welcome*) — base
+   NÃO movida nesta rodada (congelada por decisão).
+   ========================================================= */
 .welcome {
   max-width: 1320px;
   margin: auto;
@@ -1218,6 +1264,15 @@ tbody tr:last-child td {
   padding-top: 25px;
 }
 
+/* =========================================================
+   16. Theme overrides — "Escola da Nuvem"
+   ========================================================= */
+/*
+ * Esta camada redefine dezenas de seletores das seções 03-15 com as cores reais da
+ * marca (a base acima é um esqueleto genérico). DEVE permanecer depois das regras
+ * base correspondentes: mesma especificidade, a ordem no arquivo decide quem vence.
+ * NÃO mover nesta rodada (congelada por decisão).
+ */
 /* Escola da Nuvem: navy surfaces, cyan interaction, restrained semantic accents. */
 body {
   background: var(--bg-page);
@@ -1637,6 +1692,10 @@ th {
   font-family: var(--mono);
 }
 
+/* =========================================================
+   17. Breakpoints "clássicos" (desktop grande → mobile) — base
+   NÃO reordenados nesta rodada; a ordem relativa entre eles é significativa.
+   ========================================================= */
 @media (min-width: 1500px) {
   .main {
     padding: 0 65px;
@@ -1699,6 +1758,13 @@ th {
     height: 450px;
   }
 }
+/*
+ * ATENÇÃO: estes overrides participam de uma cadeia de cascade com outros blocos
+ * max-width: 760px (ver também as outras ocorrências desta nota no arquivo).
+ * A ordem RELATIVA entre esses blocos decide o layout final da barra lateral/
+ * navegação mobile. Não reordenar isoladamente — ver docs/archive ou o relatório
+ * da Rodada 3 de organização de CSS para a matriz completa.
+ */
 @media (max-width: 760px) {
   .layout {
     display: block;
@@ -1706,11 +1772,9 @@ th {
   .sidebar {
     width: 100%;
     min-height: 0;
-    padding: 20px;
     border-right: 0;
     border-bottom: 1px solid var(--border);
     display: grid;
-    grid-template-columns: 1fr auto;
     gap: 12px;
   }
   .brand {
@@ -1740,24 +1804,8 @@ th {
   }
   .sidebar nav {
     grid-column: 1/-1;
-    flex-direction: row;
-    overflow: auto;
-    margin: 8px 0 0;
-    gap: 4px;
-  }
-  .nav-item {
-    padding: 10px;
-    font-size: 0.6875rem;
-    gap: 7px;
-  }
-  .nav-item svg {
-    width: 16px;
-    height: 16px;
   }
   .sidebar-bottom {
-    position: absolute;
-    top: 21px;
-    right: 183px;
     margin: 0;
     padding: 0;
   }
@@ -1971,17 +2019,24 @@ th {
     padding: 0 15px;
   }
 }
+/* Duplicado (quase idêntico) em outro ponto do arquivo; candidato a fusão futura, não
+   mexido nesta rodada. */
 @media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior: auto !important;
     transition: none !important;
   }
 }
+/*
+ * ATENÇÃO: estes overrides participam de uma cadeia de cascade com outros blocos
+ * max-width: 760px (ver também as outras ocorrências desta nota no arquivo).
+ * A ordem RELATIVA entre esses blocos decide o layout final da barra lateral/
+ * navegação mobile. Não reordenar isoladamente — ver docs/archive ou o relatório
+ * da Rodada 3 de organização de CSS para a matriz completa.
+ */
 @media (max-width: 760px) {
   .sidebar-bottom {
     position: static;
-    grid-column: 1/-1;
-    grid-row: 3;
     justify-self: end;
     display: block;
     padding: 0;
@@ -1997,6 +2052,9 @@ th {
   }
 }
 
+/* =========================================================
+   18. Utilitários soltos (sem seção própria ainda)
+   ========================================================= */
 .email-preview {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -2011,6 +2069,10 @@ th {
   color: var(--danger);
 }
 
+/* =========================================================
+   19. Escala global por viewport (:root font-size) — min-width: 1280px
+   Mecanismo único: não deve haver outro ":root { font-size }" no arquivo.
+   ========================================================= */
 /* Scale the interface by the available CSS viewport, preserving browser zoom.
    At a 16px browser default: 16px root at 1280, 20px at 1920,
    24px at 2560 and 32px at 3840. Mobile keeps the compact layout. */
@@ -2209,6 +2271,9 @@ th {
     bottom: 14px;
   }
 }
+/* =========================================================
+   20. Acessibilidade adicional (skip link, ajustes de .notice)
+   ========================================================= */
 .skip-link {
   position: fixed;
   left: 16px;
@@ -2224,6 +2289,9 @@ th {
 .notice span { min-width: 0; overflow-wrap: anywhere; }
 .notice .icon-button { flex: 0 0 44px; min-height: 44px; font-size: 24px; }
 
+/* =========================================================
+   21. Aluno — legibilidade, resumo, evolução, sincronização
+   ========================================================= */
 /* Jornada: informação essencial legível e ações acessíveis em todas as telas. */
 .update-line {
   display: flex;
@@ -2317,6 +2385,13 @@ details ul, .onboarding ol { padding-left: 24px; }
 .stack-form .checkbox-line input { width: auto; margin: 0; }
 .update-line .sync-failed { color: var(--warning); font-weight: 600; }
 
+/*
+ * ATENÇÃO: estes overrides participam de uma cadeia de cascade com outros blocos
+ * max-width: 760px (ver também as outras ocorrências desta nota no arquivo).
+ * A ordem RELATIVA entre esses blocos decide o layout final da barra lateral/
+ * navegação mobile. Não reordenar isoladamente — ver docs/archive ou o relatório
+ * da Rodada 3 de organização de CSS para a matriz completa.
+ */
 /* Navegação no celular: barra inferior fixa com todos os itens visíveis, sem rolagem
    horizontal. O cabeçalho fica compacto (logo, turma e Sair em uma linha). */
 .nav-short { display: none; }
@@ -2426,6 +2501,9 @@ details ul, .onboarding ol { padding-left: 24px; }
 .sync-times dt::after { content: ":"; }
 .sync-times dd { margin: 0; color: var(--text-primary); font-weight: 600; }
 
+/* =========================================================
+   22. Instrutor e tabelas responsivas (tabela ↔ cards)
+   ========================================================= */
 /* Lista de alunos do instrutor: tabela no desktop, cards no celular e no tablet (abaixo de
    1024px a tabela não cabe ao lado do menu lateral e "Situação"/"Portal" ficavam fora da
    tela). Mesmo HTML (filtros, CSV e "Ver detalhes" iguais); cada valor ganha seu rótulo. */
@@ -2614,6 +2692,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   .history-table:has(td.h-action) td.h-file { white-space: normal; overflow-wrap: anywhere; }
 }
 
+/* =========================================================
+   23. Admin — Visualizar como aluno
+   ========================================================= */
 /* Visualizar como aluno (admin): faixa sempre visível no topo do conteúdo, separando a
    identidade real (admin) do aluno visualizado. */
 .student-view-banner {
@@ -2642,6 +2723,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   .student-view-banner .button { width: 100%; }
 }
 
+/* =========================================================
+   24. Importação — Integridade
+   ========================================================= */
 /* Integridade da publicação manual (backend/integrity.py): o que o servidor conferiu antes de
    permitir publicar. Crítico bloqueia; aviso só informa. */
 .integrity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 12px 0 16px; }
@@ -2660,6 +2744,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   .integrity-grid { grid-template-columns: 1fr; gap: 10px; }
 }
 
+/* =========================================================
+   25. Feedback (formulário, lista, detalhe)
+   ========================================================= */
 /* Feedback da plataforma (aluno) e área Feedbacks (admin). Texto do usuário sempre como texto:
    quebras de linha preservadas com pre-wrap, palavras longas quebram sem rolagem lateral. */
 .feedback-form-panel form { display: grid; gap: 6px; }
@@ -2713,6 +2800,13 @@ button.feedback-card:hover, button.feedback-card:focus-visible { border-color: v
   .fb-type-option { flex: 1 1 calc(50% - 8px); }
   .fb-type-option span { width: 100%; justify-content: center; box-sizing: border-box; }
 }
+/*
+ * ATENÇÃO: estes overrides participam de uma cadeia de cascade com outros blocos
+ * max-width: 760px (ver também as outras ocorrências desta nota no arquivo).
+ * A ordem RELATIVA entre esses blocos decide o layout final da barra lateral/
+ * navegação mobile. Não reordenar isoladamente — ver docs/archive ou o relatório
+ * da Rodada 3 de organização de CSS para a matriz completa.
+ */
 /* Barra inferior com 6 itens (administrador, com Feedbacks): mesmo ajuste compacto dos 320px,
    para que os rótulos não quebrem no meio da palavra. */
 @media (max-width: 760px) {
@@ -2721,6 +2815,9 @@ button.feedback-card:hover, button.feedback-card:focus-visible { border-color: v
   .sidebar nav:has(> .nav-item:nth-child(6)) .nav-short { overflow-wrap: normal; }
 }
 
+/* =========================================================
+   26. Feedback — Anexos de imagem
+   ========================================================= */
 /* Anexos do feedback: prévia local no formulário e galeria de imagens aceitas. Nomes longos
    quebram sem rolagem lateral; botões com 44px de área de toque. */
 .fb-attachments { border: 0; margin: 8px 0 4px; padding: 0; min-width: 0; display: grid; gap: 8px; }
