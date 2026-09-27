@@ -1,5 +1,12 @@
-// Estado compartilhado e helpers de apresentação usados por várias páginas.
-// Mantido separado de app.js (controlador: boot, rotas de API, eventos do DOM).
+// Helpers de apresentação usados por várias páginas (HTML, formatação, ícones, navegação visual).
+// O estado compartilhado fica em state.js, a rede em api.js; app.js orquestra boot, eventos do DOM
+// e navegação.
+import { state } from "./state.js";
+
+// Compatibilidade: app.js e as páginas ainda importam state daqui, assim como módulos antigos em
+// cache durante uma publicação. É a mesma referência de state.js.
+export { state };
+
 export const $ = (selector) => document.querySelector(selector);
 export const e = (value) =>
   String(value ?? "").replace(
@@ -92,72 +99,6 @@ export const demo =
 // Chave geral dos links "Abrir no Canvas" (todo/02). Os links vêm do catálogo do curso da
 // turma, lido pela API do Canvas (todo/12).
 export const canvasLinksEnabled = true;
-
-export let state = {
-  me: null,
-  cohorts: [],
-  code: "",
-  report: null,
-  reportError: "",
-  bootError: "",
-  pendingError: "",
-  sender: null,
-  senderError: "",
-  senderLoading: false,
-  sort: "name",
-  teacherFilters: null,
-  acknowledgeRemoved: false,
-  importLoading: false,
-  view: "overview",
-  activityKind: "all",
-  activityModule: "all",
-  activityOverviewKind: "all",
-  activityOverviewModule: "all",
-  activityOverviewSort: "name",
-  focusDraft: null,
-  filter: "all",
-  search: "",
-  requests: [],
-  instructors: [],
-  preview: null,
-  csv: "",
-  filename: "",
-  dirty: false,
-  accessLoading: false,
-  accessError: "",
-  requestsFilter: "pending",
-  studentQuery: "",
-  studentResults: null,
-  studentSearchError: "",
-  studentSearchLoading: false,
-  editingStudentId: null,
-  pendingPreview: null,
-  pendingStudentId: "",
-  batchIds: [],
-  batchPreview: null,
-  batchError: "",
-  batchResults: null,
-  classReport: null,
-  // "Visualizar como aluno": { code, studentId, name } só nesta aba (sessionStorage), nunca em
-  // avanca.context. O admin continua autenticado como admin; o servidor revalida a cada abertura.
-  studentView: null,
-  // Feedback: rascunho do formulário (preservado entre renderizações), página de origem e listas
-  // paginadas pelo backend.
-  feedbackDraft: { type: "", title: "", description: "" },
-  feedbackOrigin: "",
-  feedbackSending: false,
-  feedbackSent: false,
-  // Imagens do formulário ({id (clientToken), file, name, size, type, previewUrl, status}), o envio
-  // em andamento, as galerias carregadas por feedback e o envio pelos cards de "Meus feedbacks".
-  feedbackFiles: [],
-  feedbackUpload: { feedbackId: null, progress: "", failed: false },
-  feedbackAttachments: {},
-  feedbackCardUpload: {},
-  myFeedback: { items: [], nextCursor: null, loading: false, error: "" },
-  adminFeedback: { items: [], nextCursor: null, summary: null, loading: false, error: "", filters: { status: "", type: "", cohort: "" }, selectedId: null },
-  classFilter: "all",
-  classSearch: "",
-};
 
 export function errorPanel(message, action) {
   return `<section class="panel empty" role="alert"><h2>Não foi possível carregar</h2><p>${e(message)}</p><button class="button primary" data-action="${action}">Tentar novamente</button></section>`;
