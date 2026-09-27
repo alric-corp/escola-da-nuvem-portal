@@ -29,4 +29,4 @@ Limitações atuais:
 | Associar uma turma nova ao curso Canvas (links e módulos) | Turmas e acessos → Configurações: ID do curso. Módulos e links aparecem após a próxima atualização (6h ou 18h), sem deploy |
 | Ligar ou desligar lembretes | Variável `reminders_enabled` no Terraform |
 
-Antes de qualquer mudança na AWS, siga os cuidados de [CONTEXTO-HANDOFF-2026-09-24.md](CONTEXTO-HANDOFF-2026-09-24.md): rodar `terraform plan`, não apagar publicações ou snapshots e publicar só `frontend/dist`.
+Antes de qualquer mudança na AWS, siga os cuidados de [CONTEXTO-HANDOFF-2026-09-24.md](archive/CONTEXTO-HANDOFF-2026-09-24.md) (arquivado, mas os cuidados continuam válidos): rodar `terraform plan`, não apagar publicações ou snapshots e publicar só `frontend/dist`.

@@ -1,12 +1,14 @@
 # Atividades sem link no Canvas
 
+> **Nota histórica (arquivado):** este documento registra uma investigação manual feita antes da integração com a API do Canvas. Os links foram posteriormente ativados (`canvasLinksEnabled = true`, ver [todo/02](../../todo/02-ativar-links-canvas.md)) e hoje o catálogo de módulos e links vem automaticamente da API do Canvas a cada sincronização (`backend/canvas.py`, `course_catalog`), não mais deste levantamento manual. Preservado como registro de como os links foram originalmente mapeados.
+
 Comparação dos catálogos fornecidos, incluindo os KCs de certificação do curso 4413 e os 55 links adicionais do curso 4436, com os CSVs locais de 14/09/2026. A ausência de link não indica atividade bloqueada ou pendente de entrega. Os números iniciais são os códigos dos títulos, não IDs de itens do Canvas. Cada curso usa exclusivamente seus próprios endereços. Os botões de acesso ao Canvas continuam pausados na aplicação.
 
 ## BRSA0257 — AWS re/Start 2 — curso 4413
 
 Nenhuma atividade sem link: as 75 atividades do CSV têm correspondência no catálogo. Os 13 KCs de certificação 195–207 foram associados aos endereços fornecidos para o curso 4413.
 
-Os sete materiais complementares enviados junto com esses KCs estão registrados em [Materiais complementares](../frontend/canvas-materiais-complementares.md).
+Os sete materiais complementares enviados junto com esses KCs estão registrados em [Materiais complementares](../canvas-materiais-complementares.md).
 
 ## BRSA0267 — AWS re/Start 1 — curso 4436
 

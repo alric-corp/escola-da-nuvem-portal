@@ -85,7 +85,7 @@ Atividades pendentes com link mostram **Abrir KC/LAB no Canvas**; atividades com
 
 Atividades não liberadas, dispensadas ou fora de qualquer módulo ficam sem botão. A demonstração local não mostra links. O clique não altera notas, status, matrícula ou progresso e não substitui o login e as permissões do Canvas.
 
-As listas fixas anteriores (170 itens do curso 4436 e 75 do 4413, fornecidas pelo instrutor) foram removidas depois de conferir que o catálogo da API produz exatamente os mesmos 241 links. Estão no histórico do Git até o commit `244f7b0`. Os sete materiais complementares do curso 4413 continuam em [canvas-materiais-complementares.md](canvas-materiais-complementares.md), sem gerar atividades.
+As listas fixas anteriores (170 itens do curso 4436 e 75 do 4413, fornecidas pelo instrutor) foram removidas depois de conferir que o catálogo da API produz exatamente os mesmos 241 links. Estão no histórico do Git até o commit `244f7b0`. Os sete materiais complementares do curso 4413 continuam em [canvas-materiais-complementares.md](../docs/canvas-materiais-complementares.md), sem gerar atividades.
 
 Validação específica, sem acesso à AWS ou ao Canvas:
 

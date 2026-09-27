@@ -1,6 +1,6 @@
 # 17 · Importar notas pela API do Canvas
 
-**Status:** 🟨 implementado; falta gravar o token e ligar o agendamento · **Prioridade:** estratégica · **Esforço:** grande · **Área:** instrutor / backend
+**Status:** ✅ concluída — integração operacional em produção desde 24/09 (token gravado, agendamento `cron(0 6,18 * * ? *)` ativo) · **Prioridade:** estratégica · **Esforço:** grande · **Área:** instrutor / backend
 
 ## Problema
 Toda semana o instrutor exporta o CSV manualmente, envia, confere e publica.
