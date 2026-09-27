@@ -1,4 +1,5 @@
-import { callback, clearSession, login, logout, session, validSession } from "./auth.js";
+import { callback, clearSession, login, logout, session } from "./auth.js";
+import * as api from "./api.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, state, studentViewBanner, teacher } from "./ui.js";
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
@@ -13,8 +14,7 @@ import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES, DESCRIPTION_M
 import { adminFeedbackPage } from "./pages/admin-feedback.js";
 
 let demoRole = "student",
-  config = {},
-  api;
+  config = {};
 let accessRequest = 0;
 let reportRequest = 0;
 let renderedView = "";
@@ -124,7 +124,7 @@ async function loadClassReport(value) {
     .toUpperCase();
   if (!/^[A-Z0-9-]{3,32}$/.test(code))
     throw new Error("Informe um código de turma válido.");
-  const data = await api(`/cohorts/${encodeURIComponent(code)}/class-report`);
+  const data = await api.cohorts.classReport(code);
   if (state.classReport?.cohort !== data.cohort) {
     state.classFilter = "all";
     state.classSearch = "";
@@ -209,10 +209,7 @@ async function loadPending(studentId) {
   state.pendingPreview = null;
   render();
   try {
-    const preview = await api(`/cohorts/${code}/pending-preview`, {
-      method: "POST",
-      body: { studentId },
-    });
+    const preview = await api.reminders.pendingPreview(code, { studentId });
     if (
       state.code === code &&
       state.view === "student-pending" &&
@@ -241,10 +238,7 @@ async function loadBatchPreview() {
   state.batchResults = null;
   render();
   try {
-    const preview = await api(`/cohorts/${code}/pending-preview-batch`, {
-      method: "POST",
-      body: { studentIds: state.batchIds },
-    });
+    const preview = await api.reminders.batchPreview(code, { studentIds: state.batchIds });
     if (state.code === code && state.view === "reminders-batch") {
       state.batchPreview = preview;
       render();
@@ -263,7 +257,7 @@ async function loadSender() {
   state.senderLoading = true;
   render();
   try {
-    const sender = await api(`/cohorts/${code}/reminder-settings`);
+    const sender = await api.reminders.senderSettings(code);
     if (state.code === code) state.sender = sender;
   } catch (err) {
     if (state.code === code) state.senderError = err.message;
@@ -283,8 +277,8 @@ async function loadReport() {
     if (code) {
       // Visualização como aluno: o servidor confere admin, turma e matrícula a cada abertura.
       const report = viewing
-        ? await api(`/cohorts/${encodeURIComponent(code)}/student-view`, { method: "POST", body: { studentId: viewing.studentId } })
-        : await api(`/cohorts/${encodeURIComponent(code)}/report`);
+        ? await api.cohorts.studentView(code, { studentId: viewing.studentId })
+        : await api.cohorts.report(code);
       if (state.code !== code || request !== reportRequest || !state.me || state.studentView !== viewing) return;
       if (viewing) viewing.name = report.viewAs?.name || "";
       state.report = report;
@@ -306,7 +300,7 @@ async function loadMyFeedback(more = false) {
   Object.assign(list, { loading: true, error: "" }, more ? {} : { items: [], nextCursor: null });
   render();
   try {
-    const page = await api(`/feedback?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+    const page = await api.feedback.listMine(cursor);
     Object.assign(list, { items: more ? [...list.items, ...page.items] : page.items, nextCursor: page.nextCursor });
   } catch (err) {
     list.error = err.message || "Não foi possível carregar seus feedbacks.";
@@ -319,13 +313,11 @@ let adminFeedbackRequest = 0;
 async function loadAdminFeedback(reset = true) {
   const a = state.adminFeedback;
   const request = ++adminFeedbackRequest;
-  const params = new URLSearchParams({ limit: "50" });
-  for (const [key, value] of Object.entries(a.filters)) if (value) params.set(key, value);
-  if (!reset && a.nextCursor) params.set("cursor", a.nextCursor);
+  const cursor = reset ? null : a.nextCursor;
   Object.assign(a, { loading: true, error: "" }, reset ? { items: [], nextCursor: null } : {});
   render();
   try {
-    const page = await api(`/admin/feedback?${params}`);
+    const page = await api.adminFeedback.list(a.filters, cursor);
     if (request !== adminFeedbackRequest) return;
     Object.assign(a, { items: reset ? page.items : [...a.items, ...page.items], nextCursor: page.nextCursor, summary: page.summary });
   } catch (err) {
@@ -391,15 +383,10 @@ function releaseFiles(files) {
 // Um anexo: pede o slot (o clientToken faz a repetição devolver o mesmo), envia direto ao S3 pelo
 // presigned POST e pede a conclusão, onde o backend confere o arquivo.
 async function uploadImage(feedbackId, entry) {
-  const base = `/feedback/${encodeURIComponent(feedbackId)}/attachments`;
-  const slot = await api(base, { method: "POST", body: { fileName: entry.name, contentType: entry.type, size: entry.size, clientToken: entry.id } });
+  const slot = await api.feedback.createAttachment(feedbackId, { fileName: entry.name, contentType: entry.type, size: entry.size, clientToken: entry.id });
   if (slot.status === "READY") return;
-  const form = new FormData();
-  for (const [key, value] of Object.entries(slot.upload.fields)) form.append(key, value);
-  form.append("file", entry.file);
-  const sent = await fetch(slot.upload.url, { method: "POST", body: form });
-  if (!sent.ok) throw new Error("O envio da imagem foi recusado.");
-  await api(`${base}/${encodeURIComponent(slot.attachment.attachmentId)}/complete`, { method: "POST", body: {} });
+  await api.uploadAttachmentToS3(slot.upload, entry.file);
+  await api.feedback.completeAttachment(feedbackId, slot.attachment.attachmentId);
 }
 async function uploadImages(feedbackId, entries, progress) {
   let failed = 0;
@@ -435,10 +422,9 @@ async function loadAttachments(feedbackId) {
   const g = state.feedbackAttachments[feedbackId] = { ...state.feedbackAttachments[feedbackId], open: true, loading: true, error: "", items: [], urls: {} };
   render();
   try {
-    const base = `/feedback/${encodeURIComponent(feedbackId)}/attachments`;
-    g.items = (await api(base)).items;
+    g.items = (await api.feedback.attachments(feedbackId)).items;
     // No máximo 3: um link temporário por imagem visível, só quando a galeria abre.
-    for (const a of g.items) g.urls[a.attachmentId] = (await api(`${base}/${encodeURIComponent(a.attachmentId)}`)).downloadUrl;
+    for (const a of g.items) g.urls[a.attachmentId] = (await api.feedback.attachmentUrl(feedbackId, a.attachmentId)).downloadUrl;
   } catch (err) {
     g.error = err.message || "Não foi possível carregar as imagens.";
   } finally {
@@ -467,9 +453,9 @@ async function loadAccess() {
   render();
   try {
     const [requests, instructors] = await Promise.all([
-      api("/requests"),
+      api.access.requests(),
       code
-        ? api(`/cohorts/${code}/instructors`)
+        ? api.access.instructors(code)
         : Promise.resolve({ instructors: [] }),
     ]);
     if (request !== accessRequest || code !== state.code) return;
@@ -493,10 +479,7 @@ async function searchStudents(query) {
   state.studentSearchLoading = true;
   render();
   try {
-    const result = await api(`/cohorts/${code}/students-search`, {
-      method: "POST",
-      body: { query },
-    });
+    const result = await api.access.searchStudents(code, { query });
     if (state.code === code) {
       state.studentResults = result.results;
       state.editingStudentId = null;
@@ -518,7 +501,7 @@ async function boot() {
   state.bootError = "";
   try {
     const wasSignedIn = !!state.me;
-    state.me = await api("/me");
+    state.me = await api.me.get();
     if (draftOwner !== state.me.email) {
       drafts.clear();
       draftOwner = state.me.email;
@@ -533,7 +516,7 @@ async function boot() {
         }
       } catch { /* Ignore a damaged navigation preference. */ }
     }
-    state.cohorts = (await api("/cohorts")).cohorts;
+    state.cohorts = (await api.cohorts.list()).cohorts;
     if (!wasSignedIn && !demo) {
       const resume = admin() ? storedStudentView() : null;
       if (resume && state.cohorts.some((c) => c.code === resume.code)) {
@@ -586,8 +569,8 @@ const actions = {
     const code = state.code, p = state.batchPreview;
     const eligible = p.recipients.filter((r) => !r.skip);
     if (!eligible.length || !confirm(`Enviar lembrete para ${plural(eligible.length, "aluno", "alunos")}?`)) return;
-    const result = await api(`/cohorts/${code}/send-reminders`, { method: "POST", body: {
-      studentIds: state.batchIds, expectedPublicationId: p.publicationId } });
+    const result = await api.reminders.sendBatch(code, {
+      studentIds: state.batchIds, expectedPublicationId: p.publicationId });
     if (state.code === code && state.view === "reminders-batch") {
       state.batchResults = result.results;
       render();
@@ -622,7 +605,7 @@ const actions = {
   "refresh-sender": () => loadSender(),
   "verify-sender": async () => {
     const code = state.code;
-    const sender = await api(`/cohorts/${code}/verify-sender`, { method: "POST", body: {} });
+    const sender = await api.reminders.verifySender(code);
     if (code === state.code) { state.sender = sender; render(); }
     notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
   },
@@ -630,8 +613,8 @@ const actions = {
     const code = state.code, p = state.pendingPreview;
     if (!p?.message || !confirm(`Enviar este lembrete para ${p.message.to}, usando ${p.message.from}?`)) return;
     try {
-      await api(`/cohorts/${code}/send-reminder`, { method: "POST", body: {
-        studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash } });
+      await api.reminders.send(code, {
+        studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash });
       notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
     } finally {
       if (state.code === code && state.pendingStudentId === p.student.id && state.view === "student-pending") await loadPending(p.student.id);
@@ -677,14 +660,14 @@ const actions = {
   "switch-account": () => signOut(),
   "demo-role": async () => {
     demoRole = demoRole === "student" ? "instructor" : "student";
-    api = (await import("./demo.js")).demoAPI(demoRole);
+    api.setTransport((await import("./demo.js")).demoAPI(demoRole));
     state.view = "overview";
     state.filter = "all";
     state.search = "";
     await boot();
   },
   request: async () => {
-    await api("/access-request", { method: "POST", body: {} });
+    await api.access.requestInstructorAccess();
     await boot();
     notice("Solicitação enviada ao administrador.");
   },
@@ -697,10 +680,7 @@ const actions = {
     if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
       throw new Error("Confira e confirme os alunos removidos antes de publicar.");
     if (!confirm(`Publicar as notas para ${state.preview.count} alunos da ${state.code}?`)) return;
-    await api(`/cohorts/${code}/publish`, {
-      method: "POST",
-      body: { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved },
-    });
+    await api.cohorts.publish(code, { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved });
     drafts.delete(code);
     if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return; }
     state.preview = null;
@@ -711,6 +691,17 @@ const actions = {
     notice("Atualização publicada. Os alunos já podem consultar.");
   },
 };
+
+// Chamado pela camada de rede quando não há sessão válida ou a API responde 401. A requisição
+// ainda falha em seguida, e o erro chega a quem chamou (busy/boot) como antes.
+function expireSession() {
+  saveContext();
+  clearSession();
+  state.me = null;
+  state.classReport = null;
+  state.report = null;
+  landing();
+}
 
 function signOut() {
   if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
@@ -776,7 +767,7 @@ document.addEventListener("click", (event) => {
       const item = state.adminFeedback.items.find((f) => f.id === button.dataset.fbSave);
       const status = $("#fb-status-select").value;
       if (!item || status === item.status) return;
-      const result = await api(`/admin/feedback/${encodeURIComponent(item.id)}/status`, { method: "POST", body: { status, expectedStatus: item.status } });
+      const result = await api.adminFeedback.setStatus(item.id, { status, expectedStatus: item.status });
       Object.assign(item, result.feedback);
       render();
       notice("Status do feedback atualizado.");
@@ -840,24 +831,21 @@ document.addEventListener("click", (event) => {
     return busy(button, async () => {
       if (!confirm("Remover o acesso deste instrutor à turma selecionada?"))
         return;
-      await api(`/cohorts/${state.code}/revoke-instructor`, {
-        method: "POST",
-        body: { userId: button.dataset.revoke },
-      });
+      await api.access.revokeInstructor(state.code, { userId: button.dataset.revoke });
       await loadAccess();
       notice("Acesso removido.");
     });
   if (button.dataset.reject)
     return busy(button, async () => {
       if (!confirm("Recusar esta solicitação de acesso?")) return;
-      await api(`/requests/${button.dataset.reject}/reject`, { method: "POST", body: {} });
+      await api.access.rejectRequest(button.dataset.reject);
       await loadAccess();
       notice("Solicitação recusada.");
     });
   if (button.dataset.unlink)
     return busy(button, async () => {
       if (!confirm("Desvincular este aluno? Ele poderá se vincular de novo pelo e-mail no próximo acesso.")) return;
-      await api(`/cohorts/${state.code}/unlink-student`, { method: "POST", body: { canvasId: button.dataset.unlink } });
+      await api.access.unlinkStudent(state.code, { canvasId: button.dataset.unlink });
       await searchStudents(state.studentQuery);
       notice("Aluno desvinculado.");
     });
@@ -879,12 +867,9 @@ document.addEventListener("click", (event) => {
         )
       )
         return;
-      await api(`/cohorts/${state.code}/restore`, {
-        method: "POST",
-        body: {
-          publicationId: button.dataset.restore,
-          expectedCurrent: state.report.publication.id,
-        },
+      await api.cohorts.restore(state.code, {
+        publicationId: button.dataset.restore,
+        expectedCurrent: state.report.publication.id,
       });
       await boot();
       notice("Publicação restaurada.");
@@ -1025,7 +1010,7 @@ document.addEventListener("submit", (event) => {
           const body = { type: d.type, title, description };
           if (state.code) body.cohort = state.code;
           if (state.feedbackOrigin) body.page = state.feedbackOrigin;
-          const result = await api("/feedback", { method: "POST", body });
+          const result = await api.feedback.create(body);
           state.feedbackDraft = { type: "", title: "", description: "" };
           // Duplicado (mesmo texto em 10 minutos): as imagens complementam o feedback existente.
           state.feedbackUpload = { feedbackId: result.feedback.id, progress: "", failed: false };
@@ -1042,9 +1027,9 @@ document.addEventListener("submit", (event) => {
       } else if (form.id === "focus-form") {
         const code = state.code;
         const ids = state.focusDraft || state.report.focus?.activityIds || [];
-        const result = await api(`/cohorts/${code}/focus-activities`, { method: "POST", body: {
+        const result = await api.cohorts.saveFocus(code, {
           activityIds: ids, expectedCurrent: state.report.publication.id, expectedVersion: state.report.focus?.version || null,
-        } });
+        });
         if (state.code === code && state.report) { state.report.focus = result.focus; state.focusDraft = null; render(); }
         notice(`Foco da ${code} atualizado.`);
       } else if (form.id === "import-form") {
@@ -1061,7 +1046,7 @@ document.addEventListener("submit", (event) => {
         render();
         let preview;
         try {
-          preview = await api(`/cohorts/${code}/preview`, { method: "POST", body });
+          preview = await api.cohorts.previewImport(code, body);
         } finally {
           if (state.code === code) { state.importLoading = false; render(); }
         }
@@ -1077,20 +1062,14 @@ document.addEventListener("submit", (event) => {
         render();
         notice("Prévia pronta. Confira as atividades e os resultados.");
       } else if (form.id === "cohort-form") {
-        await api("/cohorts", {
-          method: "POST",
-          body: Object.fromEntries(new FormData(form)),
-        });
+        await api.cohorts.create(Object.fromEntries(new FormData(form)));
         await boot();
         notice("Turma criada.");
       } else if (form.id === "cohort-settings-form") {
         const data = new FormData(form);
         const kc = Number(data.get("kc")), lab = Number(data.get("lab"));
         const canvasCourseId = data.get("canvasCourseId").trim() || null;
-        await api(`/cohorts/${state.code}/settings`, {
-          method: "POST",
-          body: { thresholds: { kc, lab }, canvasCourseId, autoSync: data.get("autoSync") === "on" },
-        });
+        await api.cohorts.saveSettings(state.code, { thresholds: { kc, lab }, canvasCourseId, autoSync: data.get("autoSync") === "on" });
         await boot();
         notice("Configurações da turma atualizadas.");
       } else if (form.id === "student-search-form") {
@@ -1100,18 +1079,12 @@ document.addEventListener("submit", (event) => {
       } else if (form.dataset.editNameForm) {
         const displayName = new FormData(form).get("displayName").trim();
         if (!displayName) throw new Error("Informe um nome.");
-        await api(`/cohorts/${state.code}/display-name`, {
-          method: "POST",
-          body: { canvasId: form.dataset.editNameForm, displayName },
-        });
+        await api.access.setDisplayName(state.code, { canvasId: form.dataset.editNameForm, displayName });
         await searchStudents(state.studentQuery);
         notice("Nome atualizado.");
       } else if (form.classList.contains("approve-form")) {
         const code = new FormData(form).get("cohort");
-        await api(`/cohorts/${code}/instructors`, {
-          method: "POST",
-          body: { userId: form.dataset.user },
-        });
+        await api.access.addInstructor(code, { userId: form.dataset.user });
         await loadAccess();
         notice("Instrutor vinculado à turma.");
       }
@@ -1125,7 +1098,7 @@ async function start() {
       r.ok ? r.json() : {},
     );
     if (demo) {
-      api = (await import("./demo.js")).demoAPI(demoRole);
+      api.setTransport((await import("./demo.js")).demoAPI(demoRole));
       await boot();
       return;
     }
@@ -1133,66 +1106,7 @@ async function start() {
     if (requestedCohort && /^[A-Z0-9-]{3,32}$/.test(requestedCohort))
       localStorage.setItem("avanca.pending-cohort", requestedCohort);
     await callback(config);
-    api = async (path, options = {}) => {
-      const auth = await validSession(config);
-      if (!auth || auth.expires <= Date.now()) {
-        saveContext();
-        clearSession();
-        state.me = null;
-        state.classReport = null;
-        state.report = null;
-        landing();
-        throw new Error("Sua sessão expirou. Entre novamente.");
-      }
-      const method = options.method || "GET";
-      // Só GET é repetido: reenviar um POST automaticamente arrisca duplicar uma ação
-      // (publicar notas, enviar lembrete). Espera crescente com variação para não sincronizar
-      // clientes que foram limitados juntos (ex.: uma turma inteira abrindo o portal).
-      const attempts = method === "GET" ? 4 : 1;
-      let res;
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        res = await fetch(config.apiUrl + path, {
-          method,
-          headers: {
-            Authorization: `Bearer ${auth.accessToken}`,
-            ...(options.body ? { "Content-Type": "application/json" } : {}),
-          },
-          body: options.body ? JSON.stringify(options.body) : undefined,
-          cache: "no-store",
-          signal: AbortSignal.timeout(35000),
-        });
-        if (res.status !== 429 || attempt === attempts - 1) break;
-        await new Promise((resolve) =>
-          setTimeout(resolve, 400 * 2 ** attempt + Math.random() * 200),
-        );
-      }
-      // O gateway pode devolver HTML ou corpo vazio (ex.: 502/504); só a API responde JSON.
-      const data = (res.headers.get("content-type") || "").includes("application/json")
-        ? await res.json().catch(() => ({}))
-        : {};
-      if (!res.ok) {
-        if (res.status === 401) {
-          saveContext();
-          clearSession();
-          state.me = null;
-          state.classReport = null;
-          state.report = null;
-          landing();
-        }
-        if (res.status === 429)
-          throw new Error(
-            data.error || "O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.",
-          );
-        if ([502, 503, 504].includes(res.status) && !data.error)
-          throw new Error(
-            "O portal está temporariamente indisponível. Tente novamente em instantes.",
-          );
-        throw new Error(
-          data.error || "Não foi possível completar a solicitação.",
-        );
-      }
-      return data;
-    };
+    api.configure({ config, onSessionExpired: expireSession });
     if (session() && config.apiUrl) {
       await boot();
       const code = localStorage.getItem("avanca.pending-cohort");
