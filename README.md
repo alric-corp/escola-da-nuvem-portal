@@ -12,7 +12,6 @@ Portal de acompanhamento de notas do programa AWS re/Start: alunos consultam o p
 | [`docs/`](docs/README.md) | Jornadas por perfil, arquitetura e notas de contexto. |
 | [`todo/`](todo/README.md) | Melhorias planejadas e o registro do que já foi feito. |
 | `tests/` | Testes de navegador (Playwright), de Node e de integração (Moto). |
-| [`legacy/`](legacy/README.md) | Ferramenta local original (abria o CSV direto no navegador), preservada como referência. |
 
 ## Testes
 

@@ -18,6 +18,12 @@ portal-config.json
 !.env.example
 __pycache__/
 *.pyc
+.pytest_cache/
 .DS_Store
+.vscode/
 frontend/dist/
 node_modules/
+
+# Playwright
+playwright-report/
+test-results/
