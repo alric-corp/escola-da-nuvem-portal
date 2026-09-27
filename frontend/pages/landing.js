@@ -1,4 +1,5 @@
-import { $, errorPanel, icon, state } from "../ui.js";
+import { $, errorPanel, icon } from "../ui.js";
+import { state } from "../state.js";
 
 export function landing() {
   $("#app").innerHTML =

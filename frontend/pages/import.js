@@ -1,4 +1,5 @@
-import { badge, current, date, demo, e, heading, icon, nextCanvasSync, percent, plural, state } from "../ui.js";
+import { badge, current, date, demo, e, heading, icon, nextCanvasSync, percent, plural } from "../ui.js";
+import { state } from "../state.js";
 
 // Resultado das validações de integridade calculadas pelo backend (backend/integrity.py). A tela só
 // apresenta: a publicação é recalculada e bloqueada no servidor, com ou sem esta prévia.

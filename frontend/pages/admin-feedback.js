@@ -1,4 +1,5 @@
-import { date, e, heading, plural, state } from "../ui.js";
+import { date, e, heading, plural } from "../ui.js";
+import { state } from "../state.js";
 import { attachmentGallery, feedbackStatuses, feedbackTypes, originLabel, shortDate, statusBadge } from "./feedback.js";
 
 // Área administrativa de feedbacks. Filtros e paginação são aplicados no backend; a tela só

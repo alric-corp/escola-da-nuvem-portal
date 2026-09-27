@@ -1,6 +1,7 @@
 import { callback, clearSession, login, logout, session } from "./auth.js";
 import * as api from "./api.js";
-import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, state, studentViewBanner, teacher } from "./ui.js";
+import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
+import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";

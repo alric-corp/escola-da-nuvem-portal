@@ -1,6 +1,7 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, state, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, updateInfo } from "../ui.js";
+import { state } from "../state.js";
 
 export function studentPage(name) {
   const s = state.report.student;

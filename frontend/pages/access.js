@@ -1,4 +1,5 @@
-import { current, e, heading, icon, state } from "../ui.js";
+import { current, e, heading, icon } from "../ui.js";
+import { state } from "../state.js";
 
 const requestStatusLabels = { pending: "Aguardando aprovação", approved: "Aprovada", rejected: "Recusada" };
 

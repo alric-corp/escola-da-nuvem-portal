@@ -1,4 +1,5 @@
-import { badge, date, demo, e, errorPanel, heading, metric, percent, plural, state } from "../ui.js";
+import { badge, date, demo, e, errorPanel, heading, metric, percent, plural } from "../ui.js";
+import { state } from "../state.js";
 import { activityCard, activityGroups } from "./student.js";
 
 export function senderPage() {

@@ -1,4 +1,5 @@
-import { $, badge, date, e, heading, icon, labels, metric, normalize, percent, sessionContext, state } from "../ui.js";
+import { $, badge, date, e, heading, icon, labels, metric, normalize, percent, sessionContext } from "../ui.js";
+import { state } from "../state.js";
 
 export function renderClassReport() {
   const classReport = state.classReport;

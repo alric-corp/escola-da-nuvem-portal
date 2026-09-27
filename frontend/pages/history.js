@@ -1,4 +1,5 @@
-import { date, e, heading, percent, personalChanges, plural, state, teacher, updateInfo } from "../ui.js";
+import { date, e, heading, percent, personalChanges, plural, teacher, updateInfo } from "../ui.js";
+import { state } from "../state.js";
 
 export function historyPage() {
   const rows = state.report?.history || [];

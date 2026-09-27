@@ -10,6 +10,9 @@ const ui = await import("../frontend/ui.js");
 const { historyPage } = await import("../frontend/pages/history.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
+  "import", "landing", "reminders", "student", "teacher"].map((page) => `pages/${page}.js`);
+const CONSUMERS = ["app.js", ...PAGES];
 
 // Contrato: as 57 propriedades, nesta ordem, com estes valores iniciais.
 const EXPECTED = {
@@ -66,6 +69,23 @@ test("state.js e ui.js exportam a mesma referência", () => {
   assert.equal(ui.state, direct);
 });
 
+// O re-export continua enquanto módulos anteriores à migração podem estar em cache nos navegadores.
+test("ui.js continua reexportando o mesmo binding de state.js", () => {
+  const source = read("frontend/ui.js");
+  assert.match(source, /^import \{ state \} from "\.\/state\.js";$/m);
+  assert.match(source, /^export \{ state \};$/m);
+});
+
+test("app.js e as 11 páginas importam state direto de state.js, e nenhum de ui.js", () => {
+  for (const file of CONSUMERS) {
+    const imports = [...read(`frontend/${file}`).matchAll(/^import \{([^}]*)\} from "([^"]+)";$/gm)]
+      .map(([, names, from]) => ({ names: names.split(",").map((name) => name.trim()), from }));
+    const withState = imports.filter((i) => i.names.includes("state"));
+    assert.deepEqual(withState.map((i) => i.from), [file === "app.js" ? "./state.js" : "../state.js"], file);
+    assert.deepEqual(withState[0].names, ["state"], file);
+  }
+});
+
 test("ui.js observa na hora uma alteração feita via state.js", () => {
   withState({ view: "history", me: { roles: ["admin"], email: "admin@example.test" } }, () => {
     assert.equal(ui.state.view, "history");
@@ -85,9 +105,15 @@ test("uma página observa alterações feitas via state.js", () => {
   assert.equal(direct.report, null);
 });
 
+test("uma página que importa state.js direto observa uma escrita feita pelo state reexportado de ui.js", () => {
+  const report = { history: [{ publishedAt: "2026-09-01T12:00:00Z", total: 50, kc: 40, lab: 60 }] };
+  ui.state.report = report;
+  try { assert.match(historyPage(), /history-table/); } finally { ui.state.report = null; }
+  assert.equal(direct.report, null);
+});
+
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = ["app.js", "ui.js", ...["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
-    "import", "landing", "reminders", "student", "teacher"].map((page) => `pages/${page}.js`)];
+  const files = [...CONSUMERS, "ui.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);

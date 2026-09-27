@@ -1,5 +1,6 @@
 import { activityModule, groupActivities } from "../student-journey.js";
-import { e, heading, percent, state } from "../ui.js";
+import { e, heading, percent } from "../ui.js";
+import { state } from "../state.js";
 
 // Na ordem dos módulos no curso, como na página do aluno.
 function moduleOptions(activities) {

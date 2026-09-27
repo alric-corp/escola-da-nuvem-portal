@@ -1,4 +1,5 @@
-import { badge, current, date, demo, e, filterMetric, heading, icon, labels, normalize, percent, plural, state, updateInfo } from "../ui.js";
+import { badge, current, date, demo, e, filterMetric, heading, icon, labels, normalize, percent, plural, updateInfo } from "../ui.js";
+import { state } from "../state.js";
 
 export function focusEditor() {
   if (!state.report.publication) return "";

@@ -1,4 +1,5 @@
-import { e, heading, plural, state, teacher } from "../ui.js";
+import { e, heading, plural, teacher } from "../ui.js";
+import { state } from "../state.js";
 
 // Feedback da plataforma (backend/feedback.py). Todo conteúdo vindo do usuário passa por e():
 // título e descrição são texto, nunca HTML.
