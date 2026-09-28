@@ -1,6 +1,6 @@
 import { callback, clearSession, login, logout, session } from "./auth.js";
 import * as api from "./api.js";
-import { $, admin, demo, e, errorPanel, heading, icon, nav, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
+import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
 import { renderClassReport } from "./pages/class-report.js";
@@ -102,22 +102,6 @@ window.addEventListener("beforeunload", (event) => {
     event.returnValue = "";
   }
 });
-
-function notice(message, error = false) {
-  const item = document.createElement("div");
-  item.className = `notice ${error ? "error" : ""}`;
-  const text = document.createElement("span");
-  text.textContent = message;
-  const close = document.createElement("button");
-  close.className = "icon-button";
-  close.type = "button";
-  close.setAttribute("aria-label", "Fechar aviso");
-  close.textContent = "×";
-  close.addEventListener("click", () => item.remove());
-  item.append(text, close);
-  $("#notices").replaceChildren(item);
-  setTimeout(() => item.remove(), 6500);
-}
 
 async function loadClassReport(value) {
   const code = String(value || "")

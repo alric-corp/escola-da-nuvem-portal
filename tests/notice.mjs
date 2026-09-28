@@ -104,15 +104,13 @@ test("não altera o state", () => {
   assert.deepEqual(state, before);
 });
 
-// Durante a migração existe uma cópia local em app.js; ela não pode divergir da de ui.js.
-test("enquanto app.js tiver notice() local, ela é idêntica à de ui.js", () => {
-  const extract = (source) => {
-    const start = source.indexOf("function notice(message, error = false) {");
-    return start < 0 ? null : source.slice(start, source.indexOf("\n}\n", start) + 3);
-  };
-  const shared = extract(read("frontend/ui.js"));
-  assert.ok(shared, "ui.js precisa exportar notice()");
-  assert.match(read("frontend/ui.js"), /^export function notice\(message, error = false\) \{$/m);
-  const local = extract(read("frontend/app.js"));
-  if (local !== null) assert.equal(local, shared);
+test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos de chamada", () => {
+  const app = read("frontend/app.js");
+  const fromUi = [...app.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']\.\/ui\.js["']/g)]
+    .flatMap(([, names]) => names.split(",").map((name) => name.trim()));
+  assert.ok(fromUi.includes("notice"), "app.js deve importar notice de ./ui.js");
+  assert.doesNotMatch(app, /\bfunction\s+notice\s*\(/);
+  assert.match(read("frontend/ui.js"), /^export function notice\s*\(/m);
+  // Chamadas reais: o nome no import não é seguido de "(".
+  assert.equal((app.match(/(?<![\w.$])notice\s*\(/g) || []).length, 27);
 });
