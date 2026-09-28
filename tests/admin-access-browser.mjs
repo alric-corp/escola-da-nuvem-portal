@@ -2,6 +2,8 @@
 // Cobre o todo/11: buscar aluno, ver vínculo, desvincular, editar nome de exibição,
 // recusar solicitação e filtrar por status. Cobre também o todo/12: configurar limites
 // de referência e o ID do curso Canvas da turma sem editar código.
+// E ainda: vincular e remover instrutor, criar turma, confirmação cancelada, erros 403/409,
+// clique duplo durante a operação e resposta atrasada de uma turma que já não está selecionada.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
@@ -93,6 +95,7 @@ try {
   await page.locator('[data-reject="t1"]').click();
   await rejected;
   assert.equal(rejectCalls, 1);
+  await page.locator("#notices").getByText("Solicitação recusada.", { exact: true }).waitFor();
   await page.locator("#requests-filter").selectOption("all");
   await page.getByText("Recusada", { exact: true }).waitFor();
 
@@ -105,6 +108,7 @@ try {
   await unlinked;
   assert.equal(unlinkCalls, 1);
   await page.getByText("Sem vínculo", { exact: true }).waitFor();
+  await page.locator("#notices").getByText("Aluno desvinculado.", { exact: true }).waitFor();
 
   // Editar nome de exibição.
   await page.locator('[data-start-edit-name="101"]').click();
@@ -128,6 +132,194 @@ try {
 
   assert.deepEqual(errors, []);
   console.log("Admin: filtro de solicitações, recusar, buscar aluno, desvincular, editar nome e configurar turma OK.");
+
+  const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+  // Página de admin com a API fictícia do cenário: registra cada chamada; rota não prevista falha o teste.
+  async function adminPage(respond) {
+    const tab = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+    tab.setDefaultTimeout(10000);
+    const log = { calls: [], errors: [], dialogs: [], acceptDialogs: true };
+    tab.on("pageerror", (error) => log.errors.push(error.message));
+    tab.on("dialog", (dialog) => { log.dialogs.push(dialog.message()); return log.acceptDialogs ? dialog.accept() : dialog.dismiss(); });
+    await tab.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
+    await tab.route("**/config.json", (route) => route.fulfill({ json: { apiUrl: origin + "/api" } }));
+    await tab.route("**/api/**", async (route) => {
+      const request = route.request();
+      const call = { method: request.method(), endpoint: new URL(request.url()).pathname.slice(4), body: request.method() === "POST" ? request.postDataJSON() : null };
+      log.calls.push(call);
+      const reply = await respond(call);
+      if (!reply) throw new Error(`Rota inesperada: ${call.method} ${call.endpoint}`);
+      return route.fulfill({ status: reply.status || 200, json: reply.json });
+    });
+    const since = (mark) => log.calls.slice(mark).map((c) => `${c.method} ${c.endpoint}`);
+    return { tab, log, since };
+  }
+
+  // Instrutores, turma nova e erros, numa turma com dois códigos disponíveis.
+  {
+    let cohorts = [{ code: "BRSA0267", canTeach: true }, { code: "BRSA0268", canTeach: true }];
+    let requests = [{ userId: "t9", email: "novo.prof@example.test", status: "pending" }];
+    const instructors = { BRSA0267: [{ userId: "i1", email: "prof.a@example.test", code: "BRSA0267" }], BRSA0268: [] };
+    let revokeReply = null, unlinkReply = null, revokeGate = null, revokeArrived = null;
+    const { tab, log, since } = await adminPage(async ({ method, endpoint, body }) => {
+      if (endpoint === "/me") return { json: { roles: ["admin"], email: "admin@example.test" } };
+      if (endpoint === "/cohorts" && method === "GET") return { json: { cohorts } };
+      if (endpoint === "/cohorts" && method === "POST") { cohorts = [...cohorts, { code: body.code, canTeach: true }]; return { json: { cohort: { code: body.code } } }; }
+      if (endpoint.endsWith("/report")) return { json: { students: [], publication: null, history: [] } };
+      if (endpoint === "/requests") return { json: { requests } };
+      const match = endpoint.match(/^\/cohorts\/([\w-]+)\/(instructors|revoke-instructor|students-search|unlink-student)$/);
+      if (!match) return undefined;
+      const [, code, action] = match;
+      if (action === "instructors" && method === "GET") return { json: { instructors: instructors[code] } };
+      if (action === "instructors") {
+        instructors[code].push({ userId: body.userId, email: "novo.prof@example.test", code });
+        requests = requests.map((r) => (r.userId === body.userId ? { ...r, status: "approved" } : r));
+        return { json: {} };
+      }
+      if (action === "revoke-instructor") {
+        revokeArrived?.resolve();
+        if (revokeGate) await revokeGate.promise;
+        if (revokeReply) return revokeReply;
+        instructors[code] = instructors[code].filter((i) => i.userId !== body.userId);
+        return { json: {} };
+      }
+      if (action === "students-search") return { json: { results: [{ id: "101", name: "Aluno Fictício", email: "aluno@example.test", bound: true, boundEmail: "aluno@example.test" }] } };
+      if (action === "unlink-student") return unlinkReply || { json: { unlinked: true } };
+    });
+    const notices = tab.locator("#notices");
+    await tab.goto(origin);
+    await tab.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
+    await tab.getByText("prof.a@example.test", { exact: true }).waitFor();
+
+    // Vincular: a turma vem do formulário da solicitação, não do menu; depois a lista é recarregada.
+    let mark = log.calls.length;
+    await tab.locator("#approve-t9").selectOption("BRSA0268");
+    await tab.getByRole("button", { name: "Vincular à turma", exact: true }).click();
+    await notices.getByText("Instrutor vinculado à turma.", { exact: true }).waitFor();
+    assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts/BRSA0268/instructors", body: { userId: "t9" } });
+    assert.deepEqual(since(mark + 1).sort(), ["GET /cohorts/BRSA0267/instructors", "GET /requests"]);
+    await tab.locator('form[data-user="t9"]').waitFor({ state: "detached" });
+    await tab.getByText("Nenhuma solicitação neste filtro.", { exact: true }).waitFor();
+
+    // Remover acesso, confirmação cancelada: nenhuma chamada, lista e aviso intactos.
+    const revoke = tab.locator('[data-revoke="i1"]');
+    mark = log.calls.length;
+    log.acceptDialogs = false;
+    await revoke.click();
+    await tab.evaluate(() => {});
+    assert.deepEqual(log.dialogs, ["Remover o acesso deste instrutor à turma selecionada?"]);
+    assert.deepEqual(since(mark), []);
+    assert.ok(await revoke.isEnabled());
+    assert.doesNotMatch(await notices.innerText(), /Acesso removido/);
+    log.acceptDialogs = true;
+
+    // Remover acesso com 403: a mensagem do backend vira aviso de erro; nada é recarregado.
+    revokeReply = { status: 403, json: { error: "Sem permissão para alterar esta turma." } };
+    mark = log.calls.length;
+    await revoke.click();
+    await notices.locator(".notice.error", { hasText: "Sem permissão para alterar esta turma." }).waitFor();
+    assert.deepEqual(since(mark), ["POST /cohorts/BRSA0267/revoke-instructor"]);
+    assert.ok(await revoke.isEnabled());
+    await tab.getByText("prof.a@example.test", { exact: true }).waitFor();
+    revokeReply = null;
+
+    // Remover acesso confirmado, com segundo clique enquanto a primeira chamada está pendente.
+    revokeGate = deferred();
+    revokeArrived = deferred();
+    mark = log.calls.length;
+    const dialogsBefore = log.dialogs.length;
+    const revokeHandle = await revoke.elementHandle();
+    await revoke.click();
+    await revokeArrived.promise;
+    assert.ok(await revoke.isDisabled());
+    await revoke.click({ force: true });
+    revokeGate.resolve();
+    await notices.getByText("Acesso removido.", { exact: true }).waitFor();
+    await revoke.waitFor({ state: "detached" });
+    assert.equal(log.dialogs.length - dialogsBefore, 1);
+    assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts/BRSA0267/revoke-instructor", body: { userId: "i1" } });
+    assert.deepEqual(since(mark + 1).sort(), ["GET /cohorts/BRSA0267/instructors", "GET /requests"]);
+    assert.equal(await revokeHandle.evaluate((el) => el.isConnected), false);
+    revokeGate = null;
+
+    // Desvincular com 409: aviso de erro com a mensagem do backend, resultado da busca preservado.
+    await tab.locator("#student-query").fill("aluno");
+    await tab.getByRole("button", { name: "Buscar", exact: true }).click();
+    const unlink = tab.locator('[data-unlink="101"]');
+    await unlink.waitFor();
+    unlinkReply = { status: 409, json: { error: "O vínculo deste aluno mudou. Busque novamente." } };
+    mark = log.calls.length;
+    await unlink.click();
+    await notices.locator(".notice.error", { hasText: "O vínculo deste aluno mudou. Busque novamente." }).waitFor();
+    assert.deepEqual(log.calls.slice(mark), [{ method: "POST", endpoint: "/cohorts/BRSA0267/unlink-student", body: { canvasId: "101" } }]);
+    assert.ok(await unlink.isEnabled());
+    assert.doesNotMatch(await notices.innerText(), /Aluno desvinculado/);
+    unlinkReply = null;
+
+    // Criar turma: campos do formulário como estão, depois o portal é recarregado.
+    mark = log.calls.length;
+    await tab.getByLabel("Código da turma").fill("BRSA0299");
+    await tab.getByLabel("Nome da turma").fill("Turma de teste");
+    await tab.getByRole("button", { name: "Criar turma" }).click();
+    await notices.getByText("Turma criada.", { exact: true }).waitFor();
+    assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts", body: { code: "BRSA0299", name: "Turma de teste" } });
+    const reload = since(mark + 1);
+    assert.deepEqual(reload.slice(0, 2), ["GET /me", "GET /cohorts"]);
+    assert.ok(reload.includes("GET /requests") && reload.includes("GET /cohorts/BRSA0267/instructors"));
+    assert.equal(await tab.locator('#cohort option[value="BRSA0299"]').count(), 1);
+
+    assert.equal(log.calls.filter((c) => c.endpoint.endsWith("/revoke-instructor")).length, 2);
+    assert.deepEqual(log.errors, []);
+    await tab.close();
+    console.log("Admin: vincular e remover instrutor, confirmação cancelada, 403/409, clique duplo e criar turma OK.");
+  }
+
+  // Troca de turma com a carga anterior ainda pendente: a resposta atrasada não sobrescreve a atual.
+  {
+    const gate = deferred(), arrived = { requests: deferred(), instructors: deferred() };
+    let requestsCalls = 0;
+    const { tab, log } = await adminPage(async ({ endpoint }) => {
+      if (endpoint === "/me") return { json: { roles: ["admin"], email: "admin@example.test" } };
+      if (endpoint === "/cohorts") return { json: { cohorts: [{ code: "BRSA0267", canTeach: true }, { code: "BRSA0268", canTeach: true }] } };
+      if (endpoint.endsWith("/report")) return { json: { students: [], publication: null, history: [] } };
+      if (endpoint === "/requests") {
+        if (++requestsCalls > 1) return { json: { requests: [{ userId: "f1", email: "atual@example.test", status: "pending" }] } };
+        arrived.requests.resolve();
+        await gate.promise;
+        return { json: { requests: [{ userId: "s1", email: "antiga@example.test", status: "pending" }] } };
+      }
+      if (endpoint === "/cohorts/BRSA0267/instructors") {
+        arrived.instructors.resolve();
+        await gate.promise;
+        return { json: { instructors: [{ userId: "a1", email: "prof.antigo@example.test", code: "BRSA0267" }] } };
+      }
+      if (endpoint === "/cohorts/BRSA0268/instructors") return { json: { instructors: [{ userId: "b1", email: "prof.atual@example.test", code: "BRSA0268" }] } };
+      if (endpoint === "/cohorts/BRSA0268/students-search") return { json: { results: [{ id: "201", name: "Aluno B", email: "aluno.b@example.test", bound: false }] } };
+    });
+    await tab.goto(origin);
+    await tab.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
+    await Promise.all([arrived.requests.promise, arrived.instructors.promise]);
+    await tab.locator("#cohort").selectOption("BRSA0268");
+    await tab.getByText("atual@example.test", { exact: true }).waitFor();
+    await tab.getByText("prof.atual@example.test", { exact: true }).waitFor();
+    const staleFinished = Promise.all(["/api/requests", "/api/cohorts/BRSA0267/instructors"].map((pathname) =>
+      tab.waitForEvent("requestfinished", (request) => new URL(request.url()).pathname === pathname)));
+    gate.resolve();
+    await staleFinished;
+    // A busca redesenha a tela a partir do state depois que as respostas antigas já chegaram.
+    await tab.locator("#student-query").fill("b");
+    await tab.getByRole("button", { name: "Buscar", exact: true }).click();
+    await tab.getByText("aluno.b@example.test", { exact: true }).waitFor();
+    assert.equal(await tab.getByText("antiga@example.test", { exact: true }).count(), 0);
+    assert.equal(await tab.getByText("prof.antigo@example.test", { exact: true }).count(), 0);
+    assert.equal(await tab.getByText("atual@example.test", { exact: true }).count(), 1);
+    assert.equal(await tab.getByText("prof.atual@example.test", { exact: true }).count(), 1);
+    await tab.getByRole("heading", { name: "Instrutores da BRSA0268", exact: true }).waitFor();
+    assert.equal(log.calls.filter((c) => c.endpoint === "/requests").length, 2);
+    assert.deepEqual(log.errors, []);
+    await tab.close();
+    console.log("Admin: resposta atrasada da turma anterior descartada OK.");
+  }
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));
