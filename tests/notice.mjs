@@ -111,6 +111,8 @@ test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos 
   assert.ok(fromUi.includes("notice"), "app.js deve importar notice de ./ui.js");
   assert.doesNotMatch(app, /\bfunction\s+notice\s*\(/);
   assert.match(read("frontend/ui.js"), /^export function notice\s*\(/m);
-  // Chamadas reais: o nome no import não é seguido de "(".
-  assert.equal((app.match(/(?<![\w.$])notice\s*\(/g) || []).length, 27);
+  // Chamadas reais: o nome no import não é seguido de "(". Os avisos de Turmas e acessos
+  // moram em handlers/access.js; o total continua o mesmo.
+  const count = (source) => (source.match(/(?<![\w.$])notice\s*\(/g) || []).length;
+  assert.equal(count(app) + count(read("frontend/handlers/access.js")), 27);
 });

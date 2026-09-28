@@ -1,5 +1,6 @@
 import { callback, clearSession, login, logout, session } from "./auth.js";
 import * as api from "./api.js";
+import * as accessHandlers from "./handlers/access.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
@@ -14,9 +15,10 @@ import { accessPage } from "./pages/access.js";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES, DESCRIPTION_MAX, TITLE_MAX, feedbackPage } from "./pages/feedback.js";
 import { adminFeedbackPage } from "./pages/admin-feedback.js";
 
+accessHandlers.configure({ render });
+
 let demoRole = "student",
   config = {};
-let accessRequest = 0;
 let reportRequest = 0;
 let renderedView = "";
 let lastFocusSelector = "";
@@ -82,7 +84,7 @@ async function exitStudentView(message = "") {
   if (back) {
     state.adminFeedback.selectedId = back.feedbackId;
     await loadAdminFeedback(true);
-  } else await loadAccess();
+  } else await accessHandlers.loadAccess();
 }
 // Na visualização como aluno só navegação e leitura: nenhuma ação é executada em nome do aluno.
 function allowedWhileViewing(button) {
@@ -428,60 +430,6 @@ async function viewAsFromFeedback(id) {
   await enterStudentView(item.canvasId, { view: "admin-feedback", feedbackId: item.id });
 }
 
-async function loadAccess() {
-  const request = ++accessRequest;
-  const code = state.code;
-  state.accessLoading = true;
-  state.accessError = "";
-  state.requests = [];
-  state.instructors = [];
-  render();
-  try {
-    const [requests, instructors] = await Promise.all([
-      api.access.requests(),
-      code
-        ? api.access.instructors(code)
-        : Promise.resolve({ instructors: [] }),
-    ]);
-    if (request !== accessRequest || code !== state.code) return;
-    state.requests = requests.requests;
-    state.instructors = instructors.instructors;
-  } catch (err) {
-    if (request !== accessRequest || code !== state.code) return;
-    state.accessError =
-      "As solicitações e os vínculos não foram carregados. Tente novamente.";
-  } finally {
-    if (request === accessRequest && code === state.code) {
-      state.accessLoading = false;
-      if (state.view === "access") render();
-    }
-  }
-}
-async function searchStudents(query) {
-  const code = state.code;
-  state.studentQuery = query;
-  state.studentSearchError = "";
-  state.studentSearchLoading = true;
-  render();
-  try {
-    const result = await api.access.searchStudents(code, { query });
-    if (state.code === code) {
-      state.studentResults = result.results;
-      state.editingStudentId = null;
-    }
-  } catch (err) {
-    if (state.code === code) {
-      state.studentSearchError = err.message;
-      state.studentResults = null;
-    }
-  } finally {
-    if (state.code === code) {
-      state.studentSearchLoading = false;
-      render();
-    }
-  }
-}
-
 async function boot() {
   state.bootError = "";
   try {
@@ -517,7 +465,7 @@ async function boot() {
     }
     await loadReport();
     if (state.view === "reminders" && teacher()) await loadSender();
-    if (state.view === "access" && admin()) await loadAccess();
+    if (state.view === "access" && admin()) await accessHandlers.loadAccess();
     if (state.view === "feedback" && !state.studentView) await loadMyFeedback();
     if (state.view === "admin-feedback" && admin() && !state.studentView) await loadAdminFeedback(true);
   } catch (err) {
@@ -656,7 +604,7 @@ const actions = {
     await boot();
     notice("Solicitação enviada ao administrador.");
   },
-  "refresh-requests": () => loadAccess(),
+  "refresh-requests": () => accessHandlers.loadAccess(),
   publish: async () => {
     const code = state.code, preview = state.preview;
     if (!preview || state.dirty) return;
@@ -793,7 +741,7 @@ document.addEventListener("click", (event) => {
     } else if (state.view === "admin-feedback") {
       state.adminFeedback.selectedId = null;
       busy(button, () => loadAdminFeedback(true));
-    } else if (state.view === "access") busy(button, loadAccess);
+    } else if (state.view === "access") busy(button, accessHandlers.loadAccess);
     else if (state.view === "reminders") busy(button, loadSender);
     else if (state.code && !state.report && state.view !== "import")
       busy(button, loadReport);
@@ -813,35 +761,17 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (button.dataset.revoke)
-    return busy(button, async () => {
-      if (!confirm("Remover o acesso deste instrutor à turma selecionada?"))
-        return;
-      await api.access.revokeInstructor(state.code, { userId: button.dataset.revoke });
-      await loadAccess();
-      notice("Acesso removido.");
-    });
+    return busy(button, () => accessHandlers.revokeInstructor(button.dataset.revoke));
   if (button.dataset.reject)
-    return busy(button, async () => {
-      if (!confirm("Recusar esta solicitação de acesso?")) return;
-      await api.access.rejectRequest(button.dataset.reject);
-      await loadAccess();
-      notice("Solicitação recusada.");
-    });
+    return busy(button, () => accessHandlers.rejectRequest(button.dataset.reject));
   if (button.dataset.unlink)
-    return busy(button, async () => {
-      if (!confirm("Desvincular este aluno? Ele poderá se vincular de novo pelo e-mail no próximo acesso.")) return;
-      await api.access.unlinkStudent(state.code, { canvasId: button.dataset.unlink });
-      await searchStudents(state.studentQuery);
-      notice("Aluno desvinculado.");
-    });
+    return busy(button, () => accessHandlers.unlinkStudent(button.dataset.unlink));
   if (button.dataset.startEditName) {
-    state.editingStudentId = button.dataset.startEditName;
-    render();
+    accessHandlers.startEditName(button.dataset.startEditName);
     return;
   }
   if (button.hasAttribute("data-cancel-edit-name")) {
-    state.editingStudentId = null;
-    render();
+    accessHandlers.cancelEditName();
     return;
   }
   if (button.dataset.restore)
@@ -890,7 +820,7 @@ document.addEventListener("change", (event) => {
       state.studentResults = null;
       state.studentSearchError = "";
       state.editingStudentId = null;
-      if (state.view === "access" && admin()) await loadAccess();
+      if (state.view === "access" && admin()) await accessHandlers.loadAccess();
       else {
         state.view = "overview";
         await loadReport();
@@ -908,8 +838,7 @@ document.addEventListener("change", (event) => {
     render();
   }
   if (target.id === "requests-filter") {
-    state.requestsFilter = target.value;
-    render();
+    accessHandlers.setRequestsFilter(target.value);
   }
   if (target.id === "activity-overview-kind") { state.activityOverviewKind = target.value; render(); }
   if (target.id === "activity-overview-module") { state.activityOverviewModule = target.value; render(); }
@@ -1058,20 +987,11 @@ document.addEventListener("submit", (event) => {
         await boot();
         notice("Configurações da turma atualizadas.");
       } else if (form.id === "student-search-form") {
-        const query = new FormData(form).get("query").trim();
-        if (!query) throw new Error("Digite ao menos um caractere para buscar.");
-        await searchStudents(query);
+        await accessHandlers.submitStudentSearch(form);
       } else if (form.dataset.editNameForm) {
-        const displayName = new FormData(form).get("displayName").trim();
-        if (!displayName) throw new Error("Informe um nome.");
-        await api.access.setDisplayName(state.code, { canvasId: form.dataset.editNameForm, displayName });
-        await searchStudents(state.studentQuery);
-        notice("Nome atualizado.");
+        await accessHandlers.saveDisplayName(form);
       } else if (form.classList.contains("approve-form")) {
-        const code = new FormData(form).get("cohort");
-        await api.access.addInstructor(code, { userId: form.dataset.user });
-        await loadAccess();
-        notice("Instrutor vinculado à turma.");
+        await accessHandlers.approveInstructor(form);
       }
     },
   );

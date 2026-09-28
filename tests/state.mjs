@@ -113,7 +113,7 @@ test("uma página que importa state.js direto observa uma escrita feita pelo sta
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -144,4 +144,13 @@ test("build publica state.js e todo módulo alcançável a partir de app.js, sem
   visit("app.js", []);
   assert.ok(seen.has("state.js") && seen.has("ui.js") && seen.has("api.js"));
   assert.deepEqual(importsOf("ui.js"), ["state.js"]);
+});
+
+// Turmas e acessos: orquestração fora de app.js, sem voltar a depender dele nem registrar listeners.
+test("handlers/access.js importa só api, state e ui, não registra listeners e entra no build", () => {
+  assert.deepEqual(importsOf("handlers/access.js").sort(), ["api.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(read("frontend/handlers/access.js"), /addEventListener/);
+  assert.ok(importsOf("app.js").includes("handlers/access.js"));
+  assert.ok(read("scripts/build_frontend.py").includes('"handlers/access.js"'));
+  assert.deepEqual(importsOf("state.js"), []);
 });
