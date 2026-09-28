@@ -9,6 +9,7 @@ const { state: direct } = await import("../frontend/state.js");
 const ui = await import("../frontend/ui.js");
 const { historyPage } = await import("../frontend/pages/history.js");
 const importHandlers = await import("../frontend/handlers/import.js");
+const adminFeedbackHandlers = await import("../frontend/handlers/admin-feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -115,7 +116,7 @@ test("uma página que importa state.js direto observa uma escrita feita pelo sta
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -220,4 +221,31 @@ test("resetDraftsForUser descarta os rascunhos e preserva acknowledgeRemoved e i
     importHandlers.discardDrafts();
     Object.assign(direct, saved);
   }
+});
+
+// Admin Feedback: listagem, filtros, paginação e status fora de app.js. Attachments, feedback
+// próprio, listeners, busy, foco de DOM e "visualizar como aluno" continuam lá.
+test("handlers/admin-feedback.js importa só api, state e ui, não registra listeners e entra no build", () => {
+  const source = read("frontend/handlers/admin-feedback.js");
+  assert.deepEqual(importsOf("handlers/admin-feedback.js").sort(), ["api.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(source, /addEventListener|\bdocument\b|\$\(/);
+  assert.match(source, /^export function configure\(options\) \{\n  render = options\.render;\n\}$/m);
+  assert.ok(importsOf("app.js").includes("handlers/admin-feedback.js"));
+  assert.equal((read("frontend/app.js").match(/adminFeedbackHandlers\.configure\(/g) || []).length, 1);
+  assert.match(read("frontend/app.js"), /^adminFeedbackHandlers\.configure\(\{ render \}\);$/m);
+  assert.ok(read("scripts/build_frontend.py").includes('"handlers/admin-feedback.js"'));
+});
+
+test("handlers/admin-feedback.js não conhece feedback próprio, attachments nem student-view", () => {
+  const source = read("frontend/handlers/admin-feedback.js");
+  for (const pattern of [/feedbackFiles|feedbackDraft|feedbackUpload|feedbackAttachments|feedbackCardUpload/, /pickImages|uploadImage|loadAttachments/, /enterStudentView|viewAsFromFeedback|canViewAsStudent/, /\bboot\b/])
+    assert.doesNotMatch(source, pattern);
+});
+
+test("app.js não guarda mais a listagem de Admin Feedback nem chama a API de admin/feedback direto", () => {
+  const app = read("frontend/app.js");
+  for (const pattern of [/\badminFeedbackRequest\b/, /function loadAdminFeedback\b/, /api\.adminFeedback\.(list|setStatus)\(/])
+    assert.doesNotMatch(app, pattern);
+  for (const kept of ["async function viewAsFromFeedback(", "await exitStudentView(", "loadAttachments(", "$(\"#fb-detail-title\")", "$(\"#fb-status-select\").value", "async function busy("])
+    assert.ok(app.includes(kept), kept);
 });

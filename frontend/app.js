@@ -2,6 +2,7 @@ import { callback, clearSession, login, logout, session } from "./auth.js";
 import * as api from "./api.js";
 import * as accessHandlers from "./handlers/access.js";
 import * as importHandlers from "./handlers/import.js";
+import * as adminFeedbackHandlers from "./handlers/admin-feedback.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
@@ -18,6 +19,7 @@ import { adminFeedbackPage } from "./pages/admin-feedback.js";
 
 accessHandlers.configure({ render });
 importHandlers.configure({ render });
+adminFeedbackHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
@@ -83,7 +85,7 @@ async function exitStudentView(message = "") {
   if (message) notice(message, true);
   if (back) {
     state.adminFeedback.selectedId = back.feedbackId;
-    await loadAdminFeedback(true);
+    await adminFeedbackHandlers.load(true);
   } else await accessHandlers.loadAccess();
 }
 // Na visualização como aluno só navegação e leitura: nenhuma ação é executada em nome do aluno.
@@ -289,26 +291,6 @@ async function loadMyFeedback(more = false) {
     if (state.view === "feedback") render();
   }
 }
-let adminFeedbackRequest = 0;
-async function loadAdminFeedback(reset = true) {
-  const a = state.adminFeedback;
-  const request = ++adminFeedbackRequest;
-  const cursor = reset ? null : a.nextCursor;
-  Object.assign(a, { loading: true, error: "" }, reset ? { items: [], nextCursor: null } : {});
-  render();
-  try {
-    const page = await api.adminFeedback.list(a.filters, cursor);
-    if (request !== adminFeedbackRequest) return;
-    Object.assign(a, { items: reset ? page.items : [...a.items, ...page.items], nextCursor: page.nextCursor, summary: page.summary });
-  } catch (err) {
-    if (request === adminFeedbackRequest) a.error = err.message || "Não foi possível carregar os feedbacks.";
-  } finally {
-    if (request === adminFeedbackRequest) {
-      a.loading = false;
-      if (state.view === "admin-feedback") render();
-    }
-  }
-}
 // Anexos do feedback. Validação local só para avisar cedo: o backend e a política do presigned POST
 // recusam de novo tipo, tamanho e quantidade, e a conclusão confere os bytes do arquivo.
 function pickImages(fileList, room) {
@@ -456,7 +438,7 @@ async function boot() {
     if (state.view === "reminders" && teacher()) await loadSender();
     if (state.view === "access" && admin()) await accessHandlers.loadAccess();
     if (state.view === "feedback" && !state.studentView) await loadMyFeedback();
-    if (state.view === "admin-feedback" && admin() && !state.studentView) await loadAdminFeedback(true);
+    if (state.view === "admin-feedback" && admin() && !state.studentView) await adminFeedbackHandlers.load(true);
   } catch (err) {
     state.bootError = err.message || "Não foi possível consultar sua conta.";
     render();
@@ -556,8 +538,8 @@ const actions = {
   "exit-student-view": () => exitStudentView(),
   "feedback-retry": () => loadMyFeedback(),
   "feedback-more": () => loadMyFeedback(true),
-  "admin-feedback-retry": () => loadAdminFeedback(true),
-  "admin-feedback-more": () => loadAdminFeedback(false),
+  "admin-feedback-retry": () => adminFeedbackHandlers.load(true),
+  "admin-feedback-more": () => adminFeedbackHandlers.load(false),
   "feedback-retry-uploads": async () => {
     state.feedbackSending = true;
     state.feedbackUpload.failed = false;
@@ -630,10 +612,8 @@ document.addEventListener("click", (event) => {
   if (button.dataset.viewAsStudent)
     return busy(button, () => enterStudentView(button.dataset.viewAsStudent));
   if (button.dataset.fbOpen) {
-    state.adminFeedback.selectedId = button.dataset.fbOpen;
-    render();
+    const opened = adminFeedbackHandlers.select(button.dataset.fbOpen);
     $("#fb-detail-title")?.focus();
-    const opened = state.adminFeedback.items.find((f) => f.id === button.dataset.fbOpen);
     if (opened?.attachments) busy(null, () => loadAttachments(opened.id));
     return;
   }
@@ -663,23 +643,16 @@ document.addEventListener("click", (event) => {
     return;
   }
   if (button.hasAttribute("data-fb-back")) {
-    state.adminFeedback.selectedId = null;
-    render();
+    adminFeedbackHandlers.back();
     return;
   }
   if (button.dataset.fbStatus !== undefined && state.view === "admin-feedback") {
-    state.adminFeedback.filters.status = button.dataset.fbStatus;
-    return busy(button, () => loadAdminFeedback(true));
+    return busy(button, () => adminFeedbackHandlers.setFilter("status", button.dataset.fbStatus));
   }
   if (button.dataset.fbSave)
-    return busy(button, async () => {
-      const item = state.adminFeedback.items.find((f) => f.id === button.dataset.fbSave);
+    return busy(button, () => {
       const status = $("#fb-status-select").value;
-      if (!item || status === item.status) return;
-      const result = await api.adminFeedback.setStatus(item.id, { status, expectedStatus: item.status });
-      Object.assign(item, result.feedback);
-      render();
-      notice("Status do feedback atualizado.");
+      return adminFeedbackHandlers.saveStatus(button.dataset.fbSave, status);
     });
   if (button.dataset.fbViewAs) return busy(button, () => viewAsFromFeedback(button.dataset.fbViewAs));
   if (button.dataset.studentPending)
@@ -715,8 +688,8 @@ document.addEventListener("click", (event) => {
       state.feedbackSent = false;
       busy(button, () => loadMyFeedback());
     } else if (state.view === "admin-feedback") {
-      state.adminFeedback.selectedId = null;
-      busy(button, () => loadAdminFeedback(true));
+      adminFeedbackHandlers.back();
+      busy(button, () => adminFeedbackHandlers.load(true));
     } else if (state.view === "access") busy(button, accessHandlers.loadAccess);
     else if (state.view === "reminders") busy(button, loadSender);
     else if (state.code && !state.report && state.view !== "import")
@@ -804,8 +777,7 @@ document.addEventListener("change", (event) => {
     });
   if (target.id === "student-sort") { state.sort = target.value; render(); }
   if (["fb-filter-status", "fb-filter-type", "fb-filter-cohort"].includes(target.id)) {
-    state.adminFeedback.filters[target.id.slice("fb-filter-".length)] = target.value;
-    busy(null, () => loadAdminFeedback(true));
+    busy(null, () => adminFeedbackHandlers.setFilter(target.id.slice("fb-filter-".length), target.value));
   }
   if (target.name === "fb-type") state.feedbackDraft.type = target.value;
   if (target.id === "acknowledge-removed") importHandlers.setAcknowledgeRemoved(target.checked);
