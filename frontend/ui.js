@@ -104,6 +104,22 @@ export function errorPanel(message, action) {
   return `<section class="panel empty" role="alert"><h2>Não foi possível carregar</h2><p>${e(message)}</p><button class="button primary" data-action="${action}">Tentar novamente</button></section>`;
 }
 
+export function notice(message, error = false) {
+  const item = document.createElement("div");
+  item.className = `notice ${error ? "error" : ""}`;
+  const text = document.createElement("span");
+  text.textContent = message;
+  const close = document.createElement("button");
+  close.className = "icon-button";
+  close.type = "button";
+  close.setAttribute("aria-label", "Fechar aviso");
+  close.textContent = "×";
+  close.addEventListener("click", () => item.remove());
+  item.append(text, close);
+  $("#notices").replaceChildren(item);
+  setTimeout(() => item.remove(), 6500);
+}
+
 // Horários da atualização automática pelo Canvas, em horário de Brasília. Espelha o
 // agendamento do Terraform (infra/terraform/canvas-sync.tf, cron(0 6,18 * * ? *) em
 // America/Sao_Paulo); a API não expõe o horário, então mude os dois juntos.
