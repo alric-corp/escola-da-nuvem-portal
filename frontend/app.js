@@ -688,7 +688,7 @@ document.addEventListener("click", (event) => {
       state.feedbackSent = false;
       busy(button, () => loadMyFeedback());
     } else if (state.view === "admin-feedback") {
-      adminFeedbackHandlers.back();
+      state.adminFeedback.selectedId = null;
       busy(button, () => adminFeedbackHandlers.load(true));
     } else if (state.view === "access") busy(button, accessHandlers.loadAccess);
     else if (state.view === "reminders") busy(button, loadSender);

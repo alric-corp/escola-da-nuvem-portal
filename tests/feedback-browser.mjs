@@ -420,7 +420,31 @@ try {
     assert.deepEqual([api.errors, api.dialogs], [[], 0]);
     await context.close();
   }
-  console.log("Feedback: menu do aluno (4) e do admin (6), envio, origem, texto puro, paginação, 429, filtros, detalhe, status, Visualizar como aluno e 375/768/1440 OK; 409 no status, resposta atrasada de filtro, paginação do admin e erro de Meus feedbacks OK.");
+  // Admin: ao navegar para Feedbacks, o cabeçalho recebe o foco enquanto a lista carrega.
+  // Só o foco DURANTE o carregamento é medido: depois da resposta ele já se perdia antes (comportamento anterior).
+  {
+    const { context, page, api } = await openAdmin();
+    const gate = deferred(), arrived = deferred();
+    api.handle = ({ route, url, endpoint }) => {
+      if (endpoint !== "/admin/feedback") return;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      arrived.resolve();
+      return gate.promise.then(() => route.fulfill({ json: { items: adminItems, nextCursor: null, summary: summary(1, 1, 0, 0) } }));
+    };
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await arrived.promise;
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement;
+      return { tag: el.tagName, text: el.textContent, tabindex: el.getAttribute("tabindex") };
+    });
+    assert.deepEqual(focused, { tag: "H1", text: "Feedbacks", tabindex: "-1" }, "foco no cabeçalho durante o carregamento");
+    gate.resolve();
+    await page.locator(".fb-open").first().waitFor();
+    assert.deepEqual(api.gets, [{ limit: "50" }]);
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+  console.log("Feedback: menu do aluno (4) e do admin (6), envio, origem, texto puro, paginação, 429, filtros, detalhe, status, Visualizar como aluno e 375/768/1440 OK; 409 no status, resposta atrasada de filtro, paginação do admin, erro de Meus feedbacks e foco ao abrir Feedbacks OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));
