@@ -8,6 +8,8 @@ globalThis.location = { hostname: "portal.test", search: "" };
 const { state: direct } = await import("../frontend/state.js");
 const ui = await import("../frontend/ui.js");
 const { historyPage } = await import("../frontend/pages/history.js");
+const importHandlers = await import("../frontend/handlers/import.js");
+const importPageModule = await import("../frontend/pages/import.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
@@ -113,7 +115,7 @@ test("uma página que importa state.js direto observa uma escrita feita pelo sta
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js", "handlers/access.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -153,4 +155,69 @@ test("handlers/access.js importa só api, state e ui, não registra listeners e 
   assert.ok(importsOf("app.js").includes("handlers/access.js"));
   assert.ok(read("scripts/build_frontend.py").includes('"handlers/access.js"'));
   assert.deepEqual(importsOf("state.js"), []);
+});
+
+// Importação: rascunhos, CSV, prévia e publicação fora de app.js. Listeners, busy, boot, saída e
+// restauração de publicação continuam lá.
+test("handlers/import.js importa só api, state e ui, não registra listeners e entra no build", () => {
+  const source = read("frontend/handlers/import.js");
+  assert.deepEqual(importsOf("handlers/import.js").sort(), ["api.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(source, /addEventListener/);
+  assert.match(source, /^export function configure\(options\) \{\n  render = options\.render;\n\}$/m);
+  assert.ok(importsOf("app.js").includes("handlers/import.js"));
+  assert.equal((read("frontend/app.js").match(/importHandlers\.configure\(/g) || []).length, 1);
+  assert.match(read("frontend/app.js"), /^importHandlers\.configure\(\{ render \}\);$/m);
+  assert.ok(read("scripts/build_frontend.py").includes('"handlers/import.js"'));
+});
+
+test("blockedByIntegrity mora só em handlers/import.js, e pages/import.js a importa de lá", () => {
+  assert.match(read("frontend/handlers/import.js"), /^export function blockedByIntegrity\(p\) \{\n  return !!p\?\.integrity\?\.critical\?\.length;\n\}$/m);
+  const page = read("frontend/pages/import.js");
+  assert.doesNotMatch(page, /function blockedByIntegrity|blockedByIntegrity\s*=|integrity\?\.critical\?\.length/);
+  assert.match(page, /^import \{ blockedByIntegrity \} from "\.\.\/handlers\/import\.js";$/m);
+  // Compatibilidade de cache: a página continua exportando o mesmo binding do handler.
+  assert.match(page, /^export \{ blockedByIntegrity \};$/m);
+  assert.deepEqual(importsOf("pages/import.js").sort(), ["handlers/import.js", "state.js", "ui.js"]);
+  assert.equal(importHandlers.blockedByIntegrity({ integrity: { critical: [{}] } }), true);
+  assert.equal(importHandlers.blockedByIntegrity({ integrity: { critical: [] } }), false);
+  assert.equal(importHandlers.blockedByIntegrity(null), false);
+  assert.equal(importPageModule.blockedByIntegrity, importHandlers.blockedByIntegrity);
+});
+
+test("app.js não guarda mais rascunhos nem a lógica de importação", () => {
+  const app = read("frontend/app.js");
+  for (const pattern of [/\bdrafts\b/, /\bdraftOwner\b/, /function (saveDraft|restoreDraft)\b/, /blockedByIntegrity/,
+    /api\.cohorts\.(previewImport|publish)\b/, /file\.text\(\)/])
+    assert.doesNotMatch(app, pattern);
+  for (const kept of ['window.addEventListener("beforeunload"', "function signOut()", "async function boot()", "async function busy(",
+    "api.cohorts.restore(", "importHandlers.hasUnpublishedCsv()", "importHandlers.discardDrafts()", "importHandlers.resetDraftsForUser(state.me.email)"])
+    assert.ok(app.includes(kept), kept);
+});
+
+// A troca de usuário zera arquivo e prévia, mas não acknowledgeRemoved nem importLoading (comportamento
+// anterior à extração, sem teste de navegador direto para importLoading).
+test("resetDraftsForUser descarta os rascunhos e preserva acknowledgeRemoved e importLoading", () => {
+  const keys = ["code", "csv", "filename", "preview", "dirty", "acknowledgeRemoved", "importLoading"];
+  const saved = Object.fromEntries(keys.map((key) => [key, direct[key]]));
+  try {
+    importHandlers.resetDraftsForUser("primeiro@example.test");
+    const preview = { activities: [] };
+    Object.assign(direct, { code: "BRSA0001", csv: "a,b", filename: "notas.csv", preview, dirty: true, acknowledgeRemoved: true, importLoading: true });
+    importHandlers.saveDraft();
+    importHandlers.resetDraftsForUser("primeiro@example.test");
+    assert.equal(direct.csv, "a,b");
+    assert.equal(direct.preview, preview);
+    direct.csv = "";
+    assert.ok(importHandlers.hasUnpublishedCsv());
+    direct.csv = "a,b";
+    importHandlers.resetDraftsForUser("segundo@example.test");
+    assert.deepEqual({ csv: direct.csv, filename: direct.filename, preview: direct.preview, dirty: direct.dirty },
+      { csv: "", filename: "", preview: null, dirty: false });
+    assert.equal(direct.importLoading, true);
+    assert.equal(direct.acknowledgeRemoved, true);
+    assert.ok(!importHandlers.hasUnpublishedCsv());
+  } finally {
+    importHandlers.discardDrafts();
+    Object.assign(direct, saved);
+  }
 });

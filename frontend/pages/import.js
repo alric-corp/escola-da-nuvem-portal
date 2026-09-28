@@ -1,11 +1,10 @@
 import { badge, current, date, demo, e, heading, icon, nextCanvasSync, percent, plural } from "../ui.js";
 import { state } from "../state.js";
+import { blockedByIntegrity } from "../handlers/import.js";
 
-// Resultado das validações de integridade calculadas pelo backend (backend/integrity.py). A tela só
-// apresenta: a publicação é recalculada e bloqueada no servidor, com ou sem esta prévia.
-export function blockedByIntegrity(p) {
-  return !!p?.integrity?.critical?.length;
-}
+// Reexport temporário: um app.js anterior em cache ainda importa blockedByIntegrity desta página.
+export { blockedByIntegrity };
+
 const studentCodes = ["rosterUnavailable", "studentNotInRoster", "emailBelongsToOtherStudent", "rosterShrink", "publicationShrink"];
 const issueItem = (i) => `<li><strong>${e(i.message)}</strong>${i.ids?.length ? `<small>${i.ids.length === 1 ? "Canvas ID" : "Canvas IDs"} ${e(i.ids.join(", "))}${i.count > i.ids.length ? ` e mais ${i.count - i.ids.length}` : ""}</small>` : ""}</li>`;
 

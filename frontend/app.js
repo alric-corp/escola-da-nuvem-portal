@@ -1,6 +1,7 @@
 import { callback, clearSession, login, logout, session } from "./auth.js";
 import * as api from "./api.js";
 import * as accessHandlers from "./handlers/access.js";
+import * as importHandlers from "./handlers/import.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
@@ -10,20 +11,19 @@ import { filteredStudents, studentsCsv, teacherPage } from "./pages/teacher.js";
 import { activityOverviewPage } from "./pages/activities-overview.js";
 import { batchPage, pendingPage, senderPage } from "./pages/reminders.js";
 import { historyPage } from "./pages/history.js";
-import { blockedByIntegrity, importPage } from "./pages/import.js";
+import { importPage } from "./pages/import.js";
 import { accessPage } from "./pages/access.js";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES, DESCRIPTION_MAX, TITLE_MAX, feedbackPage } from "./pages/feedback.js";
 import { adminFeedbackPage } from "./pages/admin-feedback.js";
 
 accessHandlers.configure({ render });
+importHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
 let renderedView = "";
 let lastFocusSelector = "";
-const drafts = new Map();
-let draftOwner = "";
 // "Visualizar como aluno" vale só para esta aba: registro em sessionStorage e a marca
 // ?modo=visualizar-aluno na URL. Os dois precisam existir para retomar ao recarregar; uma aba
 // nova abre como admin normal. O aluno visualizado nunca vai para a URL nem para avanca.context.
@@ -91,15 +91,8 @@ function allowedWhileViewing(button) {
   return studentViews.includes(button.dataset.view) || !!button.dataset.filter ||
     ["exit-student-view", "refresh-report", "clear-filters", "retry-boot", "logout"].includes(button.dataset.action);
 }
-function saveDraft() {
-  if (state.code) drafts.set(state.code, Object.fromEntries(
-    ["csv", "filename", "preview", "dirty", "acknowledgeRemoved"].map((k) => [k, state[k]])));
-}
-function restoreDraft() {
-  Object.assign(state, { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: false, importLoading: false }, drafts.get(state.code));
-}
 window.addEventListener("beforeunload", (event) => {
-  if (state.csv || [...drafts.values()].some((d) => d.csv)) {
+  if (importHandlers.hasUnpublishedCsv()) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -435,11 +428,7 @@ async function boot() {
   try {
     const wasSignedIn = !!state.me;
     state.me = await api.me.get();
-    if (draftOwner !== state.me.email) {
-      drafts.clear();
-      draftOwner = state.me.email;
-      Object.assign(state, { csv: "", filename: "", preview: null, dirty: false });
-    }
+    importHandlers.resetDraftsForUser(state.me.email);
     if (!wasSignedIn && !demo) {
       try {
         const context = JSON.parse(localStorage.getItem("avanca.context") || "null");
@@ -606,19 +595,7 @@ const actions = {
   },
   "refresh-requests": () => accessHandlers.loadAccess(),
   publish: async () => {
-    const code = state.code, preview = state.preview;
-    if (!preview || state.dirty) return;
-    if (blockedByIntegrity(preview))
-      throw new Error("Publicação bloqueada pelas validações de integridade. Confira os itens críticos da prévia.");
-    if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
-      throw new Error("Confira e confirme os alunos removidos antes de publicar.");
-    if (!confirm(`Publicar as notas para ${state.preview.count} alunos da ${state.code}?`)) return;
-    await api.cohorts.publish(code, { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved });
-    drafts.delete(code);
-    if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return; }
-    state.preview = null;
-    state.csv = "";
-    state.filename = "";
+    if (!(await importHandlers.publish())) return;
     state.view = "overview";
     await boot();
     notice("Atualização publicada. Os alunos já podem consultar.");
@@ -637,9 +614,8 @@ function expireSession() {
 }
 
 function signOut() {
-  if ((state.csv || [...drafts.values()].some((d) => d.csv)) && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
-  drafts.clear();
-  state.csv = "";
+  if (importHandlers.hasUnpublishedCsv() && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
+  importHandlers.discardDrafts();
   forgetStudentView();
   localStorage.removeItem("avanca.context");
   if (demo) location.assign("./");
@@ -799,14 +775,14 @@ document.addEventListener("change", (event) => {
         forgetStudentView();
         state.view = "overview";
       }
-      saveDraft();
+      importHandlers.saveDraft();
       state.code = target.value;
       state.report = null;
       state.reportError = "";
       state.sender = null;
       state.senderLoading = false;
       state.senderError = "";
-      restoreDraft();
+      importHandlers.restoreDraft();
       state.search = "";
       state.activityModule = "all";
       state.activityKind = "all";
@@ -832,7 +808,7 @@ document.addEventListener("change", (event) => {
     busy(null, () => loadAdminFeedback(true));
   }
   if (target.name === "fb-type") state.feedbackDraft.type = target.value;
-  if (target.id === "acknowledge-removed") { state.acknowledgeRemoved = target.checked; render(); }
+  if (target.id === "acknowledge-removed") importHandlers.setAcknowledgeRemoved(target.checked);
   if (target.id === "class-status-filter") {
     state.classFilter = target.value;
     render();
@@ -852,37 +828,8 @@ document.addEventListener("change", (event) => {
     state.filter = target.value;
     render();
   }
-  if (target.dataset.activity) {
-    state.preview.activities.find(
-      (a) => a.id === target.dataset.activity,
-    ).active = target.checked;
-    state.dirty = true;
-    state.acknowledgeRemoved = false;
-    render();
-  }
-  if (target.id === "csv-file")
-    busy(null, async () => {
-      const code = state.code;
-      const file = target.files[0];
-      if (!file) return;
-      state.preview = null;
-      state.csv = "";
-      state.filename = "";
-      if (file.size > 2000000) {
-        render();
-        throw new Error("Selecione um CSV de até 2 MB.");
-      }
-      const csv = await file.text();
-      if (state.code !== code) {
-        drafts.set(code, { csv, filename: file.name, preview: null, dirty: false, acknowledgeRemoved: false });
-        return;
-      }
-      state.csv = csv;
-      state.filename = file.name;
-      state.dirty = false;
-      state.acknowledgeRemoved = false;
-      render();
-    });
+  if (target.dataset.activity) importHandlers.toggleActivity(target.dataset.activity, target.checked);
+  if (target.id === "csv-file") busy(null, () => importHandlers.selectCsv(target.files[0]));
 });
 document.addEventListener("input", (event) => {
   const id = event.target.id;
@@ -947,34 +894,7 @@ document.addEventListener("submit", (event) => {
         if (state.code === code && state.report) { state.report.focus = result.focus; state.focusDraft = null; render(); }
         notice(`Foco da ${code} atualizado.`);
       } else if (form.id === "import-form") {
-        if (state.importLoading) return;
-        const code = state.code;
-        if (!state.csv)
-          throw new Error("Selecione um arquivo CSV para continuar.");
-        const body = { csv: state.csv, filename: state.filename };
-        if (state.preview)
-          body.activeIds = state.preview.activities
-            .filter((a) => a.active)
-            .map((a) => a.id);
-        state.importLoading = true;
-        render();
-        let preview;
-        try {
-          preview = await api.cohorts.previewImport(code, body);
-        } finally {
-          if (state.code === code) { state.importLoading = false; render(); }
-        }
-        if (state.code !== code) {
-          if (drafts.get(code)?.csv === body.csv)
-            drafts.set(code, { ...drafts.get(code), preview, dirty: false, acknowledgeRemoved: false });
-          return;
-        }
-        if (state.csv !== body.csv) return;
-        state.preview = preview;
-        state.dirty = false;
-        state.acknowledgeRemoved = false;
-        render();
-        notice("Prévia pronta. Confira as atividades e os resultados.");
+        await importHandlers.previewImport();
       } else if (form.id === "cohort-form") {
         await api.cohorts.create(Object.fromEntries(new FormData(form)));
         await boot();

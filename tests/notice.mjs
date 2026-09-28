@@ -104,15 +104,17 @@ test("não altera o state", () => {
   assert.deepEqual(state, before);
 });
 
-test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos de chamada", () => {
+test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos de chamada (20 + 5 + 2)", () => {
   const app = read("frontend/app.js");
   const fromUi = [...app.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']\.\/ui\.js["']/g)]
     .flatMap(([, names]) => names.split(",").map((name) => name.trim()));
   assert.ok(fromUi.includes("notice"), "app.js deve importar notice de ./ui.js");
   assert.doesNotMatch(app, /\bfunction\s+notice\s*\(/);
   assert.match(read("frontend/ui.js"), /^export function notice\s*\(/m);
-  // Chamadas reais: o nome no import não é seguido de "(". Os avisos de Turmas e acessos
-  // moram em handlers/access.js; o total continua o mesmo.
+  // Chamadas reais: o nome no import não é seguido de "(". Os avisos de Turmas e acessos e os de
+  // Importação moram nos handlers; o total continua o mesmo.
   const count = (source) => (source.match(/(?<![\w.$])notice\s*\(/g) || []).length;
-  assert.equal(count(app) + count(read("frontend/handlers/access.js")), 27);
+  assert.equal(count(app), 20);
+  assert.equal(count(read("frontend/handlers/access.js")), 5);
+  assert.equal(count(read("frontend/handlers/import.js")), 2);
 });
