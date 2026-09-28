@@ -51,6 +51,9 @@ try {
       const request = route.request();
       const url = new URL(request.url());
       const endpoint = url.pathname.slice(4);
+      // Cenários com resposta própria (erro, atraso controlado, paginação); sem retorno, segue o padrão.
+      const custom = api.handle?.({ route, request, url, endpoint });
+      if (custom) return custom;
       if (endpoint === "/me") return route.fulfill({ json: { roles: [role], email: `${role}@example.test` } });
       if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role !== "student" }, { code: "BRSA0268", canTeach: role !== "student" }] } });
       if (endpoint.endsWith("/report")) return route.fulfill({ json: role === "student" ? studentReport : adminReport });
@@ -246,7 +249,178 @@ try {
     assert.deepEqual([api.errors, api.dialogs], [[], 0]);
     await context.close();
   }
-  console.log("Feedback: menu do aluno (4) e do admin (6), envio, origem, texto puro, paginação, 429, filtros, detalhe, status, Visualizar como aluno e 375/768/1440 OK.");
+  // Cenários adicionais em 1440px: caracterizam o comportamento atual antes de mover o código.
+  const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
+  // Uma ida e volta de rede feita pela própria página: respostas já liberadas são processadas antes.
+  const flushNetwork = (page) => page.evaluate(() => fetch("/index.html", { cache: "no-store" }).then((r) => r.text()).then(() => true));
+  const exposeState = (page) => page.evaluate(async () => { window.__state = (await import("/state.js")).state; });
+  const snapshot = (page, key) => page.evaluate((k) => JSON.parse(JSON.stringify(window.__state[k])), key);
+  const noticeTexts = (page) => page.locator("#notices .notice").evaluateAll((els) => els.map((el) => ({ error: el.classList.contains("error"), text: el.querySelector("span").textContent })));
+  const openAdmin = async () => {
+    const opened = await open("admin");
+    await opened.page.getByRole("button", { name: "Painel do instrutor", exact: true }).waitFor();
+    await exposeState(opened.page);
+    return opened;
+  };
+  const showFeedbacks = async (page) => {
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await page.locator(".fb-open").first().waitFor();
+  };
+  const summary = (NEW, IN_REVIEW, RESOLVED, ARCHIVED) => ({ NEW, IN_REVIEW, RESOLVED, ARCHIVED });
+  const listItem = (id, title) => feedbackItem(1, { id, title });
+
+  // Admin: 409 ao salvar status. Nada muda no item, o detalhe continua aberto e a tela segue utilizável.
+  {
+    const { context, page, api } = await openAdmin();
+    const conflict = "Este feedback mudou de status enquanto você editava. Recarregue a lista.";
+    api.handle = ({ route, request, endpoint }) => {
+      const match = endpoint.match(/^\/admin\/feedback\/([^/]+)\/status$/);
+      if (!match) return;
+      api.statusPosts.push({ id: decodeURIComponent(match[1]), ...request.postDataJSON() });
+      return route.fulfill({ status: 409, json: { error: conflict } });
+    };
+    await showFeedbacks(page);
+    const id = adminItems[0].id;
+    await page.locator(".fb-open", { hasText: "KC aparece como pendente" }).click();
+    await page.locator(".fb-detail").waitFor();
+    const gets = api.gets.length;
+    await page.locator("#fb-status-select").selectOption("RESOLVED");
+    await page.getByRole("button", { name: "Salvar status" }).click();
+    await page.locator("#notices .notice.error").waitFor();
+    assert.deepEqual(api.statusPosts, [{ id, status: "RESOLVED", expectedStatus: "NEW" }]);
+    assert.deepEqual(await noticeTexts(page), [{ error: true, text: conflict }]);
+    const after = await snapshot(page, "adminFeedback");
+    assert.equal(after.selectedId, id);
+    assert.equal(after.items.find((f) => f.id === id).status, "NEW", "o item não muda");
+    assert.equal(await page.locator(".fb-detail").count(), 1);
+    assert.match(await page.locator(".fb-detail .fb-status").innerText(), /Novo/);
+    // Sem redesenho depois do erro: o select continua com a escolha feita.
+    assert.equal(await page.locator("#fb-status-select").inputValue(), "RESOLVED");
+    assert.equal(api.gets.length, gets, "sem recarregar a lista");
+    const save = page.getByRole("button", { name: "Salvar status" });
+    assert.ok(await save.isEnabled());
+    // Continua utilizável: a nova tentativa usa o mesmo expectedStatus e dá certo.
+    api.handle = null;
+    await save.click();
+    await page.getByText("Status do feedback atualizado.").waitFor();
+    assert.deepEqual(api.statusPosts.at(-1), { id, status: "RESOLVED", expectedStatus: "NEW" });
+    assert.match(await page.locator(".fb-detail .fb-status").innerText(), /Resolvido/);
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: resposta atrasada de um filtro anterior não substitui a do filtro atual.
+  {
+    const { context, page, api } = await openAdmin();
+    await showFeedbacks(page);
+    const gateA = deferred(), arrivedA = deferred();
+    const pageA = { items: [listItem("filtro-a-1", "Resposta A atrasada"), listItem("filtro-a-2", "Outra de A")], nextCursor: "cursor-A", summary: summary(9, 8, 7, 6) };
+    const pageB = { items: [listItem("filtro-b-1", "Resposta B")], nextCursor: "cursor-B", summary: summary(4, 3, 2, 1) };
+    api.handle = ({ route, url, endpoint }) => {
+      if (endpoint !== "/admin/feedback") return;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      const type = url.searchParams.get("type");
+      if (type === "BUG") { arrivedA.resolve(); return gateA.promise.then(() => route.fulfill({ json: pageA })); }
+      if (type === "SUGGESTION") return route.fulfill({ json: pageB });
+    };
+    await page.locator("#fb-filter-type").selectOption("BUG");
+    await arrivedA.promise;
+    await page.locator("#fb-filter-type").selectOption("SUGGESTION");
+    await page.locator(".fb-open", { hasText: "Resposta B" }).waitFor();
+    await page.waitForFunction(() => !window.__state.adminFeedback.loading);
+    const responseA = page.waitForResponse((r) => r.url().includes("/admin/feedback?") && r.url().includes("type=BUG"));
+    gateA.resolve();
+    await responseA;
+    await flushNetwork(page);
+    const a = await snapshot(page, "adminFeedback");
+    assert.deepEqual(a.items.map((f) => f.id), ["filtro-b-1"]);
+    assert.deepEqual(a.summary, pageB.summary);
+    assert.equal(a.nextCursor, "cursor-B");
+    assert.deepEqual(a.filters, { status: "", type: "SUGGESTION", cohort: "" });
+    assert.deepEqual([a.loading, a.error], [false, ""]);
+    assert.deepEqual(api.gets.slice(-2), [{ limit: "50", type: "BUG" }, { limit: "50", type: "SUGGESTION" }]);
+    assert.equal(await page.locator(".fb-open").count(), 1);
+    assert.equal(await page.getByText("Resposta A atrasada").count(), 0);
+    assert.match(await page.locator(".fb-summary").innerText(), /Todos\s+9\s+Novos\s+4\s+Em análise\s+3\s+Resolvidos\s+2/);
+    assert.equal(await page.locator("#fb-filter-type").inputValue(), "SUGGESTION");
+    assert.equal(await page.getByRole("button", { name: "Carregar mais" }).count(), 1);
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: "Carregar mais" acrescenta a próxima página mantendo os filtros; um filtro novo recomeça.
+  {
+    const { context, page, api } = await openAdmin();
+    const first = { items: [listItem("pagina-1-a", "Primeira A"), listItem("pagina-1-b", "Primeira B")], nextCursor: "cursor-2", summary: summary(5, 1, 0, 0) };
+    const second = { items: [listItem("pagina-2-a", "Segunda A")], nextCursor: null, summary: summary(6, 1, 0, 0) };
+    api.handle = ({ route, url, endpoint }) => {
+      if (endpoint !== "/admin/feedback") return;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      return route.fulfill({ json: url.searchParams.get("cursor") ? second : first });
+    };
+    await showFeedbacks(page);
+    await page.locator("#fb-filter-type").selectOption("BUG");
+    await page.waitForFunction(() => !window.__state.adminFeedback.loading && window.__state.adminFeedback.filters.type === "BUG");
+    assert.deepEqual(api.gets.at(-1), { limit: "50", type: "BUG" });
+    await page.getByRole("button", { name: "Carregar mais" }).click();
+    await page.waitForFunction(() => document.querySelectorAll(".fb-open").length === 3);
+    assert.deepEqual(api.gets.at(-1), { limit: "50", type: "BUG", cursor: "cursor-2" });
+    let a = await snapshot(page, "adminFeedback");
+    assert.deepEqual(a.items.map((f) => f.id), ["pagina-1-a", "pagina-1-b", "pagina-2-a"]);
+    assert.equal(a.nextCursor, null);
+    assert.deepEqual(a.summary, second.summary);
+    assert.equal(await page.getByRole("button", { name: "Carregar mais" }).count(), 0);
+    await page.locator("#fb-filter-type").selectOption("");
+    await page.waitForFunction(() => document.querySelectorAll(".fb-open").length === 2);
+    assert.deepEqual(api.gets.at(-1), { limit: "50" });
+    a = await snapshot(page, "adminFeedback");
+    assert.deepEqual(a.items.map((f) => f.id), ["pagina-1-a", "pagina-1-b"]);
+    assert.equal(a.nextCursor, "cursor-2");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Aluno: erro ao listar "Meus feedbacks" e "Tentar novamente"; erro no "Carregar mais" mantém os itens no state.
+  {
+    const { context, page, api } = await open("student");
+    const failure = "Falha fictícia ao listar feedbacks.";
+    api.handle = ({ route, request, url, endpoint }) => {
+      if (endpoint !== "/feedback" || request.method() !== "GET" || !api.failMine) return;
+      api.failMine = false;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      return route.fulfill({ status: 500, json: { error: failure } });
+    };
+    await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
+    await exposeState(page);
+    api.failMine = true;
+    await page.getByRole("button", { name: "Feedback", exact: true }).click();
+    const list = page.locator('section[aria-labelledby="my-feedback-heading"]');
+    await list.getByText(failure).waitFor();
+    assert.deepEqual(await snapshot(page, "myFeedback"), { items: [], nextCursor: null, loading: false, error: failure });
+    assert.equal(await list.locator(".feedback-card").count(), 0);
+    await list.getByRole("button", { name: "Tentar novamente" }).click();
+    await page.waitForFunction(() => document.querySelectorAll(".feedback-list .feedback-card").length === 20);
+    let mine = await snapshot(page, "myFeedback");
+    assert.deepEqual([mine.items.length, mine.nextCursor, mine.loading, mine.error], [20, "Y3Vyc29y", false, ""]);
+    assert.deepEqual(api.gets.at(-1), { limit: "20" });
+    assert.equal(await list.getByText(failure).count(), 0);
+    api.failMine = true;
+    await list.getByRole("button", { name: "Carregar mais" }).click();
+    await list.getByText(failure).waitFor();
+    assert.deepEqual(api.gets.at(-1), { limit: "20", cursor: "Y3Vyc29y" });
+    mine = await snapshot(page, "myFeedback");
+    assert.deepEqual([mine.items.length, mine.nextCursor, mine.loading, mine.error], [20, "Y3Vyc29y", false, failure]);
+    assert.equal(await list.locator(".feedback-card").count(), 0, "com erro, a tela mostra só o aviso");
+    // "Tentar novamente" recomeça do início, sem cursor.
+    await list.getByRole("button", { name: "Tentar novamente" }).click();
+    await page.waitForFunction(() => document.querySelectorAll(".feedback-list .feedback-card").length === 20);
+    assert.deepEqual(api.gets.at(-1), { limit: "20" });
+    mine = await snapshot(page, "myFeedback");
+    assert.deepEqual([mine.items.length, mine.nextCursor, mine.error], [20, "Y3Vyc29y", ""]);
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+  console.log("Feedback: menu do aluno (4) e do admin (6), envio, origem, texto puro, paginação, 429, filtros, detalhe, status, Visualizar como aluno e 375/768/1440 OK; 409 no status, resposta atrasada de filtro, paginação do admin e erro de Meus feedbacks OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));
