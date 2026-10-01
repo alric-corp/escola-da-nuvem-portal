@@ -127,6 +127,8 @@ function render() {
   const focusId = focused?.id;
   const selection = focused?.selectionStart;
   const changedView = renderedView !== state.view;
+  // O título focado ao entrar na view é recriado pelo render (ex.: quando a carga termina): o foco passa ao novo título.
+  const titleFocused = !changedView && !!focused?.matches("main h1");
   if (changedView) lastFocusSelector = "";
   else if (focusId) lastFocusSelector = `#${CSS.escape(focusId)}`;
   else if (focused?.matches("button")) {
@@ -146,7 +148,9 @@ function render() {
   <div class="sidebar-bottom"><div class="support-card">${icon("network", 28)}<strong>Aprender abre caminhos.</strong><p>Cada atividade é mais um passo na sua jornada.</p></div><div class="account"><span class="avatar">${e(accountName.slice(0, 2).toUpperCase())}</span><div><strong>${e(accountName)}</strong><small>${roleLabel()}</small></div><button class="icon-button" data-action="logout" aria-label="Sair da conta">${icon("out")}</button></div></div></aside>
   <main class="main" id="main-content" tabindex="-1"><header class="topline"><div class="location-context"><span>${state.view === "access" ? "Administração do portal" : state.code ? `Turma ${e(state.code)}` : "Minha conta"}${demo ? " · Demonstração" : ""}</span><strong>${e(pageLabel())}</strong></div>${sessionContext()}</header>
   ${studentViewBanner()}${content(name)}<footer class="main-footer"><span>Escola da Nuvem · AWS re/Start</span>${!studentOnly() && !state.studentView && state.view !== "feedback" ? '<button type="button" class="text-link footer-feedback" data-view="feedback">Enviar feedback</button>' : ""}<span>Seu aprendizado, uma semana de cada vez.</span></footer></main></div>`;
-  if (changedView) {
+  // Foco que continua na página depois do render (fora de #app, como o aviso) é escolha do usuário: não muda.
+  const lost = focused === document.body || !focused?.isConnected;
+  if (changedView || titleFocused) {
     const title = $("main h1") || $("main");
     title?.setAttribute("tabindex", "-1");
     title?.focus({ preventScroll: true });
@@ -154,7 +158,7 @@ function render() {
     const next = document.getElementById(focusId);
     next.focus({ preventScroll: true });
     if (selection != null && ["search", "text"].includes(next.type)) next.setSelectionRange(selection, selection);
-  } else if (lastFocusSelector) $(lastFocusSelector)?.focus({ preventScroll: true });
+  } else if (lastFocusSelector && lost) $(lastFocusSelector)?.focus({ preventScroll: true });
   if (state.studentView) persistStudentView();
   saveContext();
 }

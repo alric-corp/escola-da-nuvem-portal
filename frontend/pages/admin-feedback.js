@@ -33,7 +33,7 @@ function detail(f) {
   const student = f.studentName ? e(f.studentName) : f.canvasId ? `Fora da turma atual <small>(Canvas ID ${e(f.canvasId)})</small>` : "—";
   return `<section class="panel fb-detail" aria-labelledby="fb-detail-title"><button type="button" class="text-link" data-fb-back>← Voltar à lista</button>
   <div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div>
-  <h2 id="fb-detail-title" class="fb-title">${e(f.title)}</h2><p class="fb-description">${e(f.description)}</p>
+  <h2 id="fb-detail-title" class="fb-title" tabindex="-1">${e(f.title)}</h2><p class="fb-description">${e(f.description)}</p>
   <dl class="fb-facts">${row("Aluno", student)}${row("E-mail", e(f.createdByEmail || "—"))}${row("Turma", e(f.cohort || "Sem turma"))}${row("Enviado em", e(date(f.createdAt)))}${row("Página de origem", e(originLabel(f.page, !!f.canvasId) || "—"))}${row("Publicação", f.publicationId ? `<code>${e(f.publicationId)}</code>` : "—")}${f.updatedBy && f.updatedAt !== f.createdAt ? row("Última mudança de status", e(date(f.updatedAt))) : ""}</dl>
   <section class="fb-detail-attachments" aria-labelledby="fb-attachments-heading"><h3 id="fb-attachments-heading">Anexos</h3>${f.attachments ? attachmentGallery(f.id) : '<p class="small">Nenhuma imagem anexada.</p>'}</section>
   <div class="fb-actions"><label for="fb-status-select">Status <select id="fb-status-select">${Object.entries(feedbackStatuses).map(([k, v]) => `<option value="${k}" ${k === f.status ? "selected" : ""}>${v}</option>`).join("")}</select></label><button type="button" class="button primary" data-fb-save="${e(f.id)}">Salvar status</button>

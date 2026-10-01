@@ -444,7 +444,190 @@ try {
     assert.deepEqual([api.errors, api.dialogs], [[], 0]);
     await context.close();
   }
+  // Foco depois de renders assíncronos. Cada render troca o conteúdo de #app uma vez (o MutationObserver conta os
+  // renders); tabNeighbors devolve o controle anterior e o seguinte de um elemento na ordem de Tab.
+  const focused = (page) => page.evaluate(() => {
+    const el = document.activeElement;
+    return { tag: el.tagName, id: el.id, text: el.textContent.trim(), tabindex: el.getAttribute("tabindex") };
+  });
+  const focusOn = (tag, text, id = "") => ({ tag, id, text, tabindex: "-1" });
+  const countRenders = (page) => page.evaluate(() => {
+    const counter = (window.__renders = { n: 0 });
+    const added = (records) => records.filter((r) => r.addedNodes.length).length;
+    const observer = new MutationObserver((records) => { counter.n += added(records); });
+    observer.observe(document.getElementById("app"), { childList: true });
+    counter.read = () => (counter.n += added(observer.takeRecords()));
+  });
+  const renders = (page) => page.evaluate(() => window.__renders.read());
+  const activeKey = (page) => page.evaluate(() => { const el = document.activeElement; return `${el.tagName}#${el.id} ${el.textContent.trim().slice(0, 40)}`; });
+  const tabNeighbors = (page, selector) => page.evaluate((sel) => {
+    const target = document.querySelector(sel);
+    const key = (el) => el && `${el.tagName}#${el.id} ${el.textContent.trim().slice(0, 40)}`;
+    const tabbable = [...document.querySelectorAll("a[href], button, input, select, textarea, summary, [tabindex]")]
+      .filter((el) => el.tabIndex >= 0 && !el.disabled && el.getClientRects().length);
+    const before = tabbable.filter((el) => el.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const after = tabbable.filter((el) => target.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return { previous: key(before.at(-1)), next: key(after[0]) };
+  }, selector);
+  // Retém a próxima listagem do admin até o teste liberar.
+  const holdList = (api) => {
+    const gate = deferred(), arrived = deferred();
+    api.handle = ({ route, url, endpoint }) => {
+      if (endpoint !== "/admin/feedback") return;
+      api.handle = null;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      arrived.resolve();
+      return gate.promise.then(() => route.fulfill({ json: { items: adminItems, nextCursor: null, summary: summary(1, 1, 0, 0) } }));
+    };
+    return { arrived: arrived.promise, release: gate.resolve };
+  };
+
+  // Admin: depois da carga da lista, o foco continua no cabeçalho "Feedbacks" (o render recria o título focado na
+  // entrada), sem render extra. O cabeçalho só tem foco programático: Tab segue para o próximo controle e Shift+Tab o pula.
+  {
+    const { context, page, api } = await openAdmin();
+    await countRenders(page);
+    const list = holdList(api);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await list.arrived;
+    assert.deepEqual(await focused(page), focusOn("H1", "Feedbacks"));
+    assert.equal(await renders(page), 1);
+    list.release();
+    await page.locator(".fb-open").first().waitFor();
+    await flushNetwork(page);
+    assert.deepEqual(await focused(page), focusOn("H1", "Feedbacks"), "depois da carga, o foco continua no cabeçalho (não cai em BODY)");
+    assert.equal(await renders(page), 2, "nenhum render extra para focar");
+    assert.deepEqual(api.gets, [{ limit: "50" }]);
+    const around = await tabNeighbors(page, "main h1");
+    assert.ok(around.previous && around.next);
+    await page.keyboard.press("Tab");
+    assert.equal(await activeKey(page), around.next, "Tab segue para o próximo controle");
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await activeKey(page), around.previous, "Shift+Tab pula o cabeçalho, sem prender o foco");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: com a lista ainda carregando, o foco que o usuário escolheu não é puxado de volta para o cabeçalho. Um
+  // filtro (recriado pelo render) volta pelo id; o aviso, fora da área redesenhada, continua focado.
+  {
+    const { context, page, api } = await openAdmin();
+    let list = holdList(api);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await list.arrived;
+    await page.locator("#fb-filter-status").focus();
+    list.release();
+    await page.locator(".fb-open").first().waitFor();
+    await flushNetwork(page);
+    const filter = await focused(page);
+    assert.deepEqual([filter.tag, filter.id], ["SELECT", "fb-filter-status"], "o filtro escolhido continua focado");
+    // Aviso visível por um fluxo real (salvar status); a lista é carregada de novo ao voltar pelo menu.
+    await page.locator(".fb-open", { hasText: "Adicionar modo escuro" }).click();
+    await page.locator("#fb-status-select").selectOption("RESOLVED");
+    await page.getByRole("button", { name: "Salvar status" }).click();
+    await page.getByText("Status do feedback atualizado.").waitFor();
+    await page.getByRole("button", { name: "Painel do instrutor", exact: true }).click();
+    list = holdList(api);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await list.arrived;
+    const close = page.getByRole("button", { name: "Fechar aviso" });
+    await close.focus();
+    list.release();
+    await page.locator(".fb-open").first().waitFor();
+    await flushNetwork(page);
+    assert.ok(await close.evaluate((el) => el === document.activeElement), "o aviso continua focado");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: sair de Feedbacks com a lista pendente. A resposta antiga não redesenha nem tira o foco da tela atual.
+  {
+    const { context, page, api } = await openAdmin();
+    const list = holdList(api);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await list.arrived;
+    await page.getByRole("button", { name: "Painel do instrutor", exact: true }).click();
+    const panel = await focused(page);
+    assert.deepEqual([panel.tag, panel.tabindex], ["H1", "-1"]);
+    assert.notEqual(panel.text, "Feedbacks");
+    await countRenders(page);
+    const late = page.waitForResponse((r) => r.url().includes("/admin/feedback?"));
+    list.release();
+    await late;
+    await flushNetwork(page);
+    assert.deepEqual(await focused(page), panel, "o foco continua no cabeçalho da tela atual");
+    assert.equal(await renders(page), 0, "a resposta antiga não redesenha");
+    assert.equal(await page.evaluate(() => window.__state.view), "overview");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: lista com erro. O cabeçalho focado na entrada continua focado depois do erro (o aviso role=alert é anunciado).
+  {
+    const { context, page, api } = await openAdmin();
+    api.handle = ({ route, url, endpoint }) => {
+      if (endpoint !== "/admin/feedback") return;
+      api.handle = null;
+      api.gets.push(Object.fromEntries(url.searchParams));
+      return route.fulfill({ status: 500, json: { error: "Falha fictícia ao listar." } });
+    };
+    await countRenders(page);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await page.getByText("Falha fictícia ao listar.").waitFor();
+    await flushNetwork(page);
+    assert.deepEqual(await focused(page), focusOn("H1", "Feedbacks"), "depois do erro, o foco continua no cabeçalho");
+    assert.equal(await renders(page), 2);
+    assert.deepEqual(api.gets, [{ limit: "50" }]);
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Admin: abrir um feedback sem anexos leva o foco ao título do detalhe (h2 com tabindex=-1: só foco programático),
+  // com um único render. Tab segue para o próximo controle e Shift+Tab pula o título.
+  {
+    const { context, page, api } = await openAdmin();
+    await showFeedbacks(page);
+    await flushNetwork(page);
+    await countRenders(page);
+    await page.locator(".fb-open", { hasText: "Adicionar modo escuro" }).click();
+    await page.locator(".fb-detail").waitFor();
+    assert.deepEqual(await focused(page), focusOn("H2", "Adicionar modo escuro", "fb-detail-title"));
+    assert.equal(await renders(page), 1, "um render ao abrir, nenhum extra para focar");
+    const around = await tabNeighbors(page, "#fb-detail-title");
+    assert.ok(around.previous && around.next);
+    await page.keyboard.press("Tab");
+    assert.equal(await activeKey(page), around.next, "Tab segue para o próximo controle");
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await activeKey(page), around.previous, "Shift+Tab pula o título, sem prender o foco");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
+
+  // Aluno: a mesma regra em outra tela com carga assíncrona. O cabeçalho de Feedback continua focado depois que
+  // "Meus feedbacks" chega.
+  {
+    const { context, page, api } = await open("student");
+    await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
+    const gate = deferred(), arrived = deferred();
+    api.handle = ({ route, request, endpoint }) => {
+      if (endpoint !== "/feedback" || request.method() !== "GET") return;
+      api.handle = null;
+      arrived.resolve();
+      return gate.promise.then(() => route.fulfill({ json: { items: [], nextCursor: null } }));
+    };
+    await page.getByRole("button", { name: "Feedback", exact: true }).click();
+    await arrived.promise;
+    const title = focusOn("H1", "Ajude a melhorar a plataforma");
+    assert.deepEqual(await focused(page), title);
+    gate.resolve();
+    await page.getByText("Você ainda não enviou feedbacks.").waitFor();
+    await flushNetwork(page);
+    assert.deepEqual(await focused(page), title, "depois da carga, o foco continua no cabeçalho");
+    assert.deepEqual([api.errors, api.dialogs], [[], 0]);
+    await context.close();
+  }
   console.log("Feedback: menu do aluno (4) e do admin (6), envio, origem, texto puro, paginação, 429, filtros, detalhe, status, Visualizar como aluno e 375/768/1440 OK; 409 no status, resposta atrasada de filtro, paginação do admin, erro de Meus feedbacks e foco ao abrir Feedbacks OK.");
+  console.log("Foco: cabeçalho de Feedbacks depois da carga e do erro, sem render extra, Tab e Shift+Tab, foco escolhido pelo usuário preservado, troca de tela com resposta pendente, título do detalhe e cabeçalho do Feedback do aluno OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

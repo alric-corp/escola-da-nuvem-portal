@@ -398,7 +398,129 @@ try {
     assert.deepEqual([api.errors, api.unexpected], [[], []]);
     await context.close();
   }
+  // Foco no detalhe do admin depois de renders assíncronos. Cada render troca o conteúdo de #app uma vez (o
+  // MutationObserver conta os renders); tabNeighbors devolve o controle anterior e o seguinte na ordem de Tab.
+  const focused = (page) => page.evaluate(() => {
+    const el = document.activeElement;
+    return { tag: el.tagName, id: el.id, text: el.textContent.trim(), tabindex: el.getAttribute("tabindex") };
+  });
+  const detailTitle = { tag: "H2", id: "fb-detail-title", text: "KC aparece como pendente", tabindex: "-1" };
+  const countRenders = (page) => page.evaluate(() => {
+    const counter = (window.__renders = { n: 0 });
+    const added = (records) => records.filter((r) => r.addedNodes.length).length;
+    const observer = new MutationObserver((records) => { counter.n += added(records); });
+    observer.observe(document.getElementById("app"), { childList: true });
+    counter.read = () => (counter.n += added(observer.takeRecords()));
+  });
+  const renders = (page) => page.evaluate(() => window.__renders.read());
+  const activeKey = (page) => page.evaluate(() => { const el = document.activeElement; return `${el.tagName}#${el.id} ${el.textContent.trim().slice(0, 40)}`; });
+  const tabNeighbors = (page, selector) => page.evaluate((sel) => {
+    const target = document.querySelector(sel);
+    const key = (el) => el && `${el.tagName}#${el.id} ${el.textContent.trim().slice(0, 40)}`;
+    const tabbable = [...document.querySelectorAll("a[href], button, input, select, textarea, summary, [tabindex]")]
+      .filter((el) => el.tabIndex >= 0 && !el.disabled && el.getClientRects().length);
+    const before = tabbable.filter((el) => el.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const after = tabbable.filter((el) => target.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return { previous: key(before.at(-1)), next: key(after[0]) };
+  }, selector);
+  const feedbackId = "20260926T120000000000-11111111";
+  const galleryLoaded = async (page) => {
+    await page.locator(".fb-detail .fb-thumb img").nth(1).waitFor();
+    await page.waitForFunction((id) => !window.__state.feedbackAttachments[id].loading, feedbackId);
+  };
+  // Retém a próxima lista de anexos do feedback até o teste liberar; as demais seguem para a API fictícia.
+  const holdAttachments = async (page) => {
+    const control = { next: null };
+    await page.route(`**/api/feedback/${feedbackId}/attachments`, async (route) => {
+      const hold = control.next;
+      control.next = null;
+      if (hold) { hold.arrived.resolve(); await hold.gate.promise; }
+      await route.fallback();
+    });
+    return () => {
+      const hold = (control.next = { arrived: deferred(), gate: deferred() });
+      return { arrived: hold.arrived.promise, release: hold.gate.resolve };
+    };
+  };
+
+  // Admin: abrir um feedback com anexos. O título do detalhe recebe o foco e continua com ele durante a carga dos
+  // anexos e depois do último render, sem render extra. Tab segue para o próximo controle e Shift+Tab pula o título.
+  {
+    const { context, page, api } = await open("admin");
+    const hold = await holdAttachments(page);
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await page.locator(".fb-open").first().waitFor();
+    await exposeState(page);
+    await countRenders(page);
+    const attachments = hold();
+    await page.locator(".fb-open").first().click();
+    await attachments.arrived;
+    assert.deepEqual(await focused(page), detailTitle, "durante a carga dos anexos");
+    assert.equal(await renders(page), 2, "abrir o detalhe e mostrar o carregamento");
+    attachments.release();
+    await galleryLoaded(page);
+    assert.deepEqual(await focused(page), detailTitle, "depois do último render");
+    assert.equal(await renders(page), 3, "nenhum render extra para focar");
+    assert.deepEqual([api.lists.length, api.downloads.length], [1, 2]);
+    const around = await tabNeighbors(page, "#fb-detail-title");
+    assert.ok(around.previous && around.next);
+    await page.keyboard.press("Tab");
+    assert.equal(await activeKey(page), around.next, "Tab segue para o próximo controle");
+    await page.keyboard.press("Shift+Tab");
+    assert.equal(await activeKey(page), around.previous, "Shift+Tab pula o título, sem prender o foco");
+    assert.deepEqual([api.errors, api.unexpected], [[], []]);
+    await context.close();
+  }
+
+  // Admin: durante a carga dos anexos o usuário leva o foco a outro controle, e o render final não o puxa de volta para
+  // o título. O aviso, fora da área redesenhada, continua focado; o select de status (recriado) volta pelo id.
+  {
+    const { context, page, api } = await open("admin");
+    const hold = await holdAttachments(page);
+    await page.route("**/api/admin/feedback/*/status", (route) => route.fulfill({ json: { feedback: { status: "RESOLVED", updatedBy: "admin", updatedAt: "2026-09-26T14:00:00Z" } } }));
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await page.locator(".fb-open").first().click();
+    await exposeState(page);
+    await galleryLoaded(page);
+    // Aviso visível por um fluxo real: salvar o status do feedback.
+    await page.locator("#fb-status-select").selectOption("RESOLVED");
+    await page.getByRole("button", { name: "Salvar status" }).click();
+    await page.getByText("Status do feedback atualizado.").waitFor();
+    await page.locator("[data-fb-back]").click();
+    let attachments = hold();
+    await page.locator(".fb-open").first().click();
+    await attachments.arrived;
+    const close = page.getByRole("button", { name: "Fechar aviso" });
+    await close.focus();
+    attachments.release();
+    await galleryLoaded(page);
+    assert.ok(await close.evaluate((el) => el === document.activeElement), "o aviso continua focado");
+    await page.locator("[data-fb-back]").click();
+    attachments = hold();
+    await page.locator(".fb-open").first().click();
+    await attachments.arrived;
+    await page.locator("#fb-status-select").focus();
+    attachments.release();
+    await galleryLoaded(page);
+    const select = await focused(page);
+    assert.deepEqual([select.tag, select.id], ["SELECT", "fb-status-select"], "o select escolhido continua focado");
+    assert.deepEqual([api.errors, api.unexpected], [[], []]);
+    await context.close();
+  }
+
+  // Admin: falha ao carregar os anexos. O erro aparece na galeria e o foco continua no título do detalhe.
+  {
+    const { context, page, api } = await open("admin");
+    await page.route(`**/api/feedback/${feedbackId}/attachments`, (route) => route.fulfill({ status: 500, json: { error: "Falha fictícia nos anexos." } }));
+    await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
+    await page.locator(".fb-open").first().click();
+    await page.locator(".fb-detail-attachments").getByText("Falha fictícia nos anexos.").waitFor();
+    assert.deepEqual(await focused(page), detailTitle, "depois do erro, o foco continua no título");
+    assert.deepEqual([api.errors, api.unexpected, api.downloads.length], [[], [], 0]);
+    await context.close();
+  }
   console.log("Anexos: validação local, prévias, envio direto ao S3, falha parcial e nova tentativa, Meus feedbacks, admin, duplicado e 375/768/1440 OK; limite de 3, URLs locais, descarte, remoção após falha, card com falha e galeria fechada OK.");
+  console.log("Foco no detalhe do admin: título durante e depois da carga dos anexos, sem render extra, Tab e Shift+Tab, foco escolhido pelo usuário preservado e erro nos anexos OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));
