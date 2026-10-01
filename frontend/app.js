@@ -4,6 +4,7 @@ import * as accessHandlers from "./handlers/access.js";
 import * as importHandlers from "./handlers/import.js";
 import * as adminFeedbackHandlers from "./handlers/admin-feedback.js";
 import * as feedbackHandlers from "./handlers/feedback.js";
+import * as remindersHandlers from "./handlers/reminders.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
@@ -22,11 +23,11 @@ accessHandlers.configure({ render });
 importHandlers.configure({ render });
 adminFeedbackHandlers.configure({ render });
 feedbackHandlers.configure({ render });
+remindersHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
-let batchPreviewRequest = 0;
 let renderedView = "";
 let lastFocusSelector = "";
 // "Visualizar como aluno" vale só para esta aba: registro em sessionStorage e a marca
@@ -185,73 +186,6 @@ function content(name) {
   return state.view === "activities" ? activitiesPage() : studentPage(name);
 }
 
-async function loadPending(studentId) {
-  const code = state.code;
-  if (!["student-pending", "reminders-batch"].includes(state.view)) state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
-  state.pendingError = "";
-  state.view = "student-pending";
-  state.pendingStudentId = studentId;
-  state.pendingPreview = null;
-  render();
-  try {
-    const preview = await api.reminders.pendingPreview(code, { studentId });
-    if (
-      state.code === code &&
-      state.view === "student-pending" &&
-      state.pendingStudentId === studentId
-    ) {
-      state.pendingPreview = preview;
-      render();
-    }
-  } catch (err) {
-    if (
-      state.code === code &&
-      state.view === "student-pending" &&
-      state.pendingStudentId === studentId
-    ) {
-      state.pendingError = err.message;
-      render();
-    }
-    throw err;
-  }
-}
-
-async function loadBatchPreview() {
-  const code = state.code;
-  const request = ++batchPreviewRequest;
-  state.batchError = "";
-  state.batchPreview = null;
-  state.batchResults = null;
-  render();
-  try {
-    const preview = await api.reminders.batchPreview(code, { studentIds: state.batchIds });
-    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
-      state.batchPreview = preview;
-      render();
-    }
-  } catch (err) {
-    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
-      state.batchError = err.message;
-      render();
-    }
-  }
-}
-
-async function loadSender() {
-  const code = state.code;
-  state.senderError = "";
-  state.senderLoading = true;
-  render();
-  try {
-    const sender = await api.reminders.senderSettings(code);
-    if (state.code === code) state.sender = sender;
-  } catch (err) {
-    if (state.code === code) state.senderError = err.message;
-  } finally {
-    if (state.code === code) { state.senderLoading = false; render(); }
-  }
-}
-
 async function loadReport() {
   const code = state.code;
   const request = ++reportRequest;
@@ -333,7 +267,7 @@ async function boot() {
       state.view = "overview";
     }
     await loadReport();
-    if (state.view === "reminders" && teacher()) await loadSender();
+    if (state.view === "reminders" && teacher()) await remindersHandlers.loadSender();
     if (state.view === "access" && admin()) await accessHandlers.loadAccess();
     if (state.view === "feedback" && !state.studentView) await feedbackHandlers.loadMine();
     if (state.view === "admin-feedback" && admin() && !state.studentView) await adminFeedbackHandlers.load(true);
@@ -359,26 +293,10 @@ async function busy(element, fn) {
 const actions = {
   "retry-boot": () => boot(),
   "refresh-report": () => loadReport(),
-  "retry-pending": () => loadPending(state.pendingStudentId),
-  "retry-batch-preview": () => loadBatchPreview(),
-  "reminders-batch": async (button) => {
-    state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
-    state.view = "reminders-batch";
-    state.batchIds = (button.dataset.ids || "").split(",").filter(Boolean);
-    await loadBatchPreview();
-  },
-  "send-reminders-batch": async () => {
-    const code = state.code, p = state.batchPreview;
-    const eligible = p.recipients.filter((r) => !r.skip);
-    if (!eligible.length || !confirm(`Enviar lembrete para ${plural(eligible.length, "aluno", "alunos")}?`)) return;
-    const result = await api.reminders.sendBatch(code, {
-      studentIds: state.batchIds, expectedPublicationId: p.publicationId });
-    if (state.code === code && state.view === "reminders-batch") {
-      state.batchResults = result.results;
-      render();
-    }
-    notice("Envio em lote concluído. Confira o resultado por aluno.");
-  },
+  "retry-pending": () => remindersHandlers.loadPending(state.pendingStudentId),
+  "retry-batch-preview": () => remindersHandlers.loadBatchPreview(),
+  "reminders-batch": (button) => remindersHandlers.openBatch(button.dataset.ids),
+  "send-reminders-batch": () => remindersHandlers.sendBatch(),
   "clear-filters": () => {
     Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name" });
     render();
@@ -394,34 +312,10 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     notice(`CSV exportado com ${plural(rows.length, "aluno", "alunos")}.`);
   },
-  "copy-reminder": async () => {
-    const message = state.pendingPreview?.message;
-    if (!message) return;
-    try {
-      await navigator.clipboard.writeText(`${message.subject}\n\n${message.text}`);
-    } catch {
-      throw new Error("Não foi possível copiar. Selecione o texto da prévia e copie manualmente.");
-    }
-    notice("Mensagem copiada.");
-  },
-  "refresh-sender": () => loadSender(),
-  "verify-sender": async () => {
-    const code = state.code;
-    const sender = await api.reminders.verifySender(code);
-    if (code === state.code) { state.sender = sender; render(); }
-    notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
-  },
-  "send-reminder": async () => {
-    const code = state.code, p = state.pendingPreview;
-    if (!p?.message || !confirm(`Enviar este lembrete para ${p.message.to}, usando ${p.message.from}?`)) return;
-    try {
-      await api.reminders.send(code, {
-        studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash });
-      notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
-    } finally {
-      if (state.code === code && state.pendingStudentId === p.student.id && state.view === "student-pending") await loadPending(p.student.id);
-    }
-  },
+  "copy-reminder": () => remindersHandlers.copyReminder(),
+  "refresh-sender": () => remindersHandlers.loadSender(),
+  "verify-sender": () => remindersHandlers.verifySender(),
+  "send-reminder": () => remindersHandlers.sendReminder(),
   login: () => login(config),
   "class-grades": () => loadClassReport(state.code),
   "class-refresh": () => loadClassReport(state.classReport.cohort),
@@ -526,7 +420,7 @@ document.addEventListener("click", (event) => {
     });
   if (button.dataset.fbViewAs) return busy(button, () => viewAsFromFeedback(button.dataset.fbViewAs));
   if (button.dataset.studentPending)
-    return busy(button, () => loadPending(button.dataset.studentPending));
+    return busy(button, () => remindersHandlers.loadPending(button.dataset.studentPending));
   if (button.dataset.addFocus) {
     const current = state.focusDraft || state.report.focus?.activityIds || [];
     if (current.length < 3 && !current.includes(button.dataset.addFocus)) {
@@ -561,7 +455,7 @@ document.addEventListener("click", (event) => {
       state.adminFeedback.selectedId = null;
       busy(button, () => adminFeedbackHandlers.load(true));
     } else if (state.view === "access") busy(button, accessHandlers.loadAccess);
-    else if (state.view === "reminders") busy(button, loadSender);
+    else if (state.view === "reminders") busy(button, remindersHandlers.loadSender);
     else if (state.code && !state.report && state.view !== "import")
       busy(button, loadReport);
     else render();

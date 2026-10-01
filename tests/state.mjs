@@ -11,6 +11,8 @@ const { historyPage } = await import("../frontend/pages/history.js");
 const importHandlers = await import("../frontend/handlers/import.js");
 const adminFeedbackHandlers = await import("../frontend/handlers/admin-feedback.js");
 const feedbackHandlers = await import("../frontend/handlers/feedback.js");
+const remindersHandlers = await import("../frontend/handlers/reminders.js");
+const apiModule = await import("../frontend/api.js");
 const feedbackPageModule = await import("../frontend/pages/feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const initial = structuredClone(direct);
@@ -118,7 +120,7 @@ test("uma página que importa state.js direto observa uma escrita feita pelo sta
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js", "handlers/reminders.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -369,5 +371,122 @@ test("closeAttachments fecha sem Promise, com um render, e mantém items e urls"
   } finally {
     feedbackHandlers.configure({ render: null });
     direct.feedbackAttachments = saved;
+  }
+});
+
+// Lembretes: prévias, envios, remetente e cópia fora de app.js. Listeners, busy, boot, a navegação global
+// (inclusive "Voltar ao painel", que restaura teacherFilters) e as páginas continuam lá.
+// Código sem as linhas de comentário, para os padrões não casarem com a documentação do módulo.
+const codeOf = (file) => read(`frontend/${file}`).split("\n").filter((line) => !/^\s*\/\//.test(line)).join("\n");
+const HANDLERS = ["access", "import", "admin-feedback", "feedback", "reminders"].map((name) => `handlers/${name}.js`);
+
+test("handlers/reminders.js importa só api, state e ui, não registra listeners nem toca no DOM, e entra no build", () => {
+  const source = codeOf("handlers/reminders.js");
+  assert.deepEqual(importsOf("handlers/reminders.js").sort(), ["api.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(source, /addEventListener|\bdocument\b|\$\(/);
+  assert.match(source, /^export function configure\(options\) \{\n  render = options\.render;\n\}$/m);
+  const app = read("frontend/app.js");
+  assert.ok(importsOf("app.js").includes("handlers/reminders.js"));
+  assert.equal((app.match(/\bremindersHandlers\.configure\(/g) || []).length, 1);
+  assert.match(app, /^remindersHandlers\.configure\(\{ render \}\);$/m);
+  assert.ok(read("scripts/build_frontend.py").includes('"handlers/reminders.js"'));
+  // Só app.js importa o handler: nenhuma página, nenhum outro handler, nem ui/api/state.
+  for (const file of [...PAGES, "ui.js", "api.js", "state.js", ...HANDLERS])
+    assert.ok(!importsOf(file).includes("handlers/reminders.js"), file);
+});
+
+test("handlers/reminders.js expõe só as operações do domínio e não conhece busy, boot, navegação global, sessão nem student-view", () => {
+  assert.deepEqual(Object.keys(remindersHandlers).sort(), ["configure", "copyReminder", "loadBatchPreview", "loadPending", "loadSender",
+    "openBatch", "sendBatch", "sendReminder", "verifySender"]);
+  const source = codeOf("handlers/reminders.js");
+  for (const pattern of [/\bbusy\b/, /\bboot\b/, /\bstart\s*\(/, /studentView|allowedWhileViewing/, /\blocation\b|\bhistory\b|localStorage|sessionStorage/,
+    /\blogin\b|\blogout\b|\bsession\b|auth\.js/, /Object\.assign\(\s*state\s*,\s*state\.teacherFilters\s*\)/])
+    assert.doesNotMatch(source, pattern);
+});
+
+test("app.js não implementa mais Lembretes: as actions, o clique, a navegação e o boot só chamam o handler", () => {
+  const app = read("frontend/app.js");
+  for (const pattern of [/function\s+(loadPending|loadBatchPreview|loadSender)\b/, /\bbatchPreviewRequest\b/, /\bapi\.reminders\./, /navigator\.clipboard/,
+    /Enviar lembrete para \$\{|Enviar este lembrete para/, /Mensagem copiada\.|Envio em lote concluído|Mensagem aceita pelo serviço|Confira a mensagem de verificação/])
+    assert.doesNotMatch(app, pattern);
+  // Nenhuma chamada local a operações de Lembretes: todas passam por remindersHandlers.
+  assert.doesNotMatch(app, /(?<![\w.$])(loadPending|loadBatchPreview|loadSender|openBatch|sendBatch|sendReminder|verifySender|copyReminder)\s*\(/);
+  // Actions de Lembretes: um wrapper síncrono que devolve a Promise do handler (sem async/await extra).
+  const actions = blockAfter(app, /\bconst actions\s*=/);
+  const wrappers = {
+    "retry-pending": /"retry-pending":\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*state\.pendingStudentId\s*\)\s*,/,
+    "retry-batch-preview": /"retry-batch-preview":\s*\(\)\s*=>\s*remindersHandlers\.loadBatchPreview\(\s*\)\s*,/,
+    "reminders-batch": /"reminders-batch":\s*\(button\)\s*=>\s*remindersHandlers\.openBatch\(\s*button\.dataset\.ids\s*\)\s*,/,
+    "send-reminders-batch": /"send-reminders-batch":\s*\(\)\s*=>\s*remindersHandlers\.sendBatch\(\s*\)\s*,/,
+    "copy-reminder": /"copy-reminder":\s*\(\)\s*=>\s*remindersHandlers\.copyReminder\(\s*\)\s*,/,
+    "refresh-sender": /"refresh-sender":\s*\(\)\s*=>\s*remindersHandlers\.loadSender\(\s*\)\s*,/,
+    "verify-sender": /"verify-sender":\s*\(\)\s*=>\s*remindersHandlers\.verifySender\(\s*\)\s*,/,
+    "send-reminder": /"send-reminder":\s*\(\)\s*=>\s*remindersHandlers\.sendReminder\(\s*\)\s*,/,
+  };
+  for (const [key, wrapper] of Object.entries(wrappers)) assert.match(actions, wrapper, key);
+  assert.equal((actions.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length);
+  // Clique do painel, menu "Lembretes" e boot: o mesmo ponto de busy/await de antes, agora pelo handler.
+  assert.match(app, /if\s*\(\s*button\.dataset\.studentPending\s*\)\s*return\s+busy\(\s*button\s*,\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*button\.dataset\.studentPending\s*\)\s*\);/);
+  assert.match(app, /else\s+if\s*\(\s*state\.view\s*===\s*"reminders"\s*\)\s*busy\(\s*button\s*,\s*remindersHandlers\.loadSender\s*\);/);
+  assert.match(app, /if\s*\(\s*state\.view\s*===\s*"reminders"\s*&&\s*teacher\(\)\s*\)\s*await\s+remindersHandlers\.loadSender\(\s*\);/);
+  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 4);
+  // Continuam em app.js: actions, listeners, busy, boot, roteamento e a navegação global com teacherFilters.
+  for (const kept of ["const actions = {", "async function busy(", "async function boot()", "function allowedWhileViewing(",
+    'document.addEventListener("click"', 'document.addEventListener("change"', 'document.addEventListener("input"', 'document.addEventListener("submit"',
+    "if (button.dataset.view) {", "if (returning && state.teacherFilters) Object.assign(state, state.teacherFilters);",
+    'if (state.view === "student-pending" && teacher()) return pendingPage();', 'if (state.view === "reminders-batch" && teacher()) return batchPage();',
+    'if (state.view === "reminders" && teacher()) return senderPage();'])
+    assert.ok(app.includes(kept), kept);
+});
+
+test("batchPreviewRequest mora só no handler de Lembretes, incrementado antes de qualquer efeito da prévia em lote", () => {
+  const handler = codeOf("handlers/reminders.js");
+  assert.match(handler, /^let batchPreviewRequest = 0;$/m);
+  for (const file of ["app.js", "state.js", "ui.js", "api.js", ...PAGES, ...HANDLERS.filter((h) => h !== "handlers/reminders.js")])
+    assert.doesNotMatch(read(`frontend/${file}`), /batchPreviewRequest/, file);
+  assert.ok(!("batchPreviewRequest" in direct));
+  assert.equal(remindersHandlers.batchPreviewRequest, undefined);
+  const body = blockAfter(handler, /export async function loadBatchPreview\(\)/);
+  const order = ["const code = state.code;", "const request = ++batchPreviewRequest;", 'state.batchError = "";', "render();", "await api.reminders.batchPreview("];
+  const at = order.map((step) => body.indexOf(step));
+  assert.ok(at.every((i) => i >= 0), JSON.stringify(at));
+  assert.deepEqual([...at].sort((a, b) => a - b), at);
+  assert.equal((body.match(/\+\+batchPreviewRequest/g) || []).length, 1);
+  assert.equal((body.match(/if \(request === batchPreviewRequest && state\.code === code && state\.view === "reminders-batch"\) \{/g) || []).length, 2);
+});
+
+// Duas chamadas seguidas, sem navegador: só a mais recente aplica sucesso ou erro. O cenário completo
+// (A1 → B → A2, com DOM e renders) fica na suíte de navegador.
+test("loadBatchPreview: a chamada antiga que termina por último não aplica sucesso nem erro", async () => {
+  const keys = ["code", "view", "batchIds", "batchPreview", "batchError", "batchResults"];
+  const saved = Object.fromEntries(keys.map((key) => [key, direct[key]]));
+  const calls = [];
+  let renders = 0;
+  apiModule.setTransport((path, options) => new Promise((resolve, reject) => calls.push({ path, body: options.body, resolve, reject })));
+  remindersHandlers.configure({ render: () => { renders++; } });
+  try {
+    Object.assign(direct, { code: "BRSA0001", view: "reminders-batch", batchIds: ["1", "2"] });
+    const older = remindersHandlers.loadBatchPreview();
+    direct.batchIds = ["1"];
+    const newer = remindersHandlers.loadBatchPreview();
+    assert.deepEqual(calls.map((c) => [c.path, c.body]), [["/cohorts/BRSA0001/pending-preview-batch", { studentIds: ["1", "2"] }],
+      ["/cohorts/BRSA0001/pending-preview-batch", { studentIds: ["1"] }]]);
+    assert.equal(renders, 2);
+    calls[1].resolve({ recipients: [{ id: "1" }] });
+    await newer;
+    calls[0].resolve({ recipients: [{ id: "1" }, { id: "2" }] });
+    await older;
+    assert.deepEqual([direct.batchPreview, direct.batchError, direct.batchResults, renders], [{ recipients: [{ id: "1" }] }, "", null, 3]);
+    const olderFail = remindersHandlers.loadBatchPreview();
+    const newerFail = remindersHandlers.loadBatchPreview();
+    calls[3].reject(new Error("Falha da chamada atual."));
+    await newerFail;
+    calls[2].reject(new Error("Falha da chamada antiga."));
+    await olderFail;
+    assert.deepEqual([direct.batchPreview, direct.batchError, renders], [null, "Falha da chamada atual.", 6]);
+  } finally {
+    remindersHandlers.configure({ render: null });
+    apiModule.setTransport(() => { throw new Error("Sem rede nos testes de state."); });
+    Object.assign(direct, saved);
   }
 });
