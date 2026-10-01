@@ -317,7 +317,6 @@ const actions = {
   "verify-sender": () => remindersHandlers.verifySender(),
   "send-reminder": () => remindersHandlers.sendReminder(),
   login: () => login(config),
-  "class-grades": () => loadClassReport(state.code),
   "class-refresh": () => loadClassReport(state.classReport.cohort),
   "class-exit": async () => {
     state.classReport = null;

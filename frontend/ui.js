@@ -3,10 +3,6 @@
 // e navegação.
 import { state } from "./state.js";
 
-// Compatibilidade: app.js e as páginas ainda importam state daqui, assim como módulos antigos em
-// cache durante uma publicação. É a mesma referência de state.js.
-export { state };
-
 export const $ = (selector) => document.querySelector(selector);
 export const e = (value) =>
   String(value ?? "").replace(

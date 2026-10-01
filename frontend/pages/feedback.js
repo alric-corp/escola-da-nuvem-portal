@@ -2,9 +2,6 @@ import { e, heading, plural, teacher } from "../ui.js";
 import { state } from "../state.js";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES } from "../handlers/feedback.js";
 
-// Reexport temporário: um app.js anterior em cache ainda importa estas constantes desta página.
-export { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES };
-
 // Feedback da plataforma (backend/feedback.py). Todo conteúdo vindo do usuário passa por e():
 // título e descrição são texto, nunca HTML.
 export const feedbackTypes = { BUG: "Bug", SUGGESTION: "Sugestão", IMPROVEMENT: "Melhoria", OTHER: "Outro" };

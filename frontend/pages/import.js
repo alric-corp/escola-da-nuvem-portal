@@ -2,9 +2,6 @@ import { badge, current, date, demo, e, heading, icon, nextCanvasSync, percent, 
 import { state } from "../state.js";
 import { blockedByIntegrity } from "../handlers/import.js";
 
-// Reexport temporário: um app.js anterior em cache ainda importa blockedByIntegrity desta página.
-export { blockedByIntegrity };
-
 const studentCodes = ["rosterUnavailable", "studentNotInRoster", "emailBelongsToOtherStudent", "rosterShrink", "publicationShrink"];
 const issueItem = (i) => `<li><strong>${e(i.message)}</strong>${i.ids?.length ? `<small>${i.ids.length === 1 ? "Canvas ID" : "Canvas IDs"} ${e(i.ids.join(", "))}${i.count > i.ids.length ? ` e mais ${i.count - i.ids.length}` : ""}</small>` : ""}</li>`;
 

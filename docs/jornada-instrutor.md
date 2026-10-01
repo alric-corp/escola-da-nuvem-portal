@@ -72,4 +72,4 @@ Só é possível **um lembrete por aluno por publicação**, com exceção dos e
 
 ## 6. Notas da turma (`?turma=<code>`)
 
-`frontend/pages/class-report.js` é uma tela somente leitura, sem e-mails nem IDs. Ela abre por link direto ou pela ação `class-grades`. O conteúdo se sobrepõe ao painel do instrutor.
+`frontend/pages/class-report.js` é uma tela somente leitura, sem e-mails nem IDs. Ela abre por link direto (`?turma=`). O conteúdo se sobrepõe ao painel do instrutor.

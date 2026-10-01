@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 // ui.js lê location ao ser carregado (flag de demonstração).
 globalThis.location = { hostname: "portal.test", search: "" };
@@ -72,15 +73,12 @@ test("state.js é uma folha: nenhum import e apenas o export de state", () => {
   assert.deepEqual([...source.matchAll(/^export\s+(?:let|const|function|\{)\s*(\w+)?/gm)].map((m) => m[1]), ["state"]);
 });
 
-test("state.js e ui.js exportam a mesma referência", () => {
-  assert.equal(ui.state, direct);
-});
-
-// O re-export continua enquanto módulos anteriores à migração podem estar em cache nos navegadores.
-test("ui.js continua reexportando o mesmo binding de state.js", () => {
-  const source = read("frontend/ui.js");
-  assert.match(source, /^import \{ state \} from "\.\/state\.js";$/m);
-  assert.match(source, /^export \{ state \};$/m);
+// state tem uma única fonte, state.js. ui.js só o usa internamente: o reexport de compatibilidade de cache
+// saiu na C6.1, quando nem os módulos atuais nem o app.js publicado antes dela o importavam de ui.js.
+test("state vem só de state.js: ui.js, api.js, as páginas e os handlers não o exportam", async () => {
+  const modules = ["ui.js", "api.js", ...PAGES, ...["access", "import", "admin-feedback", "feedback", "reminders"].map((name) => `handlers/${name}.js`)];
+  for (const file of modules) assert.equal("state" in (await import(`../frontend/${file}`)), false, file);
+  assert.ok("state" in (await import("../frontend/state.js")));
 });
 
 test("app.js e as 11 páginas importam state direto de state.js, e nenhum de ui.js", () => {
@@ -95,7 +93,6 @@ test("app.js e as 11 páginas importam state direto de state.js, e nenhum de ui.
 
 test("ui.js observa na hora uma alteração feita via state.js", () => {
   withState({ view: "history", me: { roles: ["admin"], email: "admin@example.test" } }, () => {
-    assert.equal(ui.state.view, "history");
     assert.match(ui.nav("history", "Meu histórico", "clock"), /class="nav-item active" data-view="history" aria-current="page"/);
     assert.doesNotMatch(ui.nav("overview", "Meu desempenho", "grid"), /active/);
     assert.equal(ui.pageLabel(), "Meu histórico");
@@ -109,13 +106,6 @@ test("uma página observa alterações feitas via state.js", () => {
   assert.doesNotMatch(historyPage(), /history-table/);
   const report = { history: [{ publishedAt: "2026-09-01T12:00:00Z", total: 50, kc: 40, lab: 60 }] };
   withState({ report }, () => assert.match(historyPage(), /history-table/));
-  assert.equal(direct.report, null);
-});
-
-test("uma página que importa state.js direto observa uma escrita feita pelo state reexportado de ui.js", () => {
-  const report = { history: [{ publishedAt: "2026-09-01T12:00:00Z", total: 50, kc: 40, lab: 60 }] };
-  ui.state.report = report;
-  try { assert.match(historyPage(), /history-table/); } finally { ui.state.report = null; }
   assert.equal(direct.report, null);
 });
 
@@ -175,18 +165,17 @@ test("handlers/import.js importa só api, state e ui, não registra listeners e 
   assert.ok(read("scripts/build_frontend.py").includes('"handlers/import.js"'));
 });
 
-test("blockedByIntegrity mora só em handlers/import.js, e pages/import.js a importa de lá", () => {
+test("blockedByIntegrity mora só em handlers/import.js; pages/import.js a importa e usa, sem reexportar", () => {
   assert.match(read("frontend/handlers/import.js"), /^export function blockedByIntegrity\(p\) \{\n  return !!p\?\.integrity\?\.critical\?\.length;\n\}$/m);
   const page = read("frontend/pages/import.js");
   assert.doesNotMatch(page, /function blockedByIntegrity|blockedByIntegrity\s*=|integrity\?\.critical\?\.length/);
   assert.match(page, /^import \{ blockedByIntegrity \} from "\.\.\/handlers\/import\.js";$/m);
-  // Compatibilidade de cache: a página continua exportando o mesmo binding do handler.
-  assert.match(page, /^export \{ blockedByIntegrity \};$/m);
   assert.deepEqual(importsOf("pages/import.js").sort(), ["handlers/import.js", "state.js", "ui.js"]);
   assert.equal(importHandlers.blockedByIntegrity({ integrity: { critical: [{}] } }), true);
   assert.equal(importHandlers.blockedByIntegrity({ integrity: { critical: [] } }), false);
   assert.equal(importHandlers.blockedByIntegrity(null), false);
-  assert.equal(importPageModule.blockedByIntegrity, importHandlers.blockedByIntegrity);
+  // O reexport de compatibilidade de cache saiu na C6.1: a página não exporta mais o binding.
+  assert.equal("blockedByIntegrity" in importPageModule, false);
 });
 
 test("app.js não guarda mais rascunhos nem a lógica de importação", () => {
@@ -318,22 +307,21 @@ test("handlers/feedback.js expõe só a API do domínio; validação, envio e pr
     assert.doesNotMatch(source, pattern);
 });
 
-test("ATTACHMENT_* têm uma única definição (handlers/feedback.js); a página importa, usa e reexporta o mesmo binding", () => {
+test("ATTACHMENT_* têm uma única definição (handlers/feedback.js); a página importa e usa, sem reexportar", () => {
   const files = ["app.js", ...PAGES, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js"];
   for (const name of ["ATTACHMENT_TYPES", "ATTACHMENT_MAX_BYTES", "ATTACHMENT_SLOTS"]) {
     const defined = files.filter((file) => new RegExp(`\\b(?:const|let|var)\\s+${name}\\b`).test(read(`frontend/${file}`)));
     assert.deepEqual(defined, ["handlers/feedback.js"], name);
-    assert.equal(feedbackPageModule[name], feedbackHandlers[name], name);
+    // O reexport de compatibilidade de cache saiu na C6.1: a página não exporta mais as constantes.
+    assert.equal(name in feedbackPageModule, false, name);
   }
   assert.deepEqual(feedbackHandlers.ATTACHMENT_TYPES, ["image/png", "image/jpeg", "image/webp"]);
   assert.equal(feedbackHandlers.ATTACHMENT_MAX_BYTES, 5 * 1024 * 1024);
   assert.equal(feedbackHandlers.ATTACHMENT_SLOTS, 3);
   const page = read("frontend/pages/feedback.js");
   assert.match(page, /^import \{ ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES \} from "\.\.\/handlers\/feedback\.js";$/m);
-  // Compatibilidade de cache: um app.js anterior importa as constantes desta página.
-  assert.match(page, /^export \{ ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES \};$/m);
   assert.deepEqual(importsOf("pages/feedback.js").sort(), ["handlers/feedback.js", "state.js", "ui.js"]);
-  // O app.js novo lê as constantes pelo handler, nunca pela página.
+  // O app.js lê as constantes pelo handler, nunca pela página.
   const app = read("frontend/app.js");
   assert.match(app, /^import \{ DESCRIPTION_MAX, TITLE_MAX, feedbackPage \} from "\.\/pages\/feedback\.js";$/m);
   assert.doesNotMatch(app, /(?<!\.)ATTACHMENT_(TYPES|MAX_BYTES|SLOTS)/);
@@ -489,4 +477,25 @@ test("loadBatchPreview: a chamada antiga que termina por último não aplica suc
     apiModule.setTransport(() => { throw new Error("Sem rede nos testes de state."); });
     Object.assign(direct, saved);
   }
+});
+
+// Actions do app.js pelas propriedades reais do objeto: o V8 avalia só o literal (nenhuma action roda),
+// então chaves com e sem aspas contam igual.
+function actionKeys() {
+  const app = read("frontend/app.js"), marker = "const actions = ";
+  assert.ok(app.includes(marker), "objeto actions não encontrado no app.js");
+  const start = app.indexOf(marker) + marker.length;
+  for (let end = app.indexOf("}", start); end >= 0; end = app.indexOf("}", end + 1)) {
+    try { return Object.keys(vm.runInNewContext(`(${app.slice(start, end + 1)})`, Object.create(null))); }
+    catch { /* literal ainda incompleto: segue até a chave que fecha o objeto */ }
+  }
+  assert.fail("objeto actions sem fechamento no app.js");
+}
+
+// class-grades nunca teve gatilho (nenhum data-action) e saiu na C6.1. O relatório da turma continua por
+// ?turma= (start → loadClassReport) e pelos botões class-refresh e class-exit da própria tela.
+test("a action morta class-grades saiu; class-refresh e class-exit continuam", () => {
+  const keys = actionKeys();
+  assert.equal(keys.includes("class-grades"), false);
+  assert.ok(keys.includes("class-refresh") && keys.includes("class-exit"), JSON.stringify(keys));
 });
