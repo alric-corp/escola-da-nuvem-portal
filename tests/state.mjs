@@ -10,6 +10,8 @@ const ui = await import("../frontend/ui.js");
 const { historyPage } = await import("../frontend/pages/history.js");
 const importHandlers = await import("../frontend/handlers/import.js");
 const adminFeedbackHandlers = await import("../frontend/handlers/admin-feedback.js");
+const feedbackHandlers = await import("../frontend/handlers/feedback.js");
+const feedbackPageModule = await import("../frontend/pages/feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
@@ -116,7 +118,7 @@ test("uma página que importa state.js direto observa uma escrita feita pelo sta
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -242,10 +244,130 @@ test("handlers/admin-feedback.js não conhece feedback próprio, attachments nem
     assert.doesNotMatch(source, pattern);
 });
 
+// Corpo do bloco { … } que começa depois do primeiro trecho que casa com o padrão (ignora chaves em strings).
+function blockAfter(source, pattern) {
+  const found = source.match(pattern);
+  assert.ok(found, `bloco não encontrado: ${pattern}`);
+  const open = source.indexOf("{", found.index + found[0].length);
+  let depth = 0, quote = null;
+  for (let i = open; i < source.length; i++) {
+    const c = source[i];
+    if (quote) { if (c === "\\") i++; else if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'" || c === "`") quote = c;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return source.slice(open + 1, i);
+  }
+  assert.fail(`bloco sem fechamento: ${pattern}`);
+}
+
+// fbOpen: o detalhe do admin é composto em app.js (seleção pelo handler de Admin Feedback, foco no DOM e
+// galeria pelo handler de Feedback). Os handlers não se conhecem.
+test("fbOpen: app.js compõe o detalhe do admin com feedbackHandlers.loadAttachments; só o handler de Feedback implementa a galeria", () => {
+  const app = read("frontend/app.js");
+  const open = blockAfter(app, /if\s*\(\s*button\.dataset\.fbOpen\s*\)/);
+  const steps = [
+    /\badminFeedbackHandlers\.select\(\s*button\.dataset\.fbOpen\s*\)/,
+    /\$\(\s*"#fb-detail-title"\s*\)\?\.focus\(\s*\)/,
+    /\bif\s*\(\s*opened\?\.attachments\s*\)\s*busy\(\s*null\s*,\s*\(\)\s*=>\s*feedbackHandlers\.loadAttachments\(\s*opened\.id\s*\)/,
+  ];
+  const at = steps.map((step) => open.search(step));
+  assert.ok(at.every((i) => i >= 0), `fbOpen sem seleção, foco ou galeria: ${JSON.stringify(at)}`);
+  assert.deepEqual([...at].sort((a, b) => a - b), at, "fbOpen fora de ordem: seleção, foco, galeria");
+  // Nenhuma implementação nem chamada local: todo loadAttachments do app.js passa pelo handler de Feedback.
+  assert.doesNotMatch(app, /(?<!feedbackHandlers\.)\bloadAttachments\b/);
+  // Uma única implementação, exportada pelo handler de Feedback.
+  const modules = ["app.js", ...PAGES, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js"];
+  assert.deepEqual(modules.filter((file) => /\bfunction\s+loadAttachments\b|\bloadAttachments\s*=/.test(read(`frontend/${file}`))), ["handlers/feedback.js"]);
+  assert.match(read("frontend/handlers/feedback.js"), /^export async function loadAttachments\(/m);
+  assert.equal(typeof feedbackHandlers.loadAttachments, "function");
+  // O handler de Admin Feedback não importa nem chama anexos.
+  assert.ok(!importsOf("handlers/admin-feedback.js").includes("handlers/feedback.js"));
+  assert.doesNotMatch(read("frontend/handlers/admin-feedback.js"), /\bfeedbackHandlers\b|\bloadAttachments\b|\bapi\.feedback\./);
+  assert.equal(adminFeedbackHandlers.loadAttachments, undefined);
+});
+
 test("app.js não guarda mais a listagem de Admin Feedback nem chama a API de admin/feedback direto", () => {
   const app = read("frontend/app.js");
   for (const pattern of [/\badminFeedbackRequest\b/, /function loadAdminFeedback\b/, /api\.adminFeedback\.(list|setStatus)\(/])
     assert.doesNotMatch(app, pattern);
-  for (const kept of ["async function viewAsFromFeedback(", "await exitStudentView(", "loadAttachments(", "$(\"#fb-detail-title\")", "$(\"#fb-status-select\").value", "async function busy("])
+  for (const kept of ["async function viewAsFromFeedback(", "await exitStudentView(", "$(\"#fb-detail-title\")", "$(\"#fb-status-select\").value", "async function busy("])
     assert.ok(app.includes(kept), kept);
+});
+
+// Feedback próprio e anexos: "Meus feedbacks", envio, imagens escolhidas, envio ao S3 e galeria fora de
+// app.js. O seletor de arquivos, os listeners, o busy, a navegação e o boot continuam lá.
+test("handlers/feedback.js importa só api, state e ui, não registra listeners nem toca no DOM, e entra no build", () => {
+  const source = read("frontend/handlers/feedback.js");
+  assert.deepEqual(importsOf("handlers/feedback.js").sort(), ["api.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(source, /addEventListener|\bdocument\b|\$\(|\bimagePicker\b|\bpickerTarget\b/);
+  assert.match(source, /^export function configure\(options\) \{\n  render = options\.render;\n\}$/m);
+  const app = read("frontend/app.js");
+  assert.ok(importsOf("app.js").includes("handlers/feedback.js"));
+  assert.equal((app.match(/\bfeedbackHandlers\.configure\(/g) || []).length, 1);
+  assert.match(app, /^feedbackHandlers\.configure\(\{ render \}\);$/m);
+  assert.ok(read("scripts/build_frontend.py").includes('"handlers/feedback.js"'));
+});
+
+test("handlers/feedback.js expõe só a API do domínio; validação, envio e prévias continuam internos", () => {
+  assert.deepEqual(Object.keys(feedbackHandlers).sort(), ["ATTACHMENT_MAX_BYTES", "ATTACHMENT_SLOTS", "ATTACHMENT_TYPES", "addPickedImages",
+    "closeAttachments", "configure", "discardUploads", "loadAttachments", "loadMine", "removeFile", "retryUploads", "submit"]);
+  const source = read("frontend/handlers/feedback.js");
+  for (const pattern of [/adminFeedback/, /enterStudentView|exitStudentView|viewAsFromFeedback|studentView/, /\bboot\b/, /\bbusy\s*\(/, /toggleAttachments/])
+    assert.doesNotMatch(source, pattern);
+});
+
+test("ATTACHMENT_* têm uma única definição (handlers/feedback.js); a página importa, usa e reexporta o mesmo binding", () => {
+  const files = ["app.js", ...PAGES, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js"];
+  for (const name of ["ATTACHMENT_TYPES", "ATTACHMENT_MAX_BYTES", "ATTACHMENT_SLOTS"]) {
+    const defined = files.filter((file) => new RegExp(`\\b(?:const|let|var)\\s+${name}\\b`).test(read(`frontend/${file}`)));
+    assert.deepEqual(defined, ["handlers/feedback.js"], name);
+    assert.equal(feedbackPageModule[name], feedbackHandlers[name], name);
+  }
+  assert.deepEqual(feedbackHandlers.ATTACHMENT_TYPES, ["image/png", "image/jpeg", "image/webp"]);
+  assert.equal(feedbackHandlers.ATTACHMENT_MAX_BYTES, 5 * 1024 * 1024);
+  assert.equal(feedbackHandlers.ATTACHMENT_SLOTS, 3);
+  const page = read("frontend/pages/feedback.js");
+  assert.match(page, /^import \{ ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES \} from "\.\.\/handlers\/feedback\.js";$/m);
+  // Compatibilidade de cache: um app.js anterior importa as constantes desta página.
+  assert.match(page, /^export \{ ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES \};$/m);
+  assert.deepEqual(importsOf("pages/feedback.js").sort(), ["handlers/feedback.js", "state.js", "ui.js"]);
+  // O app.js novo lê as constantes pelo handler, nunca pela página.
+  const app = read("frontend/app.js");
+  assert.match(app, /^import \{ DESCRIPTION_MAX, TITLE_MAX, feedbackPage \} from "\.\/pages\/feedback\.js";$/m);
+  assert.doesNotMatch(app, /(?<!\.)ATTACHMENT_(TYPES|MAX_BYTES|SLOTS)/);
+  assert.ok(app.includes('accept: feedbackHandlers.ATTACHMENT_TYPES.join(",")'));
+});
+
+test("app.js não guarda mais o feedback próprio nem os anexos, mas mantém o seletor, os listeners e a composição", () => {
+  const app = read("frontend/app.js");
+  for (const pattern of [/\bloadMyFeedback\b/, /function (pickImages|releaseFiles|uploadImages?|sendFormImages|loadAttachments|addPickedImages)\b/,
+    /\bapi\.feedback\.|\bapi\.uploadAttachmentToS3\b/, /previewUrl/])
+    assert.doesNotMatch(app, pattern);
+  for (const kept of ['const imagePicker = Object.assign(document.createElement("input")', "document.body.append(imagePicker);", "let pickerTarget = null;",
+    'imagePicker.value = "";', "busy(null, () => feedbackHandlers.addPickedImages(pickerTarget, files))",
+    // Fechar a galeria continua fora do busy; só abrir (carregar) passa por ele.
+    "if (state.feedbackAttachments[id]?.open) feedbackHandlers.closeAttachments(id);\n    else busy(button, () => feedbackHandlers.loadAttachments(id));",
+    'if (id === "fb-title" || id === "fb-description")', 'if (target.name === "fb-type") state.feedbackDraft.type = target.value;',
+    "async function viewAsFromFeedback(", "async function busy("])
+    assert.ok(app.includes(kept), kept);
+  assert.equal((app.match(/imagePicker\.addEventListener\(/g) || []).length, 1);
+});
+
+// Fechar a galeria é síncrono: um render, sem Promise, e lista e links continuam guardados.
+test("closeAttachments fecha sem Promise, com um render, e mantém items e urls", () => {
+  const saved = direct.feedbackAttachments;
+  let renders = 0;
+  feedbackHandlers.configure({ render: () => { renders++; } });
+  try {
+    const items = [{ attachmentId: "a1" }], urls = { a1: "https://arquivos.example.test/a1" };
+    direct.feedbackAttachments = { f1: { open: true, loading: false, error: "", items, urls } };
+    assert.equal(feedbackHandlers.closeAttachments("f1"), undefined);
+    assert.equal(renders, 1);
+    assert.equal(direct.feedbackAttachments.f1.open, false);
+    assert.equal(direct.feedbackAttachments.f1.items, items);
+    assert.equal(direct.feedbackAttachments.f1.urls, urls);
+  } finally {
+    feedbackHandlers.configure({ render: null });
+    direct.feedbackAttachments = saved;
+  }
 });

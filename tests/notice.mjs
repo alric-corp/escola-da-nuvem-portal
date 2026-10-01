@@ -104,18 +104,17 @@ test("não altera o state", () => {
   assert.deepEqual(state, before);
 });
 
-test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos de chamada (19 + 5 + 2 + 1)", () => {
+test("app.js usa a notice() de ui.js, sem cópia local, com os mesmos 27 pontos de chamada (14 + 5 + 2 + 1 + 5)", () => {
   const app = read("frontend/app.js");
   const fromUi = [...app.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']\.\/ui\.js["']/g)]
     .flatMap(([, names]) => names.split(",").map((name) => name.trim()));
   assert.ok(fromUi.includes("notice"), "app.js deve importar notice de ./ui.js");
   assert.doesNotMatch(app, /\bfunction\s+notice\s*\(/);
   assert.match(read("frontend/ui.js"), /^export function notice\s*\(/m);
-  // Chamadas reais: o nome no import não é seguido de "(". Os avisos de Turmas e acessos e os de
-  // Importação moram nos handlers; o total continua o mesmo.
+  // Chamadas reais: o nome no import não é seguido de "(". Os avisos de Turmas e acessos, Importação,
+  // Admin Feedback e Feedback próprio moram nos handlers; o total continua o mesmo.
   const count = (source) => (source.match(/(?<![\w.$])notice\s*\(/g) || []).length;
-  assert.equal(count(app), 19);
-  assert.equal(count(read("frontend/handlers/access.js")), 5);
-  assert.equal(count(read("frontend/handlers/import.js")), 2);
-  assert.equal(count(read("frontend/handlers/admin-feedback.js")), 1);
+  const counts = [count(app), ...["access", "import", "admin-feedback", "feedback"].map((name) => count(read(`frontend/handlers/${name}.js`)))];
+  assert.deepEqual(counts, [14, 5, 2, 1, 5]);
+  assert.equal(counts.reduce((total, n) => total + n, 0), 27);
 });

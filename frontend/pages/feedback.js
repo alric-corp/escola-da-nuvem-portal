@@ -1,5 +1,9 @@
 import { e, heading, plural, teacher } from "../ui.js";
 import { state } from "../state.js";
+import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES } from "../handlers/feedback.js";
+
+// Reexport temporário: um app.js anterior em cache ainda importa estas constantes desta página.
+export { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES };
 
 // Feedback da plataforma (backend/feedback.py). Todo conteúdo vindo do usuário passa por e():
 // título e descrição são texto, nunca HTML.
@@ -26,10 +30,6 @@ export function originLabel(page, asStudent = !teacher()) {
   }[page] || "";
 }
 
-// Anexos (backend/feedback.py): só PNG, JPEG e WebP, até 5 MiB cada, no máximo 3 por feedback.
-export const ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/webp"];
-export const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
-export const ATTACHMENT_SLOTS = 3;
 export const OPEN_STATUSES = ["NEW", "IN_REVIEW"];
 export const fileSize = (bytes) => bytes >= 1024 * 1024
   ? `${(bytes / 1048576).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} MB`
