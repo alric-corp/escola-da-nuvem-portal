@@ -26,6 +26,7 @@ feedbackHandlers.configure({ render });
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
+let batchPreviewRequest = 0;
 let renderedView = "";
 let lastFocusSelector = "";
 // "Visualizar como aluno" vale só para esta aba: registro em sessionStorage e a marca
@@ -217,18 +218,19 @@ async function loadPending(studentId) {
 
 async function loadBatchPreview() {
   const code = state.code;
+  const request = ++batchPreviewRequest;
   state.batchError = "";
   state.batchPreview = null;
   state.batchResults = null;
   render();
   try {
     const preview = await api.reminders.batchPreview(code, { studentIds: state.batchIds });
-    if (state.code === code && state.view === "reminders-batch") {
+    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
       state.batchPreview = preview;
       render();
     }
   } catch (err) {
-    if (state.code === code && state.view === "reminders-batch") {
+    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
       state.batchError = err.message;
       render();
     }

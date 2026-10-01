@@ -107,6 +107,14 @@ try {
   const snapshot = (tab, ...keys) => tab.evaluate((k) => JSON.parse(JSON.stringify(Object.fromEntries(k.map((key) => [key, window.__state[key]])))), keys);
   const noticeTexts = (tab) => tab.locator("#notices .notice").evaluateAll((els) => els.map((el) => ({ error: el.classList.contains("error"), text: el.querySelector("span").textContent })));
   const filtersOf = async (tab) => [await tab.locator("#search").inputValue(), await tab.locator("#status-filter").inputValue(), await tab.locator("#student-sort").inputValue()];
+  // Conta as mudanças em #app a partir de agora (render() troca o innerHTML de #app).
+  const watchRenders = (tab) => tab.evaluate(() => {
+    window.__renders = 0;
+    window.__renderObserver?.disconnect();
+    window.__renderObserver = new MutationObserver((list) => { window.__renders += list.length; });
+    window.__renderObserver.observe(document.querySelector("#app"), { childList: true });
+  });
+  const rendersSince = (tab) => tab.evaluate(() => window.__renders + window.__renderObserver.takeRecords().length);
   const roster = {
     BRSA0267: [
       { id: "1", name: "Ana Teste", email: "ana@example.test", kc: 50, lab: 100, total: 75, completed: 1, pending: 2, progress: 33, status: "attention" },
@@ -331,8 +339,8 @@ try {
     await context.close();
   }
 
-  // Lote: quem saiu descarta a prévia atrasada (guarda por turma e view); sem guarda por request,
-  // um lote antigo que termina depois de um novo, na mesma tela, substitui o novo.
+  // Lote: quem saiu descarta a prévia atrasada (guarda por turma e view); na mesma tela, um lote antigo
+  // que termina depois de um novo também é descartado (guarda por request).
   {
     const { context, tab, log } = await open();
     const gates = [deferred(), deferred()], arrivals = [deferred(), deferred()];
@@ -357,20 +365,179 @@ try {
     await late;
     await flushNetwork(tab);
     assert.deepEqual(await snapshot(tab, "view", "batchPreview"), { view: "overview", batchPreview: null });
-    // Mesma tela: lote A (2 alunos) preso, lote B (1 aluno) responde antes; A chega depois e substitui B.
+    // Mesma tela: lote A (2 alunos) fica preso; lote B (1 aluno) começa depois, também preso, e responde
+    // primeiro. A chega por último e é descartado: nada muda no state nem na tela, e não há redesenho.
+    const gateA = deferred(), arrivedA = deferred(), gateB = deferred(), arrivedB = deferred();
+    log.handle = ({ route, entry }) => {
+      if (!entry.path.endsWith("/pending-preview-batch")) return;
+      if (entry.body.studentIds.length === 2) { arrivedA.resolve(); return held(route, gateA, batchFor("BRSA0267", entry.body.studentIds)); }
+      arrivedB.resolve();
+      return held(route, gateB, batchFor("BRSA0267", entry.body.studentIds));
+    };
     await button(tab, "Enviar lembrete para 2 alunos").click();
+    await arrivedA.promise;
+    assert.equal(await tab.getByText("Consultando destinatários…", { exact: true }).count(), 1);
+    await button(tab, "Voltar ao painel").click();
+    await tab.locator("#search").fill("Ana");
+    await button(tab, "Enviar lembrete para 1 aluno").click();
+    await arrivedB.promise;
+    assert.equal(await tab.getByText("Consultando destinatários…", { exact: true }).count(), 1);
+    assert.deepEqual(await snapshot(tab, "batchIds", "batchPreview", "batchError", "batchResults"),
+      { batchIds: ["1"], batchPreview: null, batchError: "", batchResults: null });
+    gateB.resolve();
+    await tab.getByText(/1 de 1 aluno vai receber/).waitFor();
+    const afterB = await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults");
+    assert.deepEqual([afterB.view, afterB.batchIds, afterB.batchPreview.recipients.map((r) => r.id), afterB.batchError, afterB.batchResults],
+      ["reminders-batch", ["1"], ["1"], "", null]);
+    assert.equal(await tab.getByText("Consultando destinatários…", { exact: true }).count(), 0);
+    await watchRenders(tab);
+    late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch") && r.request().postDataJSON()?.studentIds.length === 2);
+    gateA.resolve();
+    await late;
+    await flushNetwork(tab);
+    assert.equal(await rendersSince(tab), 0, "a resposta antiga não redesenha a tela");
+    assert.deepEqual(await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults"), afterB);
+    assert.equal(await tab.getByText(/1 de 1 aluno vai receber/).count(), 1);
+    assert.equal(await tab.getByText("Consultando destinatários…", { exact: true }).count(), 0);
+    assert.deepEqual([log.errors, log.dialogs], [[], []]);
+    await context.close();
+  }
+
+  // Lote: a identidade é a da request, não a do conjunto de alunos. A1 [1,2] → B [1] → A2 [1,2], todas presas;
+  // cada prévia traz a própria publicação (pub-1, pub-2, pub-3), visível no assunto. B termina com A2 pendente,
+  // depois A2; A1 chega por último com os MESMOS alunos de A2 e ainda assim é descartada.
+  {
+    const { context, tab, log } = await open();
+    const gates = [deferred(), deferred(), deferred()], arrivals = [deferred(), deferred(), deferred()];
+    let started = 0;
+    log.handle = ({ route, entry }) => {
+      if (!entry.path.endsWith("/pending-preview-batch")) return;
+      const i = started++, preview = batchFor("BRSA0267", entry.body.studentIds);
+      arrivals[i].resolve();
+      return held(route, gates[i], { ...preview, publicationId: `pub-${i + 1}`, sample: { ...preview.sample, subject: `Podemos ajudar? · pub-${i + 1}` } });
+    };
+    const batchState = () => snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults");
+    const consulting = () => tab.getByText("Consultando destinatários…", { exact: true }).count();
+    await tab.locator("#status-filter").selectOption("pending");
+    await button(tab, "Enviar lembrete para 2 alunos").click();
+    await arrivals[0].promise;
+    await button(tab, "Voltar ao painel").click();
+    await tab.locator("#search").fill("Ana");
+    await button(tab, "Enviar lembrete para 1 aluno").click();
     await arrivals[1].promise;
+    await button(tab, "Voltar ao painel").click();
+    await tab.locator("#search").fill("");
+    await button(tab, "Enviar lembrete para 2 alunos").click();
+    await arrivals[2].promise;
+    assert.deepEqual(calls(log, "pending-preview-batch").map((r) => r.body), [{ studentIds: ["1", "2"] }, { studentIds: ["1"] }, { studentIds: ["1", "2"] }]);
+    const pendingA2 = await batchState();
+    assert.deepEqual(pendingA2, { view: "reminders-batch", batchIds: ["1", "2"], batchPreview: null, batchError: "", batchResults: null });
+    assert.equal(await consulting(), 1);
+
+    // B (antiga) termina com A2 (atual) pendente: nada muda e a tela continua consultando.
+    await watchRenders(tab);
+    let late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch"));
+    gates[1].resolve();
+    await late;
+    await flushNetwork(tab);
+    assert.equal(await rendersSince(tab), 0, "B, antiga, não redesenha a tela");
+    assert.deepEqual(await batchState(), pendingA2);
+    assert.equal(await consulting(), 1);
+    assert.equal(await tab.getByText("Podemos ajudar? · pub-2", { exact: true }).count(), 0);
+
+    // A2 (atual) termina: vira a prévia, com a publicação dela.
+    await watchRenders(tab);
+    gates[2].resolve();
+    await tab.getByText("Podemos ajudar? · pub-3", { exact: true }).waitFor();
+    assert.ok(await rendersSince(tab) > 0, "A2, atual, redesenha a tela");
+    const afterA2 = await batchState();
+    assert.deepEqual([afterA2.batchIds, afterA2.batchPreview.publicationId, afterA2.batchPreview.recipients.map((r) => r.id), afterA2.batchError, afterA2.batchResults],
+      [["1", "2"], "pub-3", ["1", "2"], "", null]);
+    assert.equal(await tab.getByText(/1 de 2 alunos vai receber/).count(), 1);
+    assert.equal(await consulting(), 0);
+    const domA2 = await tab.locator("#app").innerHTML();
+
+    // A1 (antiga, com os mesmos alunos de A2) termina por último: é descartada.
+    await watchRenders(tab);
+    late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch"));
+    gates[0].resolve();
+    await late;
+    await flushNetwork(tab);
+    assert.equal(await rendersSince(tab), 0, "A1, com os mesmos alunos de A2, não redesenha a tela");
+    assert.deepEqual(await batchState(), afterA2, "A1 não substitui a prévia de A2 (pub-3)");
+    assert.equal(await tab.locator("#app").innerHTML(), domA2, "A1 não muda a tela");
+    assert.equal(await consulting(), 0);
+    assert.deepEqual(await noticeTexts(tab), []);
+    assert.deepEqual([log.errors, log.dialogs], [[], []]);
+    await context.close();
+  }
+
+  // Lote: um erro atrasado de um lote antigo não substitui a prévia do lote atual (guarda por request).
+  {
+    const { context, tab, log } = await open();
+    const gateA = deferred(), arrivedA = deferred();
+    log.handle = ({ route, entry }) => {
+      if (!entry.path.endsWith("/pending-preview-batch") || entry.body.studentIds.length !== 2) return;
+      arrivedA.resolve();
+      return held(route, gateA, { error: "Falha atrasada do lote antigo." }, 500);
+    };
+    await tab.locator("#status-filter").selectOption("pending");
+    await button(tab, "Enviar lembrete para 2 alunos").click();
+    await arrivedA.promise;
     await button(tab, "Voltar ao painel").click();
     await tab.locator("#search").fill("Ana");
     await button(tab, "Enviar lembrete para 1 aluno").click();
     await tab.getByText(/1 de 1 aluno vai receber/).waitFor();
-    late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch") && r.request().postDataJSON()?.studentIds.length === 2);
-    gates[1].resolve();
+    const afterB = await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults");
+    assert.deepEqual([afterB.batchIds, afterB.batchError], [["1"], ""]);
+    await watchRenders(tab);
+    const late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch") && r.request().postDataJSON()?.studentIds.length === 2);
+    gateA.resolve();
     await late;
     await flushNetwork(tab);
-    const s = await snapshot(tab, "view", "batchIds", "batchPreview");
-    assert.deepEqual([s.view, s.batchIds, s.batchPreview.recipients.map((r) => r.id)], ["reminders-batch", ["1"], ["1", "2"]]);
-    assert.equal(await tab.getByText(/1 de 2 alunos vai receber/).count(), 1);
+    assert.equal(await rendersSince(tab), 0, "o erro antigo não redesenha a tela");
+    assert.deepEqual(await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults"), afterB);
+    assert.equal(await tab.getByRole("alert").filter({ hasText: "Falha atrasada do lote antigo." }).count(), 0);
+    assert.equal(await tab.getByText(/1 de 1 aluno vai receber/).count(), 1);
+    assert.deepEqual(await noticeTexts(tab), []);
+    assert.deepEqual([log.errors, log.dialogs], [[], []]);
+    await context.close();
+  }
+
+  // Lote: o erro do lote atual aparece mesmo com um lote antigo pendente; o antigo, ao terminar depois, é
+  // descartado; e "Tentar novamente" refaz a prévia do lote atual.
+  {
+    const { context, tab, log } = await open();
+    const gateA = deferred(), arrivedA = deferred();
+    let failedB = false;
+    log.handle = ({ route, entry }) => {
+      if (!entry.path.endsWith("/pending-preview-batch")) return;
+      if (entry.body.studentIds.length === 2) { arrivedA.resolve(); return held(route, gateA, batchFor("BRSA0267", entry.body.studentIds)); }
+      if (failedB) return;
+      failedB = true;
+      return route.fulfill({ status: 500, json: { error: "Falha fictícia no lote atual." } });
+    };
+    await tab.locator("#status-filter").selectOption("pending");
+    await button(tab, "Enviar lembrete para 2 alunos").click();
+    await arrivedA.promise;
+    await button(tab, "Voltar ao painel").click();
+    await tab.locator("#search").fill("Ana");
+    await button(tab, "Enviar lembrete para 1 aluno").click();
+    await tab.getByRole("alert").filter({ hasText: "Falha fictícia no lote atual." }).waitFor();
+    const afterB = await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults");
+    assert.deepEqual(afterB, { view: "reminders-batch", batchIds: ["1"], batchPreview: null, batchError: "Falha fictícia no lote atual.", batchResults: null });
+    assert.deepEqual(await noticeTexts(tab), []);
+    await watchRenders(tab);
+    const late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview-batch") && r.request().postDataJSON()?.studentIds.length === 2);
+    gateA.resolve();
+    await late;
+    await flushNetwork(tab);
+    assert.equal(await rendersSince(tab), 0, "a prévia antiga não redesenha a tela");
+    assert.deepEqual(await snapshot(tab, "view", "batchIds", "batchPreview", "batchError", "batchResults"), afterB);
+    await button(tab, "Tentar novamente").click();
+    await tab.getByText(/1 de 1 aluno vai receber/).waitFor();
+    assert.deepEqual(calls(log, "pending-preview-batch").map((r) => r.body), [{ studentIds: ["1", "2"] }, { studentIds: ["1"] }, { studentIds: ["1"] }]);
+    assert.equal((await snapshot(tab, "batchError")).batchError, "");
     assert.deepEqual([log.errors, log.dialogs], [[], []]);
     await context.close();
   }
@@ -611,7 +778,7 @@ try {
     assert.deepEqual([log.errors, log.dialogs], [[], []]);
     await context.close();
   }
-  console.log("Lembretes (ciclo de vida): filtros do painel, respostas atrasadas (aluno, turma, view, lote, remetente), erros, verificação, envios com confirmação e busy, e cópia OK.");
+  console.log("Lembretes (ciclo de vida): filtros do painel, respostas atrasadas (aluno, turma, view, lote por request, remetente), erros, verificação, envios com confirmação e busy, e cópia OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));
