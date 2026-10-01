@@ -5,7 +5,7 @@
   "description": "Testes de Node/Playwright do portal. O frontend em si não usa npm nem bundler (ver frontend/README.md).",
   "scripts": {
     "build": "python3 scripts/build_frontend.py",
-    "test": "node --test tests/auth-refresh.mjs tests/canvas-links.mjs tests/student-journey.mjs tests/api.mjs tests/state.mjs tests/notice.mjs",
+    "test": "node --test tests/auth-refresh.mjs tests/canvas-links.mjs tests/student-journey.mjs tests/api.mjs tests/state.mjs tests/architecture.mjs tests/handlers.mjs tests/notice.mjs",
     "test:browser": "npm run build --silent && node --test tests/browser.mjs tests/journey-browser.mjs tests/student-journey-browser.mjs tests/canvas-links-browser.mjs tests/rate-limit-browser.mjs tests/reminders-batch-browser.mjs tests/activity-overview-browser.mjs tests/admin-access-browser.mjs tests/instructor-tools-browser.mjs tests/login-clock-browser.mjs tests/mobile-ux-browser.mjs tests/student-view-browser.mjs tests/import-integrity-browser.mjs tests/feedback-browser.mjs tests/feedback-attachments-browser.mjs tests/import-lifecycle-browser.mjs"
   },
   "devDependencies": {
