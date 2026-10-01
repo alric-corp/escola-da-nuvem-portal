@@ -6,7 +6,7 @@ Descrição do funcionamento atual do portal Escola da Nuvem · AWS re/Start (`f
 
 | Documento | Conteúdo |
 | --- | --- |
-| [arquitetura.md](arquitetura.md) | Componentes AWS, rotas da API, modelo de dados e autorização |
+| [arquitetura.md](arquitetura.md) | Componentes AWS, rotas da API, modelo de dados, autorização e módulos do frontend |
 | [jornada-aluno.md](jornada-aluno.md) | Do primeiro acesso à consulta de notas e histórico |
 | [jornada-instrutor.md](jornada-instrutor.md) | Acesso, rotina semanal de publicação, foco da turma e lembretes |
 | [jornada-admin.md](jornada-admin.md) | Criação de turmas, aprovação de instrutores e operações manuais |
