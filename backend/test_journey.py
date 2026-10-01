@@ -1,5 +1,7 @@
 import json
 import unittest
+from contextlib import contextmanager
+from datetime import datetime
 from unittest.mock import patch
 
 from changes import snapshot_changes
@@ -9,6 +11,21 @@ from portal import APIError
 from test_grades import canvas_csv
 import test_portal
 import test_reminders
+
+
+# Fixa os dois relógios do portal no mesmo instante do cenário: now() (datas gravadas) e datetime.now
+# (idade da prévia em _publish). Sem o segundo, a idade sai do relógio real e o teste expira com o calendário.
+@contextmanager
+def frozen_clock(instant):
+    frozen = datetime.fromisoformat(instant)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen.astimezone(tz) if tz else frozen.replace(tzinfo=None)
+
+    with patch("portal.now", return_value=instant), patch("portal.datetime", Clock):
+        yield
 
 
 class JourneyTests(unittest.TestCase):
@@ -82,11 +99,11 @@ class JourneyTests(unittest.TestCase):
         self.assertEqual(c["activitiesPaused"][0]["id"], "001 KC (123)")
 
     def test_restore_has_its_own_date_and_current_history_marker(self):
-        with patch("portal.now", return_value="2026-09-01T12:00:00+00:00"):
+        with frozen_clock("2026-09-01T12:00:00+00:00"):
             first = self.publish()
-        with patch("portal.now", return_value="2026-09-02T12:00:00+00:00"):
+        with frozen_clock("2026-09-02T12:00:00+00:00"):
             second = self.publish(canvas_csv(kc="9"))
-        with patch("portal.now", return_value="2026-09-24T12:00:00+00:00"):
+        with frozen_clock("2026-09-24T12:00:00+00:00"):
             self.call(self.admin, "restore", {"publicationId": first["id"], "expectedCurrent": second["id"]})
         report = self.call(self.student, "report", method="GET")
         self.assertEqual(report["publication"]["publishedAt"], first["publishedAt"])
@@ -108,10 +125,10 @@ class JourneyTests(unittest.TestCase):
             self.assertNotIn(private, json.dumps(report))
 
     def test_restored_version_remains_in_history_outside_last_twelve(self):
-        with patch("portal.now", return_value="2026-09-01T12:00:00+00:00"):
+        with frozen_clock("2026-09-01T12:00:00+00:00"):
             first = self.publish()
         for day in range(2, 15):
-            with patch("portal.now", return_value=f"2026-09-{day:02d}T12:00:00+00:00"):
+            with frozen_clock(f"2026-09-{day:02d}T12:00:00+00:00"):
                 latest = self.publish(canvas_csv(kc="8"))
         self.call(self.admin, "restore", {"publicationId": first["id"], "expectedCurrent": latest["id"]})
         history = self.call(self.student, "report", method="GET")["history"]
