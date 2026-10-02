@@ -105,6 +105,17 @@ def participation(repo, code, canvas_id):
     return item, item["status"] if item else "ACTIVE"
 
 
+def withdrawn_ids(repo, code):
+    """IDs Canvas marcados WITHDRAWN na turma, numa única consulta à partição; registros ACTIVE valem como ausentes.
+    Um ID que não está na publicação exibida não cria aluno: só quem está no snapshot é marcado."""
+    return {p["canvasId"] for p in repo.list("COHORT#" + code, "PARTICIPATION#") if p["status"] == "WITHDRAWN"}
+
+
+def participation_flag(withdrawn, student_id):
+    """Campo esparso para o instrutor: só desistentes recebem participationStatus (sem marcas, nada muda)."""
+    return {"participationStatus": "WITHDRAWN"} if student_id in withdrawn else {}
+
+
 def class_report(repo, code):
     """Painel do instrutor com a turma inteira; só é chamado após checar require(teach) em dispatch."""
     require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)), 400, "Código de turma inválido.")
@@ -117,9 +128,11 @@ def class_report(repo, code):
     require(publication is not None, 404, "Publicação não encontrada.")
     snapshot = display_snapshot(repo, code, repo.snapshot(publication["snapshot"]))
     thresholds = cohort_thresholds(cohort)
+    withdrawn = withdrawn_ids(repo, code)
     rows = [{"name": student["name"],
              **{k: v for k, v in summary(student, snapshot["activities"], thresholds).items()
-                if k in ("kc", "lab", "total", "completed", "pending", "status")}}
+                if k in ("kc", "lab", "total", "completed", "pending", "status")},
+             **participation_flag(withdrawn, student["id"])}
             for student in snapshot["students"]]
     return {"cohort": code, "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
             "thresholds": thresholds, "students": rows}
@@ -654,6 +667,10 @@ class Portal:
         snap = with_catalog(self.repo, cohort, display_snapshot(self.repo, code, self.snapshot(publication)))
         raw_student = next((s for s in snap["students"] if s["id"] == body["studentId"]), None)
         require(raw_student is not None, 404, "Aluno não encontrado nesta publicação.")
+        # Desistente: o detalhe continua abrindo, com a marca; o envio é recusado antes de qualquer efeito, conferindo
+        # agora (a prévia não autoriza o envio).
+        withdrawn = {raw_student["id"]} if participation(self.repo, code, raw_student["id"])[1] == "WITHDRAWN" else set()
+        require(operation != "send-reminder" or not withdrawn, 409, "Aluno marcado como desistente nesta turma: lembretes desativados.")
         student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
         # Detalhe completo para o instrutor (todo/10): resumo, todas as atividades e histórico.
         detail = {"summary": {k: student[k] for k in ("kc", "lab", "total", "progress", "completed", "pending", "status")},
@@ -665,7 +682,7 @@ class Portal:
             return {"student": {k: student[k] for k in ("id", "name", "email")},
                     "activities": [a for a in student["activities"] if a["state"] == "pending"],
                     "publicationId": publication["id"], "publishedAt": publication["publishedAt"],
-                    "remindersEnabled": False, **detail}
+                    "remindersEnabled": False, **detail, **participation_flag(withdrawn, raw_student["id"])}
         message, digest, pending = message_for(code, student, publication, self.user["email"])
         sk = "REMINDER#" + publication["id"] + "#" + student["id"]
         previous = self.repo.get(pk, sk)
@@ -681,7 +698,7 @@ class Portal:
                     "activities": pending, "publicationId": publication["id"],
                     "publishedAt": publication["publishedAt"], "message": message,
                     "previewHash": digest, "delivery": delivery, "ses": readiness, "remindersEnabled": True,
-                    **detail}
+                    **detail, **participation_flag(withdrawn, raw_student["id"])}
         require(body["publicationId"] == publication["id"] and body["previewHash"] == digest,
                 409, "As notas ou a mensagem mudaram. Abra uma nova prévia antes de enviar.")
         require(student["email"] and pending, 400, "O aluno precisa ter e-mail no Canvas e atividades pendentes.")
@@ -716,6 +733,8 @@ class Portal:
         publication = self.publication(code, cohort["current"])
         snap = display_snapshot(self.repo, code, self.snapshot(publication))
         by_id = {s["id"]: s for s in snap["students"]}
+        # Conferido em cada chamada, prévia e envio: quem foi marcado depois da prévia é pulado no envio.
+        withdrawn = withdrawn_ids(self.repo, code)
         mailer = self.mailer or SESMailer()
         readiness = mailer.readiness(self.user["email"])
         candidates = []
@@ -728,7 +747,8 @@ class Portal:
             pending = [a for a in student["activities"] if a["state"] == "pending"]
             sk = "REMINDER#" + publication["id"] + "#" + student["id"]
             previous = self.repo.get(pk, sk)
-            skip = ("no-email" if not student["email"] else
+            skip = ("withdrawn" if student["id"] in withdrawn else
+                    "no-email" if not student["email"] else
                     "no-pending" if not pending else
                     "already-sent" if previous and previous["status"] != "failed" else None)
             candidates.append({"id": student["id"], "name": student["name"], "email": student["email"],
@@ -1035,8 +1055,10 @@ class Portal:
         if teach:
             # Vínculo criado quando o aluno entra e abre o próprio relatório (Portal.student).
             linked = {k[len("OWNER#"):] for k in self.repo.keys(pk, "OWNER#")}
-            class_overview = overview(snap, thresholds)
-            class_overview["students"] = [{**s, "portalLinked": s["id"] in linked}
+            # Desistentes seguem listados, com a marca, e saem das estatísticas por atividade.
+            withdrawn = withdrawn_ids(self.repo, code)
+            class_overview = overview(snap, thresholds, excluded=withdrawn)
+            class_overview["students"] = [{**s, "portalLinked": s["id"] in linked, **participation_flag(withdrawn, s["id"])}
                                                for s in class_overview["students"]]
             return {"cohort": code, "publication": publication, "focus": focus, **class_overview,
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),

@@ -341,15 +341,50 @@ class AWSPersistenceTests(unittest.TestCase):
             first = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
             self.call("participation", {"canvasId": "100", "status": "WITHDRAWN", "expectedStatus": "ACTIVE"})
             marked = Repository().get("COHORT#BRSA0267", "PARTICIPATION#100")
+            self.assertEqual(self.overlay(), ({"100": "WITHDRAWN"}, 70.0, {"kc": (2, 0), "lab": (0, 0)}))
             self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "unchanged"}})
-            fake.courses["4436"] = course(lab_scores=(90, None, 50))  # a nota do aluno marcado muda no Canvas
+            fake.courses["4436"] = course(kc_scores=(6, 8, 9))  # a nota do aluno marcado muda no Canvas
             self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "published"}})
         second = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
         self.assertNotEqual(second, first)
         self.assertEqual(Repository().get("COHORT#BRSA0267", "PARTICIPATION#100"), marked)
+        self.assertEqual(self.overlay(), ({"100": "WITHDRAWN"}, 60.0, {"kc": (2, 0), "lab": (0, 0)}))  # nota nova, marca mantida
         self.call("restore", {"publicationId": first, "expectedCurrent": second})
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], first)
         self.assertEqual(Repository().get("COHORT#BRSA0267", "PARTICIPATION#100"), marked)
+        self.assertEqual(self.overlay(), ({"100": "WITHDRAWN"}, 70.0, {"kc": (2, 0), "lab": (0, 0)}))
+
+    def overlay(self):
+        """Do relatório do instrutor lido de novo do DynamoDB: alunos marcados, KC do aluno 100 e (com nota, sem nota)
+        por tipo de atividade, que só contam os ativos (o Lab do curso falso tem poucas notas e fica não liberado)."""
+        report = Portal(Repository(), self.admin.user).dispatch("GET", "/cohorts/BRSA0267/report", {})
+        marked = {s["id"]: s["participationStatus"] for s in report["students"] if "participationStatus" in s}
+        kc = next(s["kc"] for s in report["students"] if s["id"] == "100")
+        return marked, kc, {a["kind"]: (a["completed"], a["pending"]) for a in report["activities"]}
+
+    def test_withdrawn_student_gets_no_reminder_on_real_services(self):
+        class Mailer:
+            sent = []
+            def readiness(self, sender): return {"ready": True, "reason": ""}
+            def send(self, message): self.sent.append(message["to"]); return "ses-teste"
+        draft = self.call("preview", {"csv": canvas_csv(kc="", lab="", extra=["Aluno, Segundo", "202", "segundo@example.test", "", "", "0"]),
+                                      "activeIds": ["001 KC (123)", "002 Lab (456)"]})["draft"]
+        self.call("publish", {"draftId": draft["id"]})
+        mailer = Mailer()
+        teacher = Portal(Repository(), {"sub": "teacher", "email": "teacher@escoladanuvem.org", "groups": ["admin"]}, mailer=mailer)
+        call = lambda op, body: teacher.dispatch("POST", "/cohorts/BRSA0267/" + op, body)
+        with patch.dict(os.environ, {"REMINDERS_ENABLED": "true", "REMINDER_BATCH_DELAY_SECONDS": "0"}):
+            preview = call("pending-preview", {"studentId": "101"})  # prévia feita com o aluno ainda ativo
+            call("participation", {"canvasId": "101", "status": "WITHDRAWN", "expectedStatus": "ACTIVE"})
+            self.assertEqual(call("pending-preview", {"studentId": "101"})["participationStatus"], "WITHDRAWN")
+            with self.assertRaises(APIError) as err:
+                call("send-reminder", {"studentId": "101", "publicationId": preview["publicationId"], "previewHash": preview["previewHash"]})
+            self.assertEqual(err.exception.status, 409)
+            result = call("send-reminders", {"studentIds": ["101", "202"], "expectedPublicationId": draft["id"]})
+        self.assertEqual({r["id"]: (r["status"], r.get("reason")) for r in result["results"]}, {"101": ("skipped", "withdrawn"), "202": ("sent", None)})
+        self.assertEqual(mailer.sent, ["segundo@example.test"])
+        self.assertIsNone(Repository().get("COHORT#BRSA0267", f"REMINDER#{draft['id']}#101"))
+        self.assertEqual(Repository().get("COHORT#BRSA0267", f"REMINDER#{draft['id']}#202")["status"], "sent")
 
     def test_canvas_sync_lambda_end_to_end(self):
         from functools import partial

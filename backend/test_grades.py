@@ -16,6 +16,33 @@ def canvas_csv(kc="7", lab="50", email="aluno@example.test", student_id="101", e
     return out.getvalue()
 
 
+MIXED = (("Costa, Marina", "101", "9", "100", "0"),   # ok
+         ("Dois, Aluno", "102", "9", "60", "0"),       # attention
+         ("Tres, Aluno", "103", "3", "40", "0"),       # critical
+         ("Quatro, Aluno", "104", "2", "10", "0"),     # critical
+         ("Cinco, Aluno", "105", "", "", "0"),         # sem nota (pendências contam 0: critical)
+         ("Seis, Aluno", "106", "9", "100", "1"))      # graduated
+
+
+def mixed_csv(changes=None, without=()):
+    """Seis alunos com situações acadêmicas diferentes, para separar a lista da população das métricas.
+    changes: {id: (kc, lab)} troca as notas de um aluno; without: IDs que ficam fora do arquivo."""
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(["Student", "ID", "SIS Login ID", "001 KC (123)", "002 Lab (456)", "Graduated Final Points"])
+    writer.writerow(["Points Possible", "", "", "10", "100", "1"])
+    for name, sid, kc, lab, graduated in MIXED:
+        if sid in without:
+            continue
+        kc, lab = (changes or {}).get(sid, (kc, lab))
+        writer.writerow([name, sid, "aluno@example.test" if sid == "101" else f"aluno{sid}@example.test", kc, lab, graduated])
+    return out.getvalue()
+
+
+ACTIVITIES = ["001 KC (123)", "002 Lab (456)"]
+stats = lambda a: (a["completed"], a["pending"], a["needsReview"], a["average"])
+
+
 class GradesTests(unittest.TestCase):
     def result(self, **kwargs):
         snapshot = parse_csv(canvas_csv(**kwargs))
@@ -60,6 +87,41 @@ class GradesTests(unittest.TestCase):
         by_id = {a["id"]: a for a in overview(snapshot)["activities"]}
         self.assertEqual((by_id["001 KC (123)"]["completed"], by_id["001 KC (123)"]["pending"]), (0, 1))
         self.assertIsNone(by_id["001 KC (123)"]["average"])
+
+    # Desistentes (WITHDRAWN) saem só das estatísticas por atividade; a lista e a situação acadêmica não mudam.
+    def test_overview_without_exclusions_is_unchanged(self):
+        snapshot = parse_csv(mixed_csv(), ACTIVITIES)
+        result = overview(snapshot)
+        self.assertEqual(overview(snapshot, None, excluded=set()), result)
+        self.assertEqual(overview(snapshot, excluded=frozenset()), result)
+        by_id = {a["id"]: a for a in result["activities"]}
+        self.assertEqual((stats(by_id["001 KC (123)"]), stats(by_id["002 Lab (456)"])), ((5, 1, 2, 64.0), (5, 1, 3, 62.0)))
+        self.assertEqual([s["status"] for s in result["students"]], ["ok", "attention", "critical", "critical", "critical", "graduated"])
+        self.assertEqual(result["count"], 6)
+
+    def test_overview_excludes_withdrawn_from_activity_metrics_but_keeps_them_listed(self):
+        snapshot = parse_csv(mixed_csv(), ACTIVITIES)
+        for thresholds in (None, {"kc": 80, "lab": 90}):
+            full = overview(snapshot, thresholds)
+            for excluded in ({"104"}, {"104", "105", "106"}):
+                with self.subTest(thresholds=thresholds, excluded=excluded):
+                    result = overview(snapshot, thresholds, excluded=excluded)
+                    self.assertEqual((result["students"], result["count"], result["warnings"]), (full["students"], full["count"], full["warnings"]))
+                    active = {**snapshot, "students": [s for s in snapshot["students"] if s["id"] not in excluded]}
+                    self.assertEqual(result["activities"], overview(active, thresholds)["activities"])
+        by_id = {a["id"]: a for a in overview(snapshot, excluded={"104", "105", "106"})["activities"]}
+        self.assertEqual((stats(by_id["001 KC (123)"]), stats(by_id["002 Lab (456)"])), ((3, 0, 1, 70.0), (3, 0, 2, 66.67)))
+
+    def test_overview_with_everyone_excluded_keeps_the_list_and_empties_the_metrics(self):
+        snapshot = parse_csv(mixed_csv(), ACTIVITIES)
+        result = overview(snapshot, excluded={s["id"] for s in snapshot["students"]})
+        self.assertEqual([stats(a) for a in result["activities"]], [(0, 0, 0, None), (0, 0, 0, None)])
+        self.assertEqual(result["students"], overview(snapshot)["students"])
+
+    def test_overview_activity_graded_only_by_excluded_students_has_no_average(self):
+        snapshot = parse_csv(canvas_csv(kc="9", lab="EX", extra=["Segundo Aluno", "202", "segundo@example.test", "5", "50", "0"]), ACTIVITIES)
+        by_id = {a["id"]: a for a in overview(snapshot, excluded={"202"})["activities"]}
+        self.assertEqual((stats(by_id["001 KC (123)"]), stats(by_id["002 Lab (456)"])), ((1, 0, 0, 90.0), (0, 0, 0, None)))
 
     def test_grade_changes_compare_numbers_not_text(self):
         from changes import same_grade, snapshot_changes

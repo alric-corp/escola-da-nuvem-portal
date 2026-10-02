@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from integrity import SYNC_MIN_ROSTER, check as integrity_check, email_hash, roster_record
 from portal import APIError, Portal, authenticate, handler, class_report
 from repository import Conflict
-from test_grades import canvas_csv
+from test_grades import ACTIVITIES, canvas_csv, mixed_csv
 
 
 def class_csv(extra_ids=(), kc="7", marina=True):
@@ -1008,8 +1008,8 @@ class IntegrityPortalTests(unittest.TestCase):
 
 
 class ParticipationTests(unittest.TestCase):
-    """Status manual de participação do aluno na turma (ACTIVE/WITHDRAWN): persistência e API. Nenhum fluxo de
-    leitura (relatório, métricas, lembretes) usa a marca ainda."""
+    """Status manual de participação do aluno na turma (ACTIVE/WITHDRAWN): persistência e API. A leitura (relatório,
+    métricas e lembretes) fica em ParticipationReadTests e em test_reminders.WithdrawnReminderTests."""
 
     def setUp(self):
         self.repo = MemoryRepository()
@@ -1204,15 +1204,158 @@ class ParticipationTests(unittest.TestCase):
         self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], self.first["id"])
         self.assertEqual(self.item("102"), marked)
 
-    def test_reports_and_reminders_do_not_use_the_record_yet(self):
-        views = lambda: (self.admin.dispatch("GET", "/cohorts/BRSA0267/report", {}), class_report(self.repo, "BRSA0267"),
-                         self.student.dispatch("GET", "/cohorts/BRSA0267/report", {}),
-                         self.teacher.dispatch("POST", "/cohorts/BRSA0267/pending-preview", {"studentId": "101"}))
-        self.student.dispatch("GET", "/cohorts/BRSA0267/report", {})  # o primeiro acesso cria o vínculo (portalLinked)
+
+
+class ParticipationReadTests(unittest.TestCase):
+    """WITHDRAWN na leitura do instrutor: o aluno continua listado, com o campo esparso participationStatus, e sai das
+    estatísticas por atividade. O status vale sobre a publicação atual, qualquer que seja ela (nova, sincronizada ou
+    restaurada). O aluno e as telas dele nunca veem a marca."""
+
+    WITHDRAWN = ("104", "105", "106")
+
+    def setUp(self):
+        self.repo = MemoryRepository()
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "name": "BRSA0267", "current": None})
+        self.admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        self.student = Portal(self.repo, {"sub": "student", "email": "aluno@example.test", "groups": []})
+        self.first = self.publish(mixed_csv())
+        self.student.dispatch("GET", "/cohorts/BRSA0267/report", {})  # só Marina (101) entra no portal
+
+    def publish(self, text, code="BRSA0267"):
+        draft = self.admin.dispatch("POST", f"/cohorts/{code}/preview", {"csv": text, "activeIds": ACTIVITIES})["draft"]
+        return self.admin.dispatch("POST", f"/cohorts/{code}/publish", {"draftId": draft["id"], "acknowledgeRemoved": True})["publication"]
+
+    def mark(self, canvas_id, status, expected, code="BRSA0267"):
+        return self.admin.dispatch("POST", f"/cohorts/{code}/participation", {"canvasId": canvas_id, "status": status, "expectedStatus": expected})
+
+    def withdraw(self, *ids):
+        for canvas_id in ids:
+            self.mark(canvas_id, "WITHDRAWN", "ACTIVE")
+
+    def report(self, code="BRSA0267"):
+        return self.admin.dispatch("GET", f"/cohorts/{code}/report", {})
+
+    @staticmethod
+    def stats(report):
+        return {a["id"]: (a["completed"], a["pending"], a["needsReview"], a["average"]) for a in report["activities"]}
+
+    def test_without_withdrawn_records_every_view_is_unchanged(self):
+        views = lambda: (self.report(), class_report(self.repo, "BRSA0267"), self.student.dispatch("GET", "/cohorts/BRSA0267/report", {}),
+                         self.admin.dispatch("POST", "/cohorts/BRSA0267/student-view", {"studentId": "104"}),
+                         self.admin.dispatch("POST", "/cohorts/BRSA0267/pending-preview", {"studentId": "104"}))
         before = views()
-        self.mark(self.teacher, "101", "WITHDRAWN", "ACTIVE")
-        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        self.assertNotIn("participationStatus", json.dumps(before))
+        # Registros ACTIVE explícitos (marcados e reativados) valem o mesmo que nenhum registro.
+        self.withdraw("104", "105")
+        self.mark("104", "ACTIVE", "WITHDRAWN")
+        self.mark("105", "ACTIVE", "WITHDRAWN")
         self.assertEqual(views(), before)
+
+    def test_withdrawn_students_stay_listed_with_a_sparse_flag_and_leave_activity_metrics(self):
+        before = self.report()
+        self.withdraw(*self.WITHDRAWN)
+        after = self.report()
+        self.assertEqual([s["id"] for s in after["students"]], ["101", "102", "103", "104", "105", "106"])
+        for row, old in zip(after["students"], before["students"]):
+            with self.subTest(student=row["id"]):
+                if row["id"] in self.WITHDRAWN:
+                    self.assertEqual(row, {**old, "participationStatus": "WITHDRAWN"})
+                else:
+                    self.assertEqual(row, old)
+                    self.assertNotIn("participationStatus", row)
+        self.assertEqual({s["id"]: (s["status"], s["portalLinked"]) for s in after["students"]},
+                         {"101": ("ok", True), "102": ("attention", False), "103": ("critical", False),
+                          "104": ("critical", False), "105": ("critical", False), "106": ("graduated", False)})
+        self.assertEqual(self.stats(before), {"001 KC (123)": (5, 1, 2, 64.0), "002 Lab (456)": (5, 1, 3, 62.0)})
+        self.assertEqual(self.stats(after), {"001 KC (123)": (3, 0, 1, 70.0), "002 Lab (456)": (3, 0, 2, 66.67)})
+        # Fora as estatísticas, as atividades e todo o resto do relatório ficam iguais.
+        numbers = ("completed", "pending", "needsReview", "average")
+        self.assertEqual([{k: v for k, v in a.items() if k not in numbers} for a in after["activities"]],
+                         [{k: v for k, v in a.items() if k not in numbers} for a in before["activities"]])
+        rest = lambda r: {k: v for k, v in r.items() if k not in ("students", "activities")}
+        self.assertEqual(rest(after), rest(before))
+
+    def test_all_withdrawn_keeps_every_row_and_empties_the_metrics(self):
+        self.withdraw("101", "102", "103", *self.WITHDRAWN)
+        report = self.report()
+        self.assertEqual([s.get("participationStatus") for s in report["students"]], ["WITHDRAWN"] * 6)
+        self.assertEqual(self.stats(report), {"001 KC (123)": (0, 0, 0, None), "002 Lab (456)": (0, 0, 0, None)})
+        json.dumps(report, allow_nan=False)  # sem NaN nem infinito
+
+    def test_orphan_record_creates_no_row_and_applies_again_when_the_student_returns(self):
+        clean = self.report()
+        self.withdraw("104")
+        self.publish(mixed_csv(without={"104"}))  # 104 sai do Canvas: o registro fica órfão
+        orphan = self.report()
+        self.assertEqual([s["id"] for s in orphan["students"]], ["101", "102", "103", "105", "106"])
+        self.assertNotIn("participationStatus", json.dumps(orphan))
+        self.assertEqual(self.stats(orphan), {"001 KC (123)": (4, 1, 1, 75.0), "002 Lab (456)": (4, 1, 2, 75.0)})
+        self.publish(mixed_csv())  # 104 volta: a marca vale de novo
+        back = self.report()
+        self.assertEqual([s["id"] for s in back["students"] if s.get("participationStatus")], ["104"])
+        self.assertNotEqual(self.stats(back), self.stats(clean))
+
+    def test_reactivation_returns_the_student_to_the_metrics_without_a_new_publication(self):
+        before = self.report()
+        self.withdraw("104")
+        self.assertNotEqual(self.stats(self.report()), self.stats(before))
+        self.mark("104", "ACTIVE", "WITHDRAWN")
+        self.assertEqual(self.report(), before)
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], self.first["id"])
+
+    def test_sync_and_restore_keep_applying_the_current_status(self):
+        from portal import sync_from_canvas
+        self.withdraw("104")
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", mixed_csv(changes={"104": ("8", "10")}), 6)["status"], "published")
+        synced = self.report()
+        row = next(s for s in synced["students"] if s["id"] == "104")
+        self.assertEqual((row["kc"], row["participationStatus"]), (80.0, "WITHDRAWN"))  # nota nova, marca mantida
+        self.assertEqual(self.stats(synced)["001 KC (123)"], (4, 1, 1, 75.0))
+        current = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+        self.admin.dispatch("POST", "/cohorts/BRSA0267/restore", {"publicationId": self.first["id"], "expectedCurrent": current})
+        restored = self.report()
+        row = next(s for s in restored["students"] if s["id"] == "104")
+        self.assertEqual((row["kc"], row["participationStatus"]), (20.0, "WITHDRAWN"))
+        self.assertEqual(self.stats(restored)["001 KC (123)"], (4, 1, 1, 75.0))
+
+    def test_class_report_lists_withdrawn_rows_with_the_flag(self):
+        before = class_report(self.repo, "BRSA0267")
+        self.withdraw(*self.WITHDRAWN)
+        after = class_report(self.repo, "BRSA0267")
+        self.assertEqual(len(after["students"]), 6)
+        for row, old in zip(after["students"], before["students"]):
+            with self.subTest(name=row["name"]):
+                expected = {**old, "participationStatus": "WITHDRAWN"} if old["name"] in ("Aluno Quatro", "Aluno Cinco", "Aluno Seis") else old
+                self.assertEqual(row, expected)
+        self.assertEqual({k: v for k, v in after.items() if k != "students"}, {k: v for k, v in before.items() if k != "students"})
+
+    def test_student_facing_views_never_show_participation(self):
+        views = lambda: (self.student.dispatch("GET", "/cohorts/BRSA0267/report", {}), self.student.dispatch("GET", "/cohorts", {}),
+                         self.student.dispatch("GET", "/me", {}), self.admin.dispatch("POST", "/cohorts/BRSA0267/student-view", {"studentId": "101"}))
+        before = views()
+        self.withdraw("101", *self.WITHDRAWN)
+        after = views()
+        self.assertEqual(after, before)
+        self.assertNotIn("participationStatus", json.dumps(after))
+        self.assertNotIn("WITHDRAWN", json.dumps(after))
+
+    def test_report_and_class_report_read_participation_once_without_per_student_lookups(self):
+        self.repo.put("COHORT#BRSA0300", "METADATA", {"code": "BRSA0300", "name": "BRSA0300", "current": None})
+        self.publish(class_csv([str(200 + i) for i in range(99)]), code="BRSA0300")
+        for canvas_id in ("101", "200", "250"):
+            self.mark(canvas_id, "WITHDRAWN", "ACTIVE", code="BRSA0300")
+        calls, list_, get = [], self.repo.list, self.repo.get
+        with patch.object(self.repo, "list", lambda pk, prefix="": calls.append(("list", prefix)) or list_(pk, prefix)), \
+                patch.object(self.repo, "get", lambda pk, sk: calls.append(("get", sk)) or get(pk, sk)):
+            report = self.report("BRSA0300")
+            reads = [c for c in calls if c[1].startswith("PARTICIPATION#")]
+            calls.clear()
+            rows = class_report(self.repo, "BRSA0300")["students"]
+            class_reads = [c for c in calls if c[1].startswith("PARTICIPATION#")]
+        self.assertEqual((len(report["students"]), len(rows)), (100, 100))
+        self.assertEqual((reads, class_reads), ([("list", "PARTICIPATION#")], [("list", "PARTICIPATION#")]))
+        self.assertEqual(sum(1 for s in report["students"] if s.get("participationStatus")), 3)
+        self.assertEqual(sum(1 for s in rows if s.get("participationStatus")), 3)
 
 
 class FeedbackTests(unittest.TestCase):

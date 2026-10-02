@@ -176,12 +176,16 @@ def parse_csv(text, active_ids=None):
     return {"activities": activities, "students": students, "warnings": warnings}
 
 
-def overview(snapshot, thresholds=None):
+def overview(snapshot, thresholds=None, excluded=frozenset()):
+    """Alunos da turma e estatísticas por atividade. Os IDs em `excluded` (desistentes) continuam na lista, com a
+    situação acadêmica de sempre, mas ficam fora das estatísticas por atividade."""
     rows = [summary(s, snapshot["activities"], thresholds) for s in snapshot["students"]]
     # completed + pending é o denominador natural para "% sem nota" e "% em revisão":
     # o mesmo universo (liberada e não dispensada) usado pela média do aluno em summary().
     stats = {a["id"]: {"completed": 0, "pending": 0, "needsReview": 0, "scores": []} for a in snapshot["activities"]}
     for row in rows:
+        if row["id"] in excluded:
+            continue
         for detail in row["activities"]:
             st = stats[detail["id"]]
             if detail["state"] == "completed":
