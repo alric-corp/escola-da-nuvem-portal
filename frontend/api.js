@@ -1,4 +1,4 @@
-// Rede do portal: API autenticada e envio direto ao S3. Não conhece estado, DOM nem navegação;
+// Rede do portal: API autenticada, envio direto ao S3 e confirmação de cadastro no Cognito. Não conhece estado, DOM nem navegação;
 // quem chama decide o que mostrar. Os caminhos repetem exatamente os que o app já usava,
 // inclusive onde o código da turma não passa por encodeURIComponent.
 import { validSession } from "./auth.js";
@@ -143,3 +143,107 @@ export async function uploadAttachmentToS3(upload, file) {
   const sent = await fetch(upload.url, { method: "POST", body: form });
   if (!sent.ok) throw new Error("O envio da imagem foi recusado.");
 }
+
+// Confirmação de cadastro (contas UNCONFIRMED): ResendConfirmationCode e ConfirmSignUp são operações públicas
+// do Cognito, sem IAM, token ou cookies, chamadas direto do navegador e fora do transporte autenticado. Dependem
+// só de config.region e config.userPoolClientId. Falhas saem como categorias estáveis; a mensagem da AWS, o
+// e-mail e o código nunca aparecem no erro.
+const SIGNUP_TIMEOUT_MS = 15000;
+const SIGNUP_ERROR_CATEGORIES = new Map(Object.entries({
+  CodeMismatchException: "CODE_MISMATCH",
+  ExpiredCodeException: "CODE_EXPIRED",
+  TooManyFailedAttemptsException: "TOO_MANY_ATTEMPTS",
+  LimitExceededException: "TOO_MANY_ATTEMPTS",
+  TooManyRequestsException: "RATE_LIMITED",
+  NotAuthorizedException: "NOT_AUTHORIZED",
+  InvalidParameterException: "INVALID_PARAMETER",
+  UserNotFoundException: "USER_NOT_FOUND",
+  AliasExistsException: "ALIAS_EXISTS",
+  CodeDeliveryFailureException: "DELIVERY_FAILED",
+  InternalErrorException: "SERVICE_UNAVAILABLE",
+  ForbiddenException: "SERVICE_UNAVAILABLE",
+  ResourceNotFoundException: "CONFIG_ERROR",
+  OperationNotEnabledException: "CONFIG_ERROR",
+  InvalidEmailRoleAccessPolicyException: "CONFIG_ERROR",
+  InvalidSmsRoleAccessPolicyException: "CONFIG_ERROR",
+  InvalidSmsRoleTrustRelationshipException: "CONFIG_ERROR",
+  InvalidLambdaResponseException: "CONFIG_ERROR",
+  UnexpectedLambdaException: "CONFIG_ERROR",
+  UserLambdaValidationException: "CONFIG_ERROR",
+}));
+
+// Resultados que dependem da existência ou do estado da conta: quem mostra a resposta deve tratá-los sem
+// revelar qual deles ocorreu.
+export const ACCOUNT_STATE_CATEGORIES = Object.freeze(["USER_NOT_FOUND", "INVALID_PARAMETER", "NOT_AUTHORIZED",
+  "TOO_MANY_ATTEMPTS", "DELIVERY_FAILED", "ALIAS_EXISTS"]);
+
+export class SignupConfirmationError extends Error {
+  constructor(category, awsType = null) {
+    super(category);
+    this.name = "SignupConfirmationError";
+    this.category = category;
+    // Só para diagnóstico e testes: não enumerável, fica fora de JSON e da exibição do objeto.
+    Object.defineProperty(this, "awsType", { value: awsType });
+  }
+}
+
+// O pool usa o e-mail como username: só apara e passa para minúsculas, sem regras de provedor (pontos, +tag).
+// null quando não serve como Username do Cognito (até 128 caracteres).
+export function normalizeSignupEmail(value) {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  return email.length <= 128 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !/[\u0000-\u001f\u007f]/.test(email) ? email : null;
+}
+
+// Endpoint montado só a partir da região configurada; nada vindo do usuário entra na URL.
+function signupTarget() {
+  const region = config?.region, clientId = config?.userPoolClientId;
+  if (typeof region !== "string" || !/^[a-z]{2}(-[a-z]+)+-\d{1,2}$/.test(region)) return null;
+  if (typeof clientId !== "string" || !/^[\w+]{1,128}$/.test(clientId)) return null;
+  return { endpoint: `https://cognito-idp.${region}.amazonaws.com/`, clientId };
+}
+
+async function cognito(operation, endpoint, payload) {
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-amz-json-1.1", "X-Amz-Target": `AWSCognitoIdentityProviderService.${operation}` },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      credentials: "omit",
+      signal: AbortSignal.timeout(SIGNUP_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new SignupConfirmationError(err?.name === "TimeoutError" ? "TIMEOUT" : "NETWORK_ERROR");
+  }
+  // Sucesso sem ler o corpo: CodeDeliveryDetails e Session não saem daqui.
+  if (res.ok) return { ok: true };
+  const data = await res.json().catch(() => ({}));
+  // O tipo vem em __type (às vezes com namespace "…#Tipo") ou no cabeçalho x-amzn-ErrorType ("Tipo:url").
+  const name = String(data?.__type || res.headers.get("x-amzn-ErrorType") || "").split(":")[0].split("#").pop().trim();
+  const awsType = /^[A-Za-z]{1,64}$/.test(name) ? name : null;
+  const category = SIGNUP_ERROR_CATEGORIES.get(awsType)
+    ?? (res.status >= 500 ? "SERVICE_UNAVAILABLE" : res.status === 429 ? "RATE_LIMITED" : "UNKNOWN");
+  throw new SignupConfirmationError(category, awsType);
+}
+
+export const signupConfirmation = {
+  async resend(email) {
+    const target = signupTarget();
+    if (!target) throw new SignupConfirmationError("CONFIG_ERROR");
+    const username = normalizeSignupEmail(email);
+    if (!username) throw new SignupConfirmationError("INVALID_EMAIL");
+    return cognito("ResendConfirmationCode", target.endpoint, { ClientId: target.clientId, Username: username });
+  },
+  async confirm(email, code) {
+    const target = signupTarget();
+    if (!target) throw new SignupConfirmationError("CONFIG_ERROR");
+    const username = normalizeSignupEmail(email);
+    if (!username) throw new SignupConfirmationError("INVALID_EMAIL");
+    // Sempre string (zeros à esquerda contam), só no corpo HTTPS; nunca em URL, storage ou mensagem.
+    const confirmationCode = typeof code === "string" ? code.trim() : "";
+    if (!/^\S{1,2048}$/.test(confirmationCode)) throw new SignupConfirmationError("INVALID_CODE");
+    return cognito("ConfirmSignUp", target.endpoint, { ClientId: target.clientId, Username: username, ConfirmationCode: confirmationCode });
+  },
+};

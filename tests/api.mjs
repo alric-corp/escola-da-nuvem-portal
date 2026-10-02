@@ -307,3 +307,252 @@ test("contrato das 34 chamadas: path, método e body idênticos aos do app.js an
   assert.equal(exported.length, 34);
   assert.deepEqual([...covered].sort(), exported.sort());
 });
+
+// Confirmação de cadastro: operações públicas do Cognito chamadas direto do navegador, fora do transporte
+// autenticado. Região, client, e-mails e códigos são fictícios; nenhuma chamada de rede real.
+const signupConfig = { ...config, region: "sa-east-1", userPoolClientId: "exampleclient123" };
+const COGNITO = "https://cognito-idp.sa-east-1.amazonaws.com/";
+const AWS_MESSAGE = "Mensagem bruta da AWS que não pode chegar à interface";
+const awsError = (type, status = 400) => () =>
+  new Response(JSON.stringify({ __type: type, message: AWS_MESSAGE }), { status, headers: { "content-type": "application/x-amz-json-1.1" } });
+async function loadSignup({ signup = signupConfig, ...options } = {}) {
+  const loaded = await load({ session: null, ...options, configured: false });
+  loaded.api.configure({ config: signup, onSessionExpired: () => loaded.expired.push("callback") });
+  return loaded;
+}
+const categoryOf = (promise) => promise.then(() => "resolveu", (err) => err.category);
+
+test("normalizeSignupEmail: só trim e minúsculas; formato, tamanho e tipo inválidos viram null", async () => {
+  const { api } = await load({ configured: false });
+  for (const [input, expected] of [
+    [" USER@Example.COM ", "user@example.com"],
+    ["\tAna@Escola.ORG\n", "ana@escola.org"],
+    ["First.Last+Tag@Example.com", "first.last+tag@example.com"],
+    ["JOÃO@Exemplo.com.br", "joão@exemplo.com.br"],
+    [`${"a".repeat(116)}@example.com`, `${"a".repeat(116)}@example.com`],
+  ]) assert.equal(api.normalizeSignupEmail(input), expected, input);
+  for (const input of ["", "   ", "sem-arroba.example.com", "user@localhost", "@example.com", "user@", "a b@example.com",
+    "user@exa mple.com", "a@b@example.com", `${"a".repeat(117)}@example.com`, "ana\u0000@example.com", null, undefined, 42, {}])
+    assert.equal(api.normalizeSignupEmail(input), null, String(input));
+});
+
+test("resend: POST no Cognito regional com o target, o ClientId e o Username normalizado, e devolve só { ok: true }", async () => {
+  const { api, calls, expired } = await loadSignup({ responses: [json(200, { CodeDeliveryDetails: { Destination: "u***@e***" } })] });
+  assert.deepEqual(await api.signupConfirmation.resend(" USER@Example.COM "), { ok: true });
+  assert.equal(calls.length, 1);
+  const [{ url, init }] = calls;
+  assert.equal(url, COGNITO);
+  assert.deepEqual(Object.keys(init), ["method", "headers", "body", "cache", "credentials", "signal"]);
+  assert.equal(init.method, "POST");
+  assert.deepEqual(init.headers, { "Content-Type": "application/x-amz-json-1.1", "X-Amz-Target": "AWSCognitoIdentityProviderService.ResendConfirmationCode" });
+  assert.deepEqual(JSON.parse(init.body), { ClientId: "exampleclient123", Username: "user@example.com" });
+  assert.equal(init.cache, "no-store");
+  assert.deepEqual(expired, []);
+});
+
+test("confirm: POST com ConfirmSignUp, ClientId, Username normalizado e o código como string, sem outros campos", async () => {
+  const { api, calls } = await loadSignup();
+  assert.deepEqual(await api.signupConfirmation.confirm(" Pessoa@Example.COM ", "987654"), { ok: true });
+  assert.equal(calls.length, 1);
+  const [{ url, init }] = calls;
+  assert.equal(url, COGNITO);
+  assert.equal(init.method, "POST");
+  assert.deepEqual(init.headers, { "Content-Type": "application/x-amz-json-1.1", "X-Amz-Target": "AWSCognitoIdentityProviderService.ConfirmSignUp" });
+  assert.deepEqual(JSON.parse(init.body), { ClientId: "exampleclient123", Username: "pessoa@example.com", ConfirmationCode: "987654" });
+});
+
+test("zero Authorization, zero cookies e nenhuma chamada à API do portal, mesmo com sessão ativa", async () => {
+  const { api, calls, expired } = await loadSignup({ session: validSession });
+  api.setTransport(async () => { throw new Error("não deveria usar o transporte autenticado"); });
+  await api.signupConfirmation.resend("user@example.com");
+  await api.signupConfirmation.confirm("user@example.com", "123456");
+  assert.equal(calls.length, 2);
+  for (const { url, init } of calls) {
+    assert.equal(url, COGNITO);
+    assert.ok(!url.startsWith(config.apiUrl));
+    assert.deepEqual(Object.keys(init.headers).map((h) => h.toLowerCase()).sort(), ["content-type", "x-amz-target"]);
+    assert.equal(init.credentials, "omit");
+    for (const forbidden of ["tok", "Bearer", "SecretHash", "Password", "Session", "ForceAliasCreation", "ClientMetadata", "UserContextData"])
+      assert.ok(!init.body.includes(forbidden), forbidden);
+  }
+  assert.deepEqual(expired, []);
+});
+
+test("o código nunca vai na URL: endpoint fixo, sem query string", async () => {
+  const { api, calls } = await loadSignup();
+  await api.signupConfirmation.confirm("user@example.com", "987654");
+  assert.equal(calls[0].url, COGNITO);
+  assert.ok(!calls[0].url.includes("?") && !calls[0].url.includes("987654"));
+});
+
+test("código como string: preserva zero à esquerda e apara; número, vazio ou com espaço interno é recusado sem requisição", async () => {
+  const { api, calls } = await loadSignup();
+  await api.signupConfirmation.confirm("user@example.com", " 012345 ");
+  assert.equal(JSON.parse(calls[0].init.body).ConfirmationCode, "012345");
+  for (const code of [12345, "", "   ", "12 34", null, undefined])
+    assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", code)), "INVALID_CODE", String(code));
+  assert.equal(calls.length, 1);
+});
+
+test("e-mail inválido bloqueia a requisição com INVALID_EMAIL", async () => {
+  const { api, calls } = await loadSignup();
+  assert.equal(await categoryOf(api.signupConfirmation.resend("sem-arroba.example.com")), "INVALID_EMAIL");
+  assert.equal(await categoryOf(api.signupConfirmation.confirm("", "123456")), "INVALID_EMAIL");
+  assert.equal(calls.length, 0);
+});
+
+test("endpoint vem só de config.region; região malformada é CONFIG_ERROR sem requisição", async () => {
+  for (const region of ["eu-west-2", "us-gov-west-1", "ap-southeast-2"]) {
+    const { api, calls } = await loadSignup({ signup: { ...signupConfig, region } });
+    await api.signupConfirmation.resend("user@example.com");
+    assert.equal(calls[0].url, `https://cognito-idp.${region}.amazonaws.com/`);
+  }
+  for (const region of ["", "US-EAST-1", "us-east-1.evil.example", "https://evil.example", "us-east-1/", "us east 1", 1, null]) {
+    const { api, calls } = await loadSignup({ signup: { ...signupConfig, region } });
+    assert.equal(await categoryOf(api.signupConfirmation.resend("user@example.com")), "CONFIG_ERROR", String(region));
+    assert.equal(calls.length, 0, String(region));
+  }
+});
+
+test("configuração ausente ou incompleta: CONFIG_ERROR e nenhuma requisição", async () => {
+  const { region, userPoolClientId, ...semNada } = signupConfig;
+  for (const signup of [semNada, { ...signupConfig, region: undefined }, { ...signupConfig, userPoolClientId: undefined },
+    { ...signupConfig, userPoolClientId: "cliente inválido!" }]) {
+    const { api, calls } = await loadSignup({ signup });
+    assert.equal(await categoryOf(api.signupConfirmation.resend("user@example.com")), "CONFIG_ERROR");
+    assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", "123456")), "CONFIG_ERROR");
+    assert.equal(calls.length, 0);
+  }
+  const { api, calls } = await load({ configured: false });
+  assert.equal(await categoryOf(api.signupConfirmation.resend("user@example.com")), "CONFIG_ERROR");
+  assert.equal(calls.length, 0);
+});
+
+test("Session devolvida pelo ConfirmSignUp não é propagada nem persistida", async () => {
+  const session = "sessao-ficticia-0123456789abcdef";
+  const writes = [];
+  globalThis.sessionStorage = { getItem: () => null, setItem: (k) => writes.push(k), removeItem: (k) => writes.push(k) };
+  try {
+    const { api } = await loadSignup({ responses: [json(200, { Session: session })] });
+    const result = await api.signupConfirmation.confirm("user@example.com", "123456");
+    assert.deepEqual(result, { ok: true });
+    assert.ok(!JSON.stringify(result).includes(session));
+    assert.deepEqual([...storage.keys()], []);
+    assert.deepEqual(writes, []);
+  } finally { delete globalThis.sessionStorage; }
+});
+
+test("erros do código: CodeMismatch → CODE_MISMATCH e ExpiredCode → CODE_EXPIRED", async () => {
+  for (const [type, category] of [["CodeMismatchException", "CODE_MISMATCH"], ["ExpiredCodeException", "CODE_EXPIRED"]]) {
+    const { api } = await loadSignup({ responses: [awsError(type)] });
+    assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", "123456")), category, type);
+  }
+});
+
+test("limites: TooManyFailedAttempts e LimitExceeded → TOO_MANY_ATTEMPTS; TooManyRequests (vazão do serviço) → RATE_LIMITED", async () => {
+  for (const [type, category] of [["TooManyFailedAttemptsException", "TOO_MANY_ATTEMPTS"], ["LimitExceededException", "TOO_MANY_ATTEMPTS"],
+    ["TooManyRequestsException", "RATE_LIMITED"]]) {
+    const { api } = await loadSignup({ responses: [awsError(type)] });
+    assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", "123456")), category, type);
+  }
+});
+
+test("estado da conta: NotAuthorized → NOT_AUTHORIZED e UserNotFound → USER_NOT_FOUND, sem texto sobre a conta", async () => {
+  for (const [type, category] of [["NotAuthorizedException", "NOT_AUTHORIZED"], ["UserNotFoundException", "USER_NOT_FOUND"]]) {
+    const { api } = await loadSignup({ responses: [awsError(type)] });
+    const err = await api.signupConfirmation.confirm("user@example.com", "123456").catch((e) => e);
+    assert.equal(err.category, category, type);
+    assert.equal(err.message, category);
+  }
+});
+
+test("serviço: HTTP 500, InternalError e 5xx sem corpo → SERVICE_UNAVAILABLE", async () => {
+  for (const response of [awsError("InternalErrorException", 500), raw(500, "", null), raw(503, "<html>Service Unavailable</html>", "text/html")]) {
+    const { api } = await loadSignup({ responses: [response] });
+    assert.equal(await categoryOf(api.signupConfirmation.resend("user@example.com")), "SERVICE_UNAVAILABLE");
+  }
+});
+
+test("tipo do erro com namespace no corpo ou no cabeçalho x-amzn-ErrorType; tipo desconhecido ou sem tipo → UNKNOWN", async () => {
+  const header = () => new Response("", { status: 400, headers: { "x-amzn-ErrorType": "ExpiredCodeException:http://internal.amazon.com/coral/com.amazonaws.cognito.identity.idp/" } });
+  for (const [response, category] of [[awsError("com.amazonaws.cognito.identity.idp.model#CodeMismatchException"), "CODE_MISMATCH"],
+    [header, "CODE_EXPIRED"], [awsError("AlgoNovoException"), "UNKNOWN"], [awsError("constructor"), "UNKNOWN"], [awsError("__proto__"), "UNKNOWN"],
+    [raw(400, "{quebrado", "application/x-amz-json-1.1"), "UNKNOWN"], [raw(429, "", null), "RATE_LIMITED"]]) {
+    const { api } = await loadSignup({ responses: [response] });
+    assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", "123456")), category);
+  }
+});
+
+test("todos os erros documentados das duas operações têm categoria própria (nenhum cai em UNKNOWN)", async () => {
+  const expected = {
+    CodeMismatchException: "CODE_MISMATCH", ExpiredCodeException: "CODE_EXPIRED", TooManyFailedAttemptsException: "TOO_MANY_ATTEMPTS",
+    LimitExceededException: "TOO_MANY_ATTEMPTS", TooManyRequestsException: "RATE_LIMITED", NotAuthorizedException: "NOT_AUTHORIZED",
+    InvalidParameterException: "INVALID_PARAMETER", UserNotFoundException: "USER_NOT_FOUND", AliasExistsException: "ALIAS_EXISTS",
+    CodeDeliveryFailureException: "DELIVERY_FAILED", InternalErrorException: "SERVICE_UNAVAILABLE", ForbiddenException: "SERVICE_UNAVAILABLE",
+    ResourceNotFoundException: "CONFIG_ERROR", OperationNotEnabledException: "CONFIG_ERROR", InvalidEmailRoleAccessPolicyException: "CONFIG_ERROR",
+    InvalidSmsRoleAccessPolicyException: "CONFIG_ERROR", InvalidSmsRoleTrustRelationshipException: "CONFIG_ERROR",
+    InvalidLambdaResponseException: "CONFIG_ERROR", UnexpectedLambdaException: "CONFIG_ERROR", UserLambdaValidationException: "CONFIG_ERROR",
+  };
+  for (const [type, category] of Object.entries(expected)) {
+    const { api } = await loadSignup({ responses: [awsError(type)] });
+    const call = type === "CodeDeliveryFailureException" ? api.signupConfirmation.resend("user@example.com") : api.signupConfirmation.confirm("user@example.com", "123456");
+    assert.equal(await categoryOf(call), category, type);
+  }
+});
+
+test("erro público é só a categoria: sem mensagem da AWS, sem e-mail e sem código; o tipo AWS fica oculto", async () => {
+  const { api } = await loadSignup({ responses: [awsError("CodeMismatchException")] });
+  const err = await api.signupConfirmation.confirm("Pessoa@Example.com", "987654").catch((e) => e);
+  assert.ok(err instanceof api.SignupConfirmationError);
+  assert.equal(err.message, "CODE_MISMATCH");
+  assert.equal(err.awsType, "CodeMismatchException");
+  assert.ok(!Object.keys(err).includes("awsType"));
+  const exposed = [err.message, String(err), JSON.stringify(err), err.stack].join("\n");
+  for (const secret of [AWS_MESSAGE, "pessoa@example.com", "Pessoa@Example.com", "987654", "CodeMismatchException"])
+    assert.ok(!exposed.includes(secret), secret);
+});
+
+test("resend: envio real e simulado resolvem igual; resultados que dependem do estado da conta ficam marcados", async () => {
+  const results = [];
+  for (const body of [{ CodeDeliveryDetails: { AttributeName: "email", DeliveryMedium: "EMAIL", Destination: "u***@e***" } }, {}]) {
+    const { api } = await loadSignup({ responses: [json(200, body)] });
+    results.push(await api.signupConfirmation.resend("user@example.com"));
+  }
+  assert.deepEqual(results, [{ ok: true }, { ok: true }]);
+  const { api } = await load({ configured: false });
+  const accountState = new Set(api.ACCOUNT_STATE_CATEGORIES);
+  for (const type of ["InvalidParameterException", "UserNotFoundException", "NotAuthorizedException", "LimitExceededException", "CodeDeliveryFailureException"]) {
+    const loaded = await loadSignup({ responses: [awsError(type)] });
+    assert.ok(accountState.has(await categoryOf(loaded.api.signupConfirmation.resend("user@example.com"))), type);
+  }
+  for (const response of [awsError("TooManyRequestsException"), awsError("InternalErrorException", 500), new TypeError("Failed to fetch")]) {
+    const loaded = await loadSignup({ responses: [response] });
+    assert.ok(!accountState.has(await categoryOf(loaded.api.signupConfirmation.resend("user@example.com"))));
+  }
+  assert.ok(Object.isFrozen(api.ACCOUNT_STATE_CATEGORIES));
+});
+
+test("falha de rede → NETWORK_ERROR; timeout do AbortSignal.timeout da camada → TIMEOUT", async () => {
+  let { api, calls } = await loadSignup({ responses: [new TypeError("Failed to fetch")] });
+  assert.equal(await categoryOf(api.signupConfirmation.resend("user@example.com")), "NETWORK_ERROR");
+  assert.equal(calls.length, 1);
+  ({ api, calls } = await loadSignup({ responses: [new DOMException("The operation timed out.", "TimeoutError")] }));
+  assert.equal(await categoryOf(api.signupConfirmation.confirm("user@example.com", "123456")), "TIMEOUT");
+  assert.equal(timeouts.length, 1);
+  assert.equal(calls[0].init.signal, timeouts[0].signal);
+  assert.ok(timeouts[0].ms > 0 && timeouts[0].ms <= 35000);
+});
+
+test("nada vai para o console nem para o storage em sucesso ou erro", async () => {
+  const methods = ["log", "info", "warn", "error", "debug"], original = Object.fromEntries(methods.map((m) => [m, console[m]])), logged = [];
+  for (const m of methods) console[m] = (...args) => logged.push([m, ...args]);
+  try {
+    for (const response of [json(200, { Session: "sessao-ficticia" }), awsError("CodeMismatchException"), new TypeError("Failed to fetch")]) {
+      const { api } = await loadSignup({ responses: [response] });
+      await api.signupConfirmation.resend("user@example.com").catch(() => {});
+      await api.signupConfirmation.confirm("user@example.com", "012345").catch(() => {});
+      assert.deepEqual([...storage.keys()], []);
+    }
+  } finally { Object.assign(console, original); }
+  assert.deepEqual(logged, []);
+});
