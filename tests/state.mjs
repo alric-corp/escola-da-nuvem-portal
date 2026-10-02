@@ -14,7 +14,7 @@ const PAGES = ["access", "activities-overview", "admin-feedback", "class-report"
   "import", "landing", "reminders", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
 
-// Contrato: as 57 propriedades, nesta ordem, com estes valores iniciais.
+// Contrato: as 58 propriedades, nesta ordem, com estes valores iniciais.
 const EXPECTED = {
   me: null, cohorts: [], code: "", report: null, reportError: "", bootError: "", pendingError: "",
   sender: null, senderError: "", senderLoading: false, sort: "name", teacherFilters: null,
@@ -30,6 +30,7 @@ const EXPECTED = {
   myFeedback: { items: [], nextCursor: null, loading: false, error: "" },
   adminFeedback: { items: [], nextCursor: null, summary: null, loading: false, error: "", filters: { status: "", type: "", cohort: "" }, selectedId: null },
   classFilter: "all", classSearch: "",
+  signupConfirmation: { step: "", email: "", sending: false, confirming: false, error: "", resendAvailableAt: 0, confirmed: false },
 };
 
 // Altera propriedades do state durante fn e restaura os valores originais depois.
@@ -46,14 +47,14 @@ function importsOf(file) {
     .map(([, spec]) => new URL(spec, `file:///${dir}`).pathname.slice(1));
 }
 
-test("state.js tem exatamente as 57 chaves esperadas, na mesma ordem", () => {
-  assert.equal(Object.keys(initial).length, 57);
+test("state.js tem exatamente as 58 chaves esperadas, na mesma ordem", () => {
+  assert.equal(Object.keys(initial).length, 58);
   assert.deepEqual(Object.keys(initial), Object.keys(EXPECTED));
 });
 
 test("valores iniciais e objetos aninhados idênticos ao contrato", () => {
   assert.deepEqual(initial, EXPECTED);
-  for (const key of ["feedbackDraft", "feedbackUpload", "myFeedback", "adminFeedback"])
+  for (const key of ["feedbackDraft", "feedbackUpload", "myFeedback", "adminFeedback", "signupConfirmation"])
     assert.deepEqual(Object.keys(initial[key]), Object.keys(EXPECTED[key]), key);
   assert.deepEqual(Object.keys(initial.adminFeedback.filters), ["status", "type", "cohort"]);
 });
@@ -84,7 +85,7 @@ test("uma página observa alterações feitas via state.js", () => {
 });
 
 test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js ou pelas páginas", () => {
-  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js", "handlers/reminders.js"];
+  const files = [...CONSUMERS, "ui.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js", "handlers/reminders.js", "handlers/signup-confirmation.js"];
   const known = new Set(Object.keys(EXPECTED));
   for (const file of files) {
     const source = read(`frontend/${file}`);
@@ -97,4 +98,12 @@ test("nenhuma propriedade fora do contrato é lida ou criada por app.js, ui.js o
       for (const [, key] of (match[1] || match[2]).matchAll(/"(\w+)"/g)) assert.ok(known.has(key), `${file}: chave dinâmica ${key}`);
     }
   }
+});
+
+// Confirmação de cadastro: só o necessário para a tela. O código digitado, a Session e o tipo do erro da AWS
+// nunca entram no state; a versão mascarada do e-mail é derivada na hora.
+test("a fatia signupConfirmation não guarda código, sessão, token, senha, tipo AWS nem e-mail mascarado", () => {
+  assert.deepEqual(Object.keys(initial.signupConfirmation), ["step", "email", "sending", "confirming", "error", "resendAvailableAt", "confirmed"]);
+  for (const key of Object.keys(initial.signupConfirmation))
+    assert.doesNotMatch(key, /code|session|token|password|senha|aws|masked/i, key);
 });

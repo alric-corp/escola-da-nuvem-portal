@@ -64,4 +64,7 @@ export let state = {
   adminFeedback: { items: [], nextCursor: null, summary: null, loading: false, error: "", filters: { status: "", type: "", cohort: "" }, selectedId: null },
   classFilter: "all",
   classSearch: "",
+  // Confirmação de cadastro antes do login: etapa ("" com o fluxo fechado), e-mail normalizado, chamadas em
+  // andamento, erro de domínio e intervalo de reenvio. O código digitado nunca fica aqui.
+  signupConfirmation: { step: "", email: "", sending: false, confirming: false, error: "", resendAvailableAt: 0, confirmed: false },
 };
