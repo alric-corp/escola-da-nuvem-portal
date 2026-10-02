@@ -94,6 +94,17 @@ def display_snapshot(repo, code, snapshot):
     ]}
 
 
+# Participação do aluno na turma, marcada à mão no portal; o Canvas continua com a matrícula. Sem registro
+# PARTICIPATION#<idCanvas>, o aluno está ACTIVE: ninguém precisa ser marcado para seguir como antes.
+PARTICIPATION_STATUSES = ("ACTIVE", "WITHDRAWN")
+
+
+def participation(repo, code, canvas_id):
+    """Registro de participação do aluno na turma (ou None) e o status efetivo."""
+    item = repo.get("COHORT#" + code, "PARTICIPATION#" + canvas_id)
+    return item, item["status"] if item else "ACTIVE"
+
+
 def class_report(repo, code):
     """Painel do instrutor com a turma inteira; só é chamado após checar require(teach) em dispatch."""
     require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)), 400, "Código de turma inválido.")
@@ -295,6 +306,8 @@ class Portal:
             return self._student_view(code, cohort, pk, body)
         if operation == "display-name" and method == "POST":
             return self._set_display_name(pk, body)
+        if operation == "participation" and method == "POST":
+            return self._set_participation(code, cohort, pk, teach, body)
         if operation == "settings" and method == "POST":
             return self._set_cohort_settings(cohort, pk, body)
         if operation == "preview" and method == "POST":
@@ -834,6 +847,35 @@ class Portal:
              {"action": "display-name", "canvasId": canvas_id, "displayName": display_name, "by": self.uid, "at": now()}, None),
         ])
         return {"canvasId": canvas_id, "displayName": display_name}
+
+    def _set_participation(self, code, cohort, pk, teach, body):
+        """Marca um aluno da publicação atual como WITHDRAWN (desistente) ou de volta como ACTIVE, sem tocar no
+        snapshot, nas notas nem na conta dele. expectedStatus é o status que quem pede está vendo: se mudou, 409,
+        conferido antes da idempotência (como no status do feedback); pedir o status atual não grava nada. Registro
+        e auditoria entram na mesma transação, condicionada ao registro lido."""
+        require(teach)
+        require(set(body) == {"canvasId", "status", "expectedStatus"}, 400, "Solicitação inválida.")
+        canvas_id, status, expected = body["canvasId"], body["status"], body["expectedStatus"]
+        require(isinstance(canvas_id, str) and re.fullmatch(r"\d{1,32}", canvas_id) is not None, 400, "Identificador de aluno inválido.")
+        require(status in PARTICIPATION_STATUSES and expected in PARTICIPATION_STATUSES, 400, "Status de participação inválido.")
+        require(cohort.get("current"), 409, "Publique as notas antes de alterar a participação dos alunos.")
+        snap = self.snapshot(self.publication(code, cohort["current"]))
+        require(any(s["id"] == canvas_id for s in snap["students"]), 404, "Aluno não encontrado nesta turma.")
+        item, current = participation(self.repo, code, canvas_id)
+        conflict = "A participação deste aluno foi alterada por outra pessoa. Recarregue e tente de novo."
+        require(current == expected, 409, conflict)
+        if status == current:
+            return {"canvasId": canvas_id, "participationStatus": current, "updatedAt": item["updatedAt"] if item else None}
+        at = now()
+        try:
+            self.repo.transaction([
+                (pk, "PARTICIPATION#" + canvas_id, {"canvasId": canvas_id, "status": status, "updatedAt": at, "updatedBy": self.uid}, item),
+                (pk, "AUDIT#" + uuid.uuid4().hex,
+                 {"action": "participation", "canvasId": canvas_id, "from": current, "to": status, "by": self.uid, "at": at}, None),
+            ])
+        except Conflict:
+            raise APIError(409, conflict) from None
+        return {"canvasId": canvas_id, "participationStatus": status, "updatedAt": at}
 
     def _set_cohort_settings(self, cohort, pk, body):
         require(self.admin)

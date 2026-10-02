@@ -1007,6 +1007,214 @@ class IntegrityPortalTests(unittest.TestCase):
         self.assertEqual(self.audits(), [])  # a sincronização continua registrando só em SYNC
 
 
+class ParticipationTests(unittest.TestCase):
+    """Status manual de participação do aluno na turma (ACTIVE/WITHDRAWN): persistência e API. Nenhum fluxo de
+    leitura (relatório, métricas, lembretes) usa a marca ainda."""
+
+    def setUp(self):
+        self.repo = MemoryRepository()
+        for code in ("BRSA0267", "BRSA0268"):
+            self.repo.put("COHORT#" + code, "METADATA", {"code": code, "name": code, "current": None})
+        self.admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        self.teacher = Portal(self.repo, {"sub": "teacher", "email": "teacher@escoladanuvem.org", "groups": []})
+        self.other_teacher = Portal(self.repo, {"sub": "teacher2", "email": "teacher2@escoladanuvem.org", "groups": []})
+        self.student = Portal(self.repo, {"sub": "student", "email": "aluno@example.test", "groups": []})
+        self.outsider = Portal(self.repo, {"sub": "outsider", "email": "outsider@example.test", "groups": []})
+        for actor, code in ((self.teacher, "BRSA0267"), (self.other_teacher, "BRSA0268")):
+            actor.dispatch("POST", "/access-request", {})
+            self.admin.dispatch("POST", f"/cohorts/{code}/instructors", {"userId": actor.uid})
+        # Marina (101), 102 e 103 na 267; só 201 na 268.
+        self.first = self.publish("BRSA0267", class_csv(["102", "103"]))
+        self.publish("BRSA0268", class_csv(["201"], marina=False))
+
+    def publish(self, code, text):
+        draft = self.admin.dispatch("POST", f"/cohorts/{code}/preview", {"csv": text})["draft"]
+        return self.admin.dispatch("POST", f"/cohorts/{code}/publish", {"draftId": draft["id"], "acknowledgeRemoved": True})["publication"]
+
+    def mark(self, actor, canvas_id, status, expected, code="BRSA0267"):
+        return actor.dispatch("POST", f"/cohorts/{code}/participation", {"canvasId": canvas_id, "status": status, "expectedStatus": expected})
+
+    def item(self, canvas_id, code="BRSA0267"):
+        return self.repo.get("COHORT#" + code, "PARTICIPATION#" + canvas_id)
+
+    def audits(self, code="BRSA0267"):
+        return [v for (p, s), v in self.repo.items.items() if p == "COHORT#" + code and s.startswith("AUDIT#") and v["action"] == "participation"]
+
+    def status_of(self, call):
+        with self.assertRaises(APIError) as err:
+            call()
+        return err.exception.status
+
+    def test_withdrawing_an_active_student_stores_status_actor_time_and_audit(self):
+        items, files = copy.deepcopy(self.repo.items), copy.deepcopy(self.repo.files)
+        result = self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        at = result["updatedAt"]
+        self.assertEqual(result, {"canvasId": "102", "participationStatus": "WITHDRAWN", "updatedAt": at})
+        self.assertEqual(datetime.fromisoformat(at).utcoffset(), timedelta(0))
+        self.assertEqual(self.item("102"), {"canvasId": "102", "status": "WITHDRAWN", "updatedAt": at, "updatedBy": "teacher"})
+        self.assertEqual(self.audits(), [{"action": "participation", "canvasId": "102", "from": "ACTIVE", "to": "WITHDRAWN", "by": "teacher", "at": at}])
+        # Só o registro e a auditoria são novos: snapshots, publicações, turma e vínculos ficam como estavam.
+        added = {k for k in self.repo.items if k not in items}
+        self.assertEqual({s.split("#")[0] for _, s in added}, {"PARTICIPATION", "AUDIT"})
+        self.assertEqual({k: v for k, v in self.repo.items.items() if k in items}, items)
+        self.assertEqual(self.repo.files, files)
+
+    def test_reactivation_keeps_the_record_with_active_and_audits_it(self):
+        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        result = self.mark(self.admin, "102", "ACTIVE", "WITHDRAWN")
+        self.assertEqual(result["participationStatus"], "ACTIVE")
+        self.assertEqual(self.item("102"), {"canvasId": "102", "status": "ACTIVE", "updatedAt": result["updatedAt"], "updatedBy": "admin"})
+        self.assertEqual(sorted((a["from"], a["to"], a["by"]) for a in self.audits()),
+                         [("ACTIVE", "WITHDRAWN", "teacher"), ("WITHDRAWN", "ACTIVE", "admin")])
+
+    def test_without_a_record_the_student_is_active_and_asking_for_active_writes_nothing(self):
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.mark(self.teacher, "102", "ACTIVE", "ACTIVE"), {"canvasId": "102", "participationStatus": "ACTIVE", "updatedAt": None})
+        self.assertIsNone(self.item("102"))
+        self.assertEqual(self.repo.items, items)
+        from portal import participation
+        self.assertEqual(participation(self.repo, "BRSA0267", "102"), (None, "ACTIVE"))
+
+    def test_repeating_the_current_status_is_idempotent(self):
+        first = self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.mark(self.admin, "102", "WITHDRAWN", "WITHDRAWN"), first)
+        self.assertEqual(self.repo.items, items)
+        reactivated = self.mark(self.admin, "102", "ACTIVE", "WITHDRAWN")
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.mark(self.teacher, "102", "ACTIVE", "ACTIVE"), reactivated)
+        self.assertEqual(self.repo.items, items)
+        self.assertEqual(len(self.audits()), 2)
+
+    def test_only_admin_and_instructors_of_this_cohort_can_change_participation(self):
+        items = copy.deepcopy(self.repo.items)
+        for actor in (self.other_teacher, self.student, self.outsider):
+            with self.subTest(actor=actor.uid):
+                self.assertEqual(self.status_of(lambda: self.mark(actor, "102", "WITHDRAWN", "ACTIVE")), 403)
+        self.assertEqual(self.repo.items, items)
+        self.assertEqual(self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")["participationStatus"], "WITHDRAWN")
+        self.assertEqual(self.mark(self.admin, "102", "ACTIVE", "WITHDRAWN")["participationStatus"], "ACTIVE")
+        self.assertEqual(self.mark(self.other_teacher, "201", "WITHDRAWN", "ACTIVE", code="BRSA0268")["participationStatus"], "WITHDRAWN")
+
+    def test_route_requires_an_authenticated_portal_session(self):
+        def event(claims):
+            return {"rawPath": "/cohorts/BRSA0267/participation", "requestContext": {"http": {"method": "POST"}, "authorizer": {"jwt": {"claims": claims}}},
+                    "body": json.dumps({"canvasId": "102", "status": "WITHDRAWN", "expectedStatus": "ACTIVE"})}
+        with patch("portal.Repository") as repo:
+            self.assertEqual(handler(event({}), None)["statusCode"], 401)
+            self.assertEqual(handler(event({"sub": "abc", "token_use": "access", "scope": "openid"}), None)["statusCode"], 403)
+            repo.assert_not_called()
+
+    def test_student_must_be_in_the_current_publication_of_this_cohort(self):
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.status_of(lambda: self.mark(self.admin, "999", "WITHDRAWN", "ACTIVE")), 404)
+        # 102 existe na 267, não na 268: nada de busca global.
+        self.assertEqual(self.status_of(lambda: self.mark(self.admin, "102", "WITHDRAWN", "ACTIVE", code="BRSA0268")), 404)
+        self.assertEqual(self.repo.items, items)
+        # 103 esteve numa publicação anterior, mas não está na atual.
+        self.publish("BRSA0267", class_csv(["102", "104"]))
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.status_of(lambda: self.mark(self.admin, "103", "WITHDRAWN", "ACTIVE")), 404)
+        self.assertEqual(self.repo.items, items)
+        self.assertEqual(self.mark(self.admin, "104", "WITHDRAWN", "ACTIVE")["participationStatus"], "WITHDRAWN")
+
+    def test_cohort_without_a_current_publication_is_a_conflict(self):
+        self.admin.dispatch("POST", "/cohorts", {"code": "BRSA0269"})
+        items = copy.deepcopy(self.repo.items)
+        self.assertEqual(self.status_of(lambda: self.mark(self.admin, "101", "WITHDRAWN", "ACTIVE", code="BRSA0269")), 409)
+        self.assertEqual(self.status_of(lambda: self.mark(self.admin, "101", "WITHDRAWN", "ACTIVE", code="BRSA0999")), 404)
+        self.assertEqual(self.repo.items, items)
+
+    def test_only_active_and_withdrawn_are_valid(self):
+        items = copy.deepcopy(self.repo.items)
+        for bad in ("INACTIVE", "DROPPED", "DESISTENTE", "", "active", "withdrawn", None, 1, ["WITHDRAWN"]):
+            for body in ({"status": bad, "expectedStatus": "ACTIVE"}, {"status": "WITHDRAWN", "expectedStatus": bad}):
+                with self.subTest(body=body):
+                    self.assertEqual(self.status_of(lambda: self.admin.dispatch(
+                        "POST", "/cohorts/BRSA0267/participation", {"canvasId": "102", **body})), 400)
+        self.assertEqual(self.repo.items, items)
+
+    def test_body_is_exact_and_the_actor_never_comes_from_it(self):
+        items = copy.deepcopy(self.repo.items)
+        valid = {"canvasId": "102", "status": "WITHDRAWN", "expectedStatus": "ACTIVE"}
+        bodies = [{k: v for k, v in valid.items() if k != "expectedStatus"}, {k: v for k, v in valid.items() if k != "canvasId"},
+                  {**valid, "updatedBy": "outro-sub"}, {**valid, "by": "outro-sub"}, {**valid, "canvasId": 102},
+                  {**valid, "canvasId": "abc"}, {**valid, "canvasId": ""}, {**valid, "canvasId": "1" * 33}, {**valid, "canvasId": "../102"}]
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertEqual(self.status_of(lambda: self.teacher.dispatch("POST", "/cohorts/BRSA0267/participation", body)), 400)
+        self.assertEqual(self.repo.items, items)
+        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        self.assertEqual((self.item("102")["updatedBy"], self.audits()[0]["by"]), ("teacher", "teacher"))
+
+    def test_stale_expected_status_is_a_conflict_without_writing(self):
+        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        items = copy.deepcopy(self.repo.items)
+        # Quem ainda vê o aluno ativo: reativar ou repetir a marca a partir desse estado antigo dá 409, mesmo que o
+        # resultado pedido já seja o atual (a esperada é conferida antes da idempotência, como no status do feedback).
+        for status in ("ACTIVE", "WITHDRAWN"):
+            with self.subTest(status=status):
+                self.assertEqual(self.status_of(lambda: self.mark(self.admin, "102", status, "ACTIVE")), 409)
+        self.assertEqual(self.repo.items, items)
+
+    def test_concurrent_changes_never_overwrite_each_other(self):
+        # A e B leem o aluno ativo; A grava antes de B. A escrita de B ainda espera o registro ausente: a condição
+        # atômica da transação recusa, e o que A gravou fica intacto.
+        original = self.repo.transaction
+
+        def a_wins_first(writes, counters=()):
+            self.repo.transaction = original
+            self.mark(self.admin, "102", "WITHDRAWN", "ACTIVE")
+            return original(writes, counters)
+
+        self.repo.transaction = a_wins_first
+        self.assertEqual(self.status_of(lambda: self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")), 409)
+        self.assertEqual(self.item("102")["updatedBy"], "admin")
+        self.assertEqual([(a["from"], a["to"], a["by"]) for a in self.audits()], [("ACTIVE", "WITHDRAWN", "admin")])
+
+    def test_audit_and_record_hold_no_personal_data(self):
+        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        self.mark(self.teacher, "102", "ACTIVE", "WITHDRAWN")
+        for audit in self.audits():
+            self.assertEqual(set(audit), {"action", "canvasId", "from", "to", "by", "at"})
+        self.assertEqual(set(self.item("102")), {"canvasId", "status", "updatedAt", "updatedBy"})
+        stored = json.dumps([self.audits(), self.item("102")])
+        for private in ("Colega", "colega102@example.test", "Marina", "aluno@example.test", "teacher@escoladanuvem.org", '"8"', '"100"'):
+            self.assertNotIn(private, stored)
+
+    def test_canvas_sync_and_new_publications_keep_the_record(self):
+        from portal import sync_from_canvas
+        self.mark(self.teacher, "101", "WITHDRAWN", "ACTIVE")
+        marked = self.item("101")
+        # Sincronização com o aluno ainda no Canvas: sem mudança, e depois com a nota dele alterada.
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", class_csv(["102", "103"]), 3)["status"], "unchanged")
+        self.assertEqual(sync_from_canvas(self.repo, "BRSA0267", class_csv(["102", "103"], kc="9"), 3)["status"], "published")
+        self.assertEqual(self.item("101"), marked)
+        # Envio manual de outro CSV: rascunho, publicação e turma regravados; o registro não.
+        self.publish("BRSA0267", class_csv(["102", "103"], kc="10"))
+        self.assertEqual(self.item("101"), marked)
+        self.assertEqual(len(self.audits()), 1)
+        self.assertEqual(self.mark(self.teacher, "101", "ACTIVE", "WITHDRAWN")["participationStatus"], "ACTIVE")
+
+    def test_restore_keeps_the_record(self):
+        second = self.publish("BRSA0267", class_csv(["102", "103"], kc="9"))
+        self.mark(self.admin, "102", "WITHDRAWN", "ACTIVE")
+        marked = self.item("102")
+        self.admin.dispatch("POST", "/cohorts/BRSA0267/restore", {"publicationId": self.first["id"], "expectedCurrent": second["id"]})
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], self.first["id"])
+        self.assertEqual(self.item("102"), marked)
+
+    def test_reports_and_reminders_do_not_use_the_record_yet(self):
+        views = lambda: (self.admin.dispatch("GET", "/cohorts/BRSA0267/report", {}), class_report(self.repo, "BRSA0267"),
+                         self.student.dispatch("GET", "/cohorts/BRSA0267/report", {}),
+                         self.teacher.dispatch("POST", "/cohorts/BRSA0267/pending-preview", {"studentId": "101"}))
+        self.student.dispatch("GET", "/cohorts/BRSA0267/report", {})  # o primeiro acesso cria o vínculo (portalLinked)
+        before = views()
+        self.mark(self.teacher, "101", "WITHDRAWN", "ACTIVE")
+        self.mark(self.teacher, "102", "WITHDRAWN", "ACTIVE")
+        self.assertEqual(views(), before)
+
+
 class FeedbackTests(unittest.TestCase):
     """Feedback da plataforma: criação, leitura própria, administração, paginação, dedup e limite."""
 

@@ -302,6 +302,55 @@ class AWSPersistenceTests(unittest.TestCase):
         item = db.get_item(TableName="portal-test", Key={"PK": {"S": "COHORT#BRSA0267"}, "SK": {"S": "DRAFT#" + draft["id"]}})["Item"]
         self.assertNotIn("expiresAt", item)
 
+    def test_participation_record_and_audit_use_real_conditional_transactions(self):
+        draft = self.call("preview", {"csv": canvas_csv()})["draft"]
+        self.call("publish", {"draftId": draft["id"]})
+        mark = lambda status, expected: self.call("participation", {"canvasId": "101", "status": status, "expectedStatus": expected})
+        record = lambda: Repository().get("COHORT#BRSA0267", "PARTICIPATION#101")
+        audits = lambda: sorted((a["from"], a["to"], a["by"]) for a in Repository().list("COHORT#BRSA0267", "AUDIT#") if a["action"] == "participation")
+        # Sem registro, o aluno está ativo; pedir ACTIVE não grava nada.
+        self.assertEqual(mark("ACTIVE", "ACTIVE"), {"canvasId": "101", "participationStatus": "ACTIVE", "updatedAt": None})
+        self.assertIsNone(record())
+        self.assertEqual(audits(), [])
+        withdrawn = mark("WITHDRAWN", "ACTIVE")
+        self.assertEqual(record(), {"canvasId": "101", "status": "WITHDRAWN", "updatedAt": withdrawn["updatedAt"], "updatedBy": "admin"})
+        self.assertEqual(audits(), [("ACTIVE", "WITHDRAWN", "admin")])
+        # Leitura antiga (o registro ainda ausente) e escrita depois: a condição da transação no DynamoDB recusa.
+        read = self.repo.get
+        with patch.object(self.repo, "get", lambda pk, sk: None if sk == "PARTICIPATION#101" else read(pk, sk)):
+            with self.assertRaises(APIError) as err:
+                mark("WITHDRAWN", "ACTIVE")
+        self.assertEqual(err.exception.status, 409)
+        self.assertEqual(record()["updatedAt"], withdrawn["updatedAt"])
+        self.assertEqual(audits(), [("ACTIVE", "WITHDRAWN", "admin")])
+        reactivated = mark("ACTIVE", "WITHDRAWN")
+        self.assertEqual(record(), {"canvasId": "101", "status": "ACTIVE", "updatedAt": reactivated["updatedAt"], "updatedBy": "admin"})
+        self.assertEqual(audits(), [("ACTIVE", "WITHDRAWN", "admin"), ("WITHDRAWN", "ACTIVE", "admin")])
+
+    def test_canvas_sync_lambda_and_restore_keep_the_participation_record(self):
+        from functools import partial
+        import canvas_sync
+        from canvas import CanvasClient
+        from test_canvas import BASE, FakeCanvas, course
+        arn = boto3.client("secretsmanager", region_name="us-east-1").create_secret(Name="canvas-token", SecretString='{"token": "1~abcdefghij"}')["ARN"]
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        fake = FakeCanvas({"4436": course(lab_scores=(100, None, 50))})
+        env = {"CANVAS_SECRET_ARN": arn, "CANVAS_BASE_URL": BASE, "METRICS_NAMESPACE": "portal-teste"}
+        with patch.dict(os.environ, env), patch.object(canvas_sync, "CanvasClient", partial(CanvasClient, opener=fake)):
+            self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "published"}})
+            first = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+            self.call("participation", {"canvasId": "100", "status": "WITHDRAWN", "expectedStatus": "ACTIVE"})
+            marked = Repository().get("COHORT#BRSA0267", "PARTICIPATION#100")
+            self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "unchanged"}})
+            fake.courses["4436"] = course(lab_scores=(90, None, 50))  # a nota do aluno marcado muda no Canvas
+            self.assertEqual(canvas_sync.handler({}, None), {"results": {"BRSA0267": "published"}})
+        second = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+        self.assertNotEqual(second, first)
+        self.assertEqual(Repository().get("COHORT#BRSA0267", "PARTICIPATION#100"), marked)
+        self.call("restore", {"publicationId": first, "expectedCurrent": second})
+        self.assertEqual(self.repo.get("COHORT#BRSA0267", "METADATA")["current"], first)
+        self.assertEqual(Repository().get("COHORT#BRSA0267", "PARTICIPATION#100"), marked)
+
     def test_canvas_sync_lambda_end_to_end(self):
         from functools import partial
         import canvas_sync
