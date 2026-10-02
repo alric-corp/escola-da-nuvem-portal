@@ -16,14 +16,10 @@ const feedbackPageModule = await import("../frontend/pages/feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
-  "import", "landing", "reminders", "student", "teacher"].map((page) => `pages/${page}.js`);
+  "import", "landing", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
-const HANDLER_NAMES = ["access", "import", "admin-feedback", "feedback", "reminders"];
+const HANDLER_NAMES = ["access", "import", "admin-feedback", "feedback", "reminders", "signup-confirmation"];
 const HANDLERS = HANDLER_NAMES.map((name) => `handlers/${name}.js`);
-// Handlers já no build e ainda sem ligação ao app.js (configure, actions e submits chegam com a tela). As regras
-// gerais valem para eles; a composição no app.js continua exigida só dos handlers ligados.
-const PENDING_HANDLER_NAMES = ["signup-confirmation"];
-const ALL_HANDLERS = [...HANDLER_NAMES, ...PENDING_HANDLER_NAMES].map((name) => `handlers/${name}.js`);
 
 // Imports estáticos e dinâmicos de um módulo do frontend, resolvidos como caminhos relativos a frontend/.
 function importsOf(file) {
@@ -75,12 +71,12 @@ const codeOf = (file) => stripComments(read(`frontend/${file}`));
 // state tem uma única fonte, state.js. ui.js só o usa internamente: o reexport de compatibilidade de cache
 // saiu na C6.1, quando nem os módulos atuais nem o app.js publicado antes dela o importavam de ui.js.
 test("state vem só de state.js: ui.js, api.js, as páginas e os handlers não o exportam", async () => {
-  const modules = ["ui.js", "api.js", ...PAGES, ...ALL_HANDLERS];
+  const modules = ["ui.js", "api.js", ...PAGES, ...HANDLERS];
   for (const file of modules) assert.equal("state" in (await import(`../frontend/${file}`)), false, file);
   assert.ok("state" in (await import("../frontend/state.js")));
 });
 
-test("app.js e as 11 páginas importam state direto de state.js, e nenhum de ui.js", () => {
+test("app.js e as 12 páginas importam state direto de state.js, e nenhum de ui.js", () => {
   for (const file of CONSUMERS) {
     const imports = namedImports(file);
     const withState = [...imports].filter(([, names]) => names.has("state")).map(([from]) => from);
@@ -109,8 +105,8 @@ test("build publica state.js e todo módulo alcançável a partir de app.js, sem
 
 // Injeção nos handlers: configure recebe um objeto e só guarda render. Tolerante a espaços, tabs, quebras de
 // linha, ponto e vírgula e vírgula final; qualquer outra dependência configurável falha.
-test("cada handler (os 5 ligados e o pendente) expõe configure que só guarda render", async () => {
-  for (const file of ALL_HANDLERS) {
+test("cada um dos 6 handlers expõe configure que só guarda render", async () => {
+  for (const file of HANDLERS) {
     const module = await import(`../frontend/${file}`), code = codeOf(file);
     // Sanidade do código sem comentários: nenhum export some ao tirar os comentários.
     for (const name of Object.keys(module)) assert.match(code, new RegExp(`\\b${name}\\b`), `${file}: ${name}`);
@@ -124,7 +120,7 @@ test("cada handler (os 5 ligados e o pendente) expõe configure que só guarda r
   }
 });
 
-test("app.js configura cada um dos 5 handlers exatamente uma vez, só com { render }", () => {
+test("app.js configura cada um dos 6 handlers exatamente uma vez, só com { render }", () => {
   const app = read("frontend/app.js");
   const namespaces = new Map([...app.matchAll(/^import\s+\*\s+as\s+(\w+)\s+from\s+["']\.\/handlers\/([\w-]+)\.js["']/gm)].map(([, ns, name]) => [name, ns]));
   assert.deepEqual([...namespaces.keys()].sort(), [...HANDLER_NAMES].sort());
@@ -135,6 +131,9 @@ test("app.js configura cada um dos 5 handlers exatamente uma vez, só com { rend
     assert.equal(own[0].args, "{render}", `${ns}.configure deve receber só { render }`);
   }
   assert.equal(calls.filter((call) => [...namespaces.values()].includes(call.ns)).length, HANDLER_NAMES.length);
+  // Nenhum handler pendente de ligação: todo arquivo de handlers/ está na lista acima.
+  const present = readdirSync(new URL("../frontend/handlers/", import.meta.url)).filter((name) => name.endsWith(".js")).map((name) => `handlers/${name}`);
+  assert.deepEqual(present.sort(), [...HANDLERS].sort(), "todo arquivo de handlers/ é ligado pelo app.js");
 });
 
 // Turmas e acessos: orquestração fora de app.js, sem voltar a depender dele nem registrar listeners.
@@ -147,16 +146,15 @@ test("handlers/access.js importa só api, state e ui, não registra listeners e 
 });
 
 // Confirmação de cadastro: domínio do fluxo antes do login. Só api e state; sem DOM, listeners, rede direta,
-// storage, console nem timers globais. Fica no build, mas ninguém o importa até a tela ser ligada.
+// storage, console nem timers globais. Quem o importa: o app.js, que o liga, e a página da confirmação, que usa só as
+// constantes e a máscara.
 test("handlers/signup-confirmation.js importa só api e state, não toca em DOM, rede, storage nem console, e entra no build", () => {
   const file = "handlers/signup-confirmation.js", source = codeOf(file);
   assert.deepEqual(importsOf(file).sort(), ["api.js", "state.js"]);
   assert.doesNotMatch(source, /addEventListener|\bdocument\b|\bwindow\b|\$\(|\bfetch\s*\(|localStorage|sessionStorage|\bconsole\b|setInterval|\blocation\b|auth\.js/);
   assert.ok(read("scripts/build_frontend.py").includes(`"${file}"`));
-  for (const other of ["app.js", ...PAGES, "ui.js", "api.js", "state.js", ...HANDLERS])
-    assert.ok(!importsOf(other).includes(file), other);
-  const present = readdirSync(new URL("../frontend/handlers/", import.meta.url)).filter((name) => name.endsWith(".js")).map((name) => `handlers/${name}`);
-  assert.deepEqual(present.sort(), [...ALL_HANDLERS].sort(), "todo arquivo de handlers/ está ligado ao app.js ou pendente de ligação");
+  const importers = ["app.js", ...PAGES, "ui.js", "api.js", "state.js", ...HANDLERS].filter((other) => importsOf(other).includes(file));
+  assert.deepEqual(importers, ["app.js", "pages/signup-confirmation.js"]);
 });
 
 test("handlers/signup-confirmation.js expõe só o domínio do fluxo e usa a normalização e a política de privacidade do api.js", async () => {
@@ -168,6 +166,51 @@ test("handlers/signup-confirmation.js expõe só o domínio do fluxo e usa a nor
   assert.match(source, /api\.signupConfirmation\.resend\(/);
   assert.match(source, /api\.signupConfirmation\.confirm\(/);
   assert.doesNotMatch(source, /toLowerCase\(|cognito-idp|X-Amz-Target/, "sem segunda normalização nem chamada direta ao Cognito");
+});
+
+// A página da confirmação só apresenta: lê a fatia do state e usa as constantes e a máscara do handler. Rede, storage,
+// listeners, timers, foco, sessão e a decisão do que fazer ficam com o handler e o app.js.
+test("pages/signup-confirmation.js só apresenta: state, ui e as constantes e a máscara do handler, sem rede, storage, listeners, timers nem sessão", () => {
+  const file = "pages/signup-confirmation.js", source = codeOf(file);
+  assert.deepEqual(importsOf(file).sort(), ["handlers/signup-confirmation.js", "state.js", "ui.js"]);
+  assert.deepEqual([...namedImports(file).get("handlers/signup-confirmation.js")].sort(), ["SIGNUP_ERRORS", "SIGNUP_STEPS", "maskSignupEmail"]);
+  assert.doesNotMatch(source, /addEventListener|\bdocument\b|\bwindow\b|\$\(|\.focus\(|\bfetch\s*\(|\bapi\.|localStorage|sessionStorage|\bconsole\b|setTimeout|setInterval|\bDate\b|\blocation\b|auth\.js|app\.js/);
+  assert.doesNotMatch(source, /\bstate\.\w+(\.\w+)*\s*=(?!=)|Object\.assign\(\s*state\b/, "a página não altera o state");
+  assert.doesNotMatch(source, /\b(start|reset|requestCode|confirm)\s*\(|normalizeSignupEmail|ACCOUNT_STATE_CATEGORIES|toLowerCase|USER_NOT_FOUND|NOT_AUTHORIZED|cognito/,
+    "nenhuma operação nem regra de domínio na página");
+  assert.ok(read("scripts/build_frontend.py").includes(`"${file}"`));
+});
+
+// A confirmação chega ao app.js como os outros domínios: actions que só delegam ao handler, os dois formulários no
+// submit e a composição da landing sem sessão. Rede, normalização, mensagens de erro e OAuth ficam onde já estavam.
+test("app.js liga a confirmação de cadastro só pelo handler: actions finas, dois submits, sem Cognito, normalização, erros nem outro login", () => {
+  const app = read("frontend/app.js"), code = stripComments(app);
+  assert.doesNotMatch(code, /api\.signupConfirmation|normalizeSignupEmail|ACCOUNT_STATE_CATEGORIES|SIGNUP_ERRORS|maskSignupEmail|cognito-idp|X-Amz-Target|toLowerCase|oauth2|code_challenge|crypto\./);
+  // Do handler, o app.js usa só configure, as quatro operações e a etapa CODE (para o timer do reenvio).
+  assert.deepEqual([...new Set([...code.matchAll(/\bsignupConfirmationHandlers\.([\w.]+)/g)].map(([, member]) => member))].sort(),
+    ["SIGNUP_STEPS.CODE", "configure", "confirm", "requestCode", "reset", "start"]);
+  const actions = blockAfter(app, /\bconst actions\s*=/);
+  const wrappers = {
+    "signup-confirmation-start": /"signup-confirmation-start":\s*\(\)\s*=>\s*signupConfirmationHandlers\.start\(\s*\)\s*,/,
+    "signup-confirmation-reset": /"signup-confirmation-reset":\s*\(\)\s*=>\s*signupConfirmationHandlers\.reset\(\s*\)\s*,/,
+    "signup-confirmation-resend": /"signup-confirmation-resend":\s*\(\)\s*=>\s*signupConfirmationHandlers\.requestCode\(\s*\)\s*,/,
+    "signup-confirmation-use-other-email": /"signup-confirmation-use-other-email":\s*\(\)\s*=>\s*signupConfirmationHandlers\.start\(\s*\)\s*,/,
+  };
+  for (const [key, wrapper] of Object.entries(wrappers)) assert.match(actions, wrapper, key);
+  assert.equal((actions.match(/\bsignupConfirmationHandlers\./g) || []).length, Object.keys(wrappers).length);
+  // "Fazer login" reaproveita a action login de sempre.
+  assert.match(actions, /\blogin:\s*\(\)\s*=>\s*login\(\s*config\s*\)\s*,/);
+  // Submits: cada formulário entrega o valor digitado ao handler; a fatia muda só por ele.
+  const submit = blockAfter(app, /document\.addEventListener\(\s*"submit"/);
+  assert.match(submit, /form\.id\s*===\s*"signup-email-form"[^}]*signupConfirmationHandlers\.requestCode\(\s*form\.elements\.email\.value\s*\)/);
+  assert.match(submit, /form\.id\s*===\s*"signup-code-form"[^}]*signupConfirmationHandlers\.confirm\(\s*\w+\s*\)/);
+  assert.doesNotMatch(code, /state\.signupConfirmation(\.\w+)*\s*=(?!=)|Object\.assign\(\s*state\.signupConfirmation/, "a fatia muda só pelo handler");
+  // Sem sessão, a landing passa sempre pela composição: landing() só é chamada dentro de publicPage().
+  assert.equal((code.match(/\blanding\(\)/g) || []).length, 1);
+  assert.match(blockAfter(code, /\bfunction\s+publicPage\s*\(\s*\)/), /\blanding\(\)/);
+  // Um único timer de reenvio, que só chama render; nenhum setInterval.
+  assert.equal((code.match(/setTimeout\(\s*render\s*,/g) || []).length, 1);
+  assert.doesNotMatch(code, /setInterval/);
 });
 
 // Importação: rascunhos, CSV, prévia e publicação fora de app.js. Listeners, busy, boot, saída e

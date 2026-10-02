@@ -4,6 +4,7 @@
 
 1. O aluno abre o portal e vê a página de entrada (`frontend/pages/landing.js`), que orienta a criar a conta **com o mesmo e-mail do Canvas**.
 2. **Entrar no meu portal** redireciona para o Cognito Managed Login (pt-BR), onde o aluno cria a conta e confirma o código recebido por e-mail.
+   - Se a confirmação ficou pela metade (a tela foi fechada, o código expirou ou não chegou), **Confirmar cadastro**, na página de entrada, retoma o processo: e-mail → **Enviar código** → código recebido → **Confirmar** → **Fazer login**. Um novo código pode ser pedido a cada minuto, e a mensagem depois do envio é a mesma para qualquer conta, para não revelar quem tem cadastro.
 3. De volta ao portal, `callback()` (`frontend/auth.js`) troca o código por tokens e `boot()` (`frontend/app.js`) chama:
    - `GET /me`, que devolve o papel `student` quando não há vínculo de instrutor;
    - `GET /cohorts`, que percorre as turmas e, em cada uma com publicação, procura o aluno no snapshot atual: primeiro pelo vínculo `STUDY#` e, sem vínculo, pelo e-mail.

@@ -5,9 +5,11 @@ import * as importHandlers from "./handlers/import.js";
 import * as adminFeedbackHandlers from "./handlers/admin-feedback.js";
 import * as feedbackHandlers from "./handlers/feedback.js";
 import * as remindersHandlers from "./handlers/reminders.js";
+import * as signupConfirmationHandlers from "./handlers/signup-confirmation.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { landing } from "./pages/landing.js";
+import { signupConfirmationEntry, signupConfirmationPage } from "./pages/signup-confirmation.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentPage } from "./pages/student.js";
 import { filteredStudents, studentsCsv, teacherPage } from "./pages/teacher.js";
@@ -24,12 +26,17 @@ importHandlers.configure({ render });
 adminFeedbackHandlers.configure({ render });
 feedbackHandlers.configure({ render });
 remindersHandlers.configure({ render });
+signupConfirmationHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
 let renderedView = "";
 let lastFocusSelector = "";
+// Confirmação de cadastro: a etapa desenhada por último (o foco vai ao título só quando ela muda) e o timer que
+// redesenha quando o intervalo de reenvio acaba.
+let shownSignupStep = "";
+let resendTimer = 0;
 // "Visualizar como aluno" vale só para esta aba: registro em sessionStorage e a marca
 // ?modo=visualizar-aluno na URL. Os dois precisam existir para retomar ao recarregar; uma aba
 // nova abre como admin normal. O aluno visualizado nunca vai para a URL nem para avanca.context.
@@ -121,7 +128,7 @@ async function loadClassReport(value) {
 }
 
 function render() {
-  if (!state.me) return landing();
+  if (!state.me) return publicPage();
   if (state.classReport) return renderClassReport();
   const focused = document.activeElement;
   const focusId = focused?.id;
@@ -161,6 +168,35 @@ function render() {
   } else if (lastFocusSelector && lost) $(lastFocusSelector)?.focus({ preventScroll: true });
   if (state.studentView) persistStudentView();
   saveContext();
+}
+
+// Sem sessão: a landing, e nela a confirmação de cadastro. Fechada, o botão que abre o fluxo fica logo depois de
+// "Primeiro acesso?" (só com região e cliente do Cognito na configuração); aberta, a etapa ocupa a coluna de texto, e
+// cabeçalho, arte e rodapé continuam os da landing.
+function publicPage() {
+  const s = state.signupConfirmation;
+  const focused = document.activeElement, focusId = focused?.id;
+  const oldCodeField = $("#signup-code"), typed = oldCodeField?.value, caret = oldCodeField?.selectionStart;
+  // Intervalo de reenvio: um único timer redesenha quando ele acaba; todo render o cancela e, se ainda falta, refaz.
+  const wait = s.step === signupConfirmationHandlers.SIGNUP_STEPS.CODE ? Math.max(0, s.resendAvailableAt - Date.now()) : 0;
+  clearTimeout(resendTimer);
+  if (wait) resendTimer = setTimeout(render, wait);
+  if (!s.step || !$(".welcome-grid > section")) landing();
+  if (s.step) $(".welcome-grid > section").innerHTML = signupConfirmationPage(wait);
+  else if (config.region && config.userPoolClientId) $(".first-access")?.insertAdjacentHTML("afterend", signupConfirmationEntry());
+  // O código digitado e ainda não enviado continua no campo; o envio o limpa antes de confirmar.
+  const field = $("#signup-code");
+  if (field && typed) field.value = typed;
+  // Etapa nova: foco no título (ao fechar, no botão que abre o fluxo). Mesma etapa: o foco volta ao mesmo controle ou,
+  // se ele ficou desabilitado pelo envio, ao campo da etapa. Foco fora da coluna redesenhada não muda.
+  const changedStep = s.step !== shownSignupStep;
+  shownSignupStep = s.step;
+  if (changedStep) (s.step ? $("#signup-title") : $('[data-action="signup-confirmation-start"]'))?.focus();
+  else if (focusId && !focused.isConnected) {
+    const next = document.getElementById(focusId);
+    (next && !next.disabled ? next : $("#signup-code, #signup-email"))?.focus({ preventScroll: true });
+    if (field && document.activeElement === field && caret != null) field.setSelectionRange(caret, caret);
+  }
 }
 
 // Aluno: Feedback no menu. Instrutor e admin: link discreto no rodapé (o menu deles já é longo).
@@ -321,6 +357,10 @@ const actions = {
   "verify-sender": () => remindersHandlers.verifySender(),
   "send-reminder": () => remindersHandlers.sendReminder(),
   login: () => login(config),
+  "signup-confirmation-start": () => signupConfirmationHandlers.start(),
+  "signup-confirmation-reset": () => signupConfirmationHandlers.reset(),
+  "signup-confirmation-resend": () => signupConfirmationHandlers.requestCode(),
+  "signup-confirmation-use-other-email": () => signupConfirmationHandlers.start(),
   "class-refresh": () => loadClassReport(state.classReport.cohort),
   "class-exit": async () => {
     state.classReport = null;
@@ -368,7 +408,7 @@ function expireSession() {
   state.me = null;
   state.classReport = null;
   state.report = null;
-  landing();
+  publicPage();
 }
 
 function signOut() {
@@ -626,6 +666,16 @@ document.addEventListener("submit", (event) => {
         await accessHandlers.saveDisplayName(form);
       } else if (form.classList.contains("approve-form")) {
         await accessHandlers.approveInstructor(form);
+      } else if (form.id === "signup-email-form") {
+        // O foco fica no campo durante o envio e depois dele, com erro ou falha.
+        form.elements.email.focus();
+        await signupConfirmationHandlers.requestCode(form.elements.email.value);
+      } else if (form.id === "signup-code-form") {
+        // O código vai direto ao handler e sai do campo a cada tentativa, inclusive com erro.
+        const input = form.elements.code, code = input.value;
+        input.value = "";
+        input.focus();
+        await signupConfirmationHandlers.confirm(code);
       }
     },
   );
@@ -653,12 +703,12 @@ async function start() {
       if (code && teacher()) await loadClassReport(code);
     } else {
       clearSession();
-      landing();
+      publicPage();
     }
   } catch (err) {
     state.classReport = null;
     if (state.me) render();
-    else landing();
+    else publicPage();
     notice(err.message || "Não foi possível carregar o portal.", true);
   }
 }

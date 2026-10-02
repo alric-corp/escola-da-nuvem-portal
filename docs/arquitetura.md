@@ -5,6 +5,8 @@ Navegador ──► CloudFront ──► S3 (frontend/dist)
     │
     ├──► Cognito Managed Login (PKCE) ──► access token (escopo portal/access)
     │
+    ├──► Cognito, API pública sem token (confirmação de cadastro: reenviar o código e confirmar)
+    │
     └──► API Gateway HTTP (JWT authorizer)
               │
               ▼
@@ -29,6 +31,7 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | --- | --- | --- |
 | Frontend estático | `frontend/` → `scripts/build_frontend.py` → `frontend/dist` | Módulos ES sem bundler. `config.json` é gerado a partir do output do Terraform. |
 | Autenticação | `frontend/auth.js`, `infra/terraform/auth.tf` | Authorization code + PKCE, state e nonce. Access token de 15 min, refresh de 7 dias, ambos em `localStorage`. |
+| Confirmação de cadastro | `frontend/api.js`, `frontend/handlers/signup-confirmation.js`, `frontend/pages/signup-confirmation.js` | Antes do login, o navegador fala direto com a API pública do Cognito, sem backend e sem Terraform. Veja [Confirmação de cadastro](#confirmação-de-cadastro). |
 | API | `infra/terraform/api.tf` | HTTP API com throttling de 50 req/s (burst 100). Lambda de 512 MB, timeout de 29 s. |
 | Regras de negócio | `backend/portal.py` | Classe `Portal`, com `dispatch` por rota. |
 | Parser e cálculo | `backend/grades.py` | Não depende de AWS. Veja [regras-de-notas.md](regras-de-notas.md). |
@@ -107,11 +110,11 @@ Módulos ES servidos como estão, sem bundler: `index.html` carrega um único sc
 | Módulo | Responsabilidade |
 | --- | --- |
 | `app.js` | Raiz da composição: `render()` e a escolha da página pela view, listeners globais e `actions`, `busy()`, `start()`/`boot()`, sessão, troca de turma, student-view e composição entre domínios. Chama `api.js` direto no boot, no relatório, no resumo da turma, no foco e em operações curtas que terminam em `boot()`. |
-| `api.js` | Rede: chamadas autenticadas à API (rotas, token, retentativa de GET, mensagens de erro, expiração da sessão via `configure({ config, onSessionExpired })`) e envio de anexos direto ao S3. Não conhece DOM, `state` nem navegação. |
+| `api.js` | Rede: chamadas autenticadas à API (rotas, token, retentativa de GET, mensagens de erro, expiração da sessão via `configure({ config, onSessionExpired })`), envio de anexos direto ao S3 e as duas chamadas públicas da confirmação de cadastro ao Cognito, sem token. Não conhece DOM, `state` nem navegação. |
 | `state.js` | O objeto `state`, o mesmo em todos os módulos: fonte única do estado de interface e de domínio no navegador. Não importa nada. |
 | `ui.js` | Helpers de apresentação, markup compartilhado (menu, cabeçalhos, `errorPanel()`) e `notice()`. Lê `state` quando precisa, mas não é dono dele. |
-| `pages/*` | Montam o HTML de cada tela a partir de `state`; o `app.js` encaixa o resultado no layout (a tela de entrada e o resumo `?turma=` escrevem direto em `#app`). Não chamam a rede nem alteram `state`. |
-| `handlers/*` | Regras de cada domínio (`access`, `import`, `admin-feedback`, `feedback`, `reminders`): chamam `api.js`, alteram `state` e pedem `render()`. |
+| `pages/*` | Montam o HTML de cada tela a partir de `state`; o `app.js` encaixa o resultado no layout (a tela de entrada e o resumo `?turma=` escrevem direto em `#app`; a confirmação de cadastro ocupa a coluna de texto da tela de entrada). Não chamam a rede nem alteram `state`. |
+| `handlers/*` | Regras de cada domínio (`access`, `import`, `admin-feedback`, `feedback`, `reminders`, `signup-confirmation`): chamam `api.js`, alteram `state` e pedem `render()`. |
 
 Em resumo: a page diz como representar, o handler o que fazer, o `app.js` como conectar, o `api.js` como falar com o backend e o `state.js` onde vive o estado compartilhado. Completam o frontend `auth.js` (login e tokens, ver [Componentes](#componentes)), `student-journey.js` e `canvas-links.js` (regras puras usadas pelas pages) e `demo.js` (transporte com dados fictícios).
 
@@ -148,6 +151,18 @@ Quando dois domínios se encontram, quem compõe é o `app.js`. Exemplo: ao abri
 - **Listeners globais** (`click`, `change`, `input` e `submit` delegados no `document`, e `beforeunload`), assim como o do seletor de imagens: a ordem dos ramos do clique faz parte do comportamento, `busy()` é transversal (desabilita o elemento durante a operação e transforma erro em `notice()`), o foco pode envolver mais de um domínio e a student-view restringe ações de todos eles. Handlers e pages não registram listeners.
 - **Student-view** (admin visualizando como aluno): cruza URL (`?modo=`), `sessionStorage`, relatório, boot, navegação, Turmas e acessos e Feedbacks. É cola transversal, não um domínio.
 - **`start()` e `boot()`**: configuração, sessão e retorno do login, contexto salvo, turmas, retomada da view e carga inicial de cada domínio. A raiz orquestra; os handlers implementam os domínios.
+- **Tela sem sessão** (`publicPage()`): a tela de entrada e, nela, a confirmação de cadastro, com o foco de cada etapa e o único timer que libera o reenvio.
+
+### Confirmação de cadastro
+
+Para quem criou a conta e não concluiu a confirmação do e-mail. Na tela de entrada, **Confirmar cadastro** abre o fluxo: e-mail, código e login. O navegador chama direto a API pública do Cognito (`ResendConfirmationCode` e `ConfirmSignUp`) com o ClientId público do `config.json`, sem token, sem cookie e sem passar pelo backend; nada disso depende de Terraform. O botão só aparece com `region` e `userPoolClientId` na configuração.
+
+- `api.js` normaliza o e-mail, monta as duas chamadas e traduz os erros da AWS em categorias.
+- `handlers/signup-confirmation.js` decide a etapa e o erro de domínio, espera 60 s entre reenvios e descarta respostas atrasadas.
+- `pages/signup-confirmation.js` mostra cada etapa com textos fixos.
+- O `app.js` liga as actions e os dois formulários e compõe a tela de entrada (`publicPage()`).
+
+Todo resultado do reenvio que depende da conta (inexistente, já confirmada, com limite de envios atingido) deixa a mesma tela de um envio aceito; falhas técnicas aparecem como são. O código digitado vai do campo direto para a chamada e nunca fica no `state`, na URL, em storage ou no console. Confirmar não cria sessão: depois, **Fazer login** é o login de sempre.
 
 ### Estado
 

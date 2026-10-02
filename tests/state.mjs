@@ -11,7 +11,7 @@ const { historyPage } = await import("../frontend/pages/history.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
-  "import", "landing", "reminders", "student", "teacher"].map((page) => `pages/${page}.js`);
+  "import", "landing", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
 
 // Contrato: as 58 propriedades, nesta ordem, com estes valores iniciais.

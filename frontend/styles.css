@@ -2854,3 +2854,17 @@ button.feedback-card:hover, button.feedback-card:focus-visible { border-color: v
   .fb-add { width: 100%; justify-content: center; }
   .fb-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* =========================================================
+   27. Confirmação de cadastro (landing sem sessão)
+   ========================================================= */
+/* A etapa ocupa a coluna de texto da landing: título menor que o da landing, coluna estreita, campos com 16px (o iOS
+   não amplia a tela ao focar) e texto longo, como o e-mail mascarado, quebrando sem rolagem lateral. */
+.signup-entry { margin-top: 16px; }
+.signup-confirmation { max-width: 28rem; overflow-wrap: anywhere; }
+.welcome-grid .signup-confirmation h1 { font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 16px; }
+.signup-confirmation form { margin-bottom: 20px; }
+.signup-confirmation input { font-size: 1rem; }
+.signup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.welcome-grid .signup-error { margin: 0; color: var(--danger); font-weight: 600; }
+.welcome-grid .signup-wait { margin: 12px 0 0; color: var(--text-secondary); }

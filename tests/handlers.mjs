@@ -93,8 +93,8 @@ test("loadBatchPreview: a chamada antiga que termina por último não aplica suc
   }
 });
 
-// Confirmação de cadastro. O handler ainda não é ligado ao app.js; aqui ele roda com o api.js real, um fetch
-// falso no lugar do Cognito, relógio fixo e render simulado. Valores fictícios, nenhuma chamada de rede real.
+// Confirmação de cadastro. Aqui o handler roda isolado do app.js, com o api.js real, um fetch falso no lugar do
+// Cognito, relógio fixo e render simulado. Valores fictícios, nenhuma chamada de rede real.
 let signupModule;
 const signupHandlers = async () => (signupModule ??= await import("../frontend/handlers/signup-confirmation.js"));
 const signupConfig = { apiUrl: "https://api.example.test", authDomain: "https://auth.example.test", region: "sa-east-1", userPoolClientId: "exampleclient123" };
