@@ -1,5 +1,6 @@
 // Camada de rede (frontend/api.js) sem navegador: fetch, relógio e sessão simulados.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const storage = new Map();
@@ -337,6 +338,52 @@ test("contrato das 34 chamadas: path, método e body idênticos aos do app.js an
     .flatMap((group) => Object.keys(api[group]).map((fn) => `${group}.${fn}`));
   assert.equal(exported.length, 35);
   assert.deepEqual([...covered].sort(), exported.sort());
+});
+
+// Contrato com a infraestrutura: o API Gateway só encaminha as rotas listadas em infra/terraform/api.tf. Uma chamada sem
+// rota lá recebe 404 sem CORS, que o navegador mostra como falha de rede, e nunca chega à Lambda (o que aconteceu com a
+// participação até a C7.2.4.1). As route keys vêm de todos os aws_apigatewayv2_route; formato desconhecido falha.
+function gatewayRoutes() {
+  const tf = readFileSync(new URL("../infra/terraform/api.tf", import.meta.url), "utf8");
+  const keys = [];
+  for (const { 0: header, 1: name, index } of tf.matchAll(/^resource "aws_apigatewayv2_route" "(\w+)" \{$/gm)) {
+    const block = tf.slice(index, tf.indexOf("\n}\n", index));
+    const literal = block.match(/route_key\s+= "([^"]+)"/);
+    const listed = block.match(/for_each = toset\(\[([\s\S]*?)\]\)/);
+    assert.ok(literal || (listed && /route_key\s+= each\.value/.test(block)), `${header}: route_key em formato não reconhecido (${name})`);
+    keys.push(...(literal ? [literal[1]] : [...listed[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])));
+  }
+  return keys;
+}
+// Assinatura comparável: método + caminho sem query, com cada parâmetro ({code}, {userId}… ou o valor P0/P1/P2 usado na
+// chamada) reduzido a {}.
+const signature = (method, path) =>
+  `${method} ${path.split("?")[0].split("/").map((s) => (/^\{[^}]+\}$|^P\d$/.test(s) ? "{}" : s)).join("/")}`;
+// Rotas publicadas antes de o frontend chamá-las (rodada só de backend): entram aqui, com a rodada, até o frontend usar.
+const PUBLISHED_BEFORE_FRONTEND = new Set();
+
+test("contrato com o API Gateway: toda chamada do api.js tem rota no api.tf e toda rota do api.tf é chamada", async () => {
+  const { api } = await load();
+  let seen = [];
+  api.setTransport(async (path, options) => { seen.push(signature(options?.method || "GET", path)); return {}; });
+  // Grupos da API do portal: objetos exportados só com funções. Fora do API Gateway, de propósito: signupConfirmation
+  // (Cognito direto) e uploadAttachmentToS3 (POST assinado direto no S3, que não é objeto).
+  const groups = Object.entries(api).filter(([name, value]) => name !== "signupConfirmation" && value && typeof value === "object"
+    && !Array.isArray(value) && Object.values(value).every((fn) => typeof fn === "function"));
+  const calls = new Set();
+  for (const [group, functions] of groups)
+    for (const [name, fn] of Object.entries(functions)) {
+      seen = [];
+      await fn("P0", "P1", "P2");
+      assert.equal(seen.length, 1, `${group}.${name}: exatamente uma chamada pelo transporte da API`);
+      calls.add(seen[0]);
+    }
+  const keys = gatewayRoutes();
+  assert.equal(new Set(keys).size, keys.length, "route key repetida no api.tf");
+  const published = new Set(keys.map((key) => signature(...key.split(" "))));
+  assert.deepEqual([...calls].filter((c) => !published.has(c)).sort(), [], "chamadas do frontend sem rota no API Gateway");
+  assert.deepEqual([...published].filter((r) => !calls.has(r) && !PUBLISHED_BEFORE_FRONTEND.has(r)).sort(), [], "rotas do API Gateway que o frontend não chama");
+  assert.ok(calls.has("POST /cohorts/{}/participation"), "api.cohorts.setParticipation → POST /cohorts/{code}/participation");
 });
 
 // Confirmação de cadastro: operações públicas do Cognito chamadas direto do navegador, fora do transporte

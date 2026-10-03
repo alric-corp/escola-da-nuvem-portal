@@ -108,6 +108,7 @@ resource "aws_apigatewayv2_route" "portal" {
     "POST /cohorts/{code}/students-search", "POST /cohorts/{code}/unlink-student",
     "POST /cohorts/{code}/student-view",
     "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject",
+    "POST /cohorts/{code}/participation",
     "POST /cohorts/{code}/settings",
     "POST /feedback", "GET /feedback", "GET /admin/feedback", "POST /admin/feedback/{id}/status",
     "POST /feedback/{feedbackId}/attachments", "POST /feedback/{feedbackId}/attachments/{attachmentId}/complete",
