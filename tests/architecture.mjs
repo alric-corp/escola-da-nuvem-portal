@@ -426,11 +426,13 @@ test("app.js não implementa mais Lembretes: as actions, o clique, a navegação
   };
   for (const [key, wrapper] of Object.entries(wrappers)) assert.match(actions, wrapper, key);
   assert.equal((actions.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length);
-  // Clique do painel, menu "Lembretes" e boot: o mesmo ponto de busy/await de antes, agora pelo handler.
+  // Clique do painel, menu "Lembretes" e boot: o mesmo ponto de busy/await de antes, agora pelo handler. A quinta chamada é a
+  // recarga do detalhe depois de marcar ou reativar participação (C7.2.4), composta no app.js com o relatório.
   assert.match(app, /if\s*\(\s*button\.dataset\.studentPending\s*\)\s*return\s+busy\(\s*button\s*,\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*button\.dataset\.studentPending\s*\)\s*\);/);
   assert.match(app, /else\s+if\s*\(\s*state\.view\s*===\s*"reminders"\s*\)\s*busy\(\s*button\s*,\s*remindersHandlers\.loadSender\s*\);/);
   assert.match(app, /if\s*\(\s*state\.view\s*===\s*"reminders"\s*&&\s*teacher\(\)\s*\)\s*await\s+remindersHandlers\.loadSender\(\s*\);/);
-  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 4);
+  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 5);
+  assert.match(app, /await\s+remindersHandlers\.loadPending\(\s*studentId\s*\)/);
   // Continuam em app.js: actions, listeners, busy, boot, roteamento e a navegação global com teacherFilters.
   for (const kept of ["const actions = {", "async function busy(", "async function boot()", "function allowedWhileViewing(",
     'document.addEventListener("click"', 'document.addEventListener("change"', 'document.addEventListener("input"', 'document.addEventListener("submit"',
@@ -509,18 +511,31 @@ test("toda action do app.js tem gatilho: data-action no markup ou errorPanel", (
   assert.deepEqual(withoutTrigger, [], `actions sem gatilho: ${withoutTrigger.join(", ")}`);
 });
 
-// Participação (C7.2.3): o frontend só lê participationStatus. participation.js é regra pura (sem imports), usada só
-// pelas três telas do instrutor que mostram desistentes; nenhuma tela do aluno conhece o status, e nada chama ainda a
-// rota de participação (o botão de marcar/reativar é da C7.2.4).
-test("participation.js: regra pura, só nas telas do instrutor, sem tela de aluno e sem chamar a rota de participação", async () => {
+// Participação. C7.2.3: o frontend lê participationStatus; participation.js é regra pura (sem imports), usada pelas
+// telas do instrutor e pelo app.js, e nenhuma tela do aluno conhece o status. C7.2.4: a rota de escrita é definida só no
+// api.js e chamada só pelo app.js, a partir dos dois gatilhos do detalhe do aluno; handlers e telas do aluno não a
+// conhecem, e o modo "visualizar como aluno" não libera essas actions.
+const STUDENT_FACING = ["pages/student.js", "pages/history.js", "pages/landing.js", "pages/feedback.js", "pages/signup-confirmation.js", "student-journey.js", "canvas-links.js"];
+const RUNTIME = ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "participation.js", "student-journey.js", "canvas-links.js", ...PAGES, ...HANDLERS];
+
+test("participation.js: regra pura, usada pelo app.js e pelas telas do instrutor, nunca pelas telas do aluno", async () => {
   assert.deepEqual(importsOf("participation.js"), []);
   assert.deepEqual(Object.keys(await import("../frontend/participation.js")), ["isWithdrawn"]);
-  const importers = ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "student-journey.js", "canvas-links.js", ...PAGES, ...HANDLERS]
-    .filter((file) => importsOf(file).includes("participation.js"));
-  assert.deepEqual(importers.sort(), ["pages/class-report.js", "pages/reminders.js", "pages/teacher.js"]);
-  for (const file of ["pages/student.js", "pages/history.js", "pages/landing.js", "pages/feedback.js", "pages/signup-confirmation.js", "student-journey.js", "canvas-links.js"])
-    assert.doesNotMatch(codeOf(file), /participationStatus|isWithdrawn|participation\.js|Desistente/, file);
-  for (const file of ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "participation.js", ...PAGES, ...HANDLERS])
-    assert.doesNotMatch(codeOf(file), /\/participation\b(?!\.js)|setParticipation/, file);
-  assert.ok(!("participation" in (await import("../frontend/api.js")).cohorts));
+  const importers = RUNTIME.filter((file) => importsOf(file).includes("participation.js"));
+  assert.deepEqual(importers.sort(), ["app.js", "pages/class-report.js", "pages/reminders.js", "pages/teacher.js"]);
+  for (const file of STUDENT_FACING)
+    assert.doesNotMatch(codeOf(file), /participationStatus|isWithdrawn|participation\.js|Desistente|withdraw-student|reactivate-student|setParticipation/, file);
+});
+
+test("rota de participação: definida só no api.js, chamada só pelo app.js, com gatilhos só no detalhe do aluno", async () => {
+  const route = /\/participation\b(?!\.js)/;
+  assert.deepEqual(RUNTIME.filter((file) => route.test(codeOf(file))), ["api.js"]);
+  assert.deepEqual(RUNTIME.filter((file) => /\bsetParticipation\b/.test(codeOf(file))).sort(), ["api.js", "app.js"]);
+  assert.equal(typeof (await import("../frontend/api.js")).cohorts.setParticipation, "function");
+  assert.equal((codeOf("app.js").match(/api\.cohorts\.setParticipation\(/g) || []).length, 1);
+  for (const action of ["withdraw-student", "reactivate-student"]) {
+    assert.deepEqual(RUNTIME.filter((file) => codeOf(file).includes(action)).sort(), ["app.js", "pages/reminders.js"], action);
+    assert.match(read("frontend/pages/reminders.js"), new RegExp(`data-action="${action}"`), action);
+  }
+  assert.doesNotMatch(blockAfter(read("frontend/app.js"), /function\s+allowedWhileViewing\s*\(\s*button\s*\)/), /withdraw-student|reactivate-student/);
 });

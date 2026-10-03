@@ -41,10 +41,11 @@ const csvCell = (value) => {
   return `"${(/^[=+\-@\t\r]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
 };
 
+// Participação vem sempre, no fim (as colunas anteriores não mudam de posição); Situação continua sendo a acadêmica.
 export function studentsCsv(rows) {
-  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal"];
+  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal", "Participação"];
   const lines = rows.map((r) => [r.name, r.email || "", r.kc ?? "", r.lab ?? "", r.total ?? "", r.progress ?? "", r.pending, labels[r.status] || r.status,
-    r.portalLinked === undefined ? "" : r.portalLinked ? "Sim" : "Não"]);
+    r.portalLinked === undefined ? "" : r.portalLinked ? "Sim" : "Não", isWithdrawn(r) ? "Desistente" : "Ativo"]);
   // BOM para o Excel reconhecer UTF-8 (acentos); ponto e vírgula é o separador que ele espera em pt-BR.
   return "﻿" + [header, ...lines].map((line) => line.map(csvCell).join(";")).join("\r\n");
 }

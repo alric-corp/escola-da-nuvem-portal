@@ -8,6 +8,7 @@ import * as remindersHandlers from "./handlers/reminders.js";
 import * as signupConfirmationHandlers from "./handlers/signup-confirmation.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
+import { isWithdrawn } from "./participation.js";
 import { landing } from "./pages/landing.js";
 import { signupConfirmationEntry, signupConfirmationPage } from "./pages/signup-confirmation.js";
 import { renderClassReport } from "./pages/class-report.js";
@@ -254,6 +255,41 @@ async function loadReport() {
   }
   if (state.me && request === reportRequest) render();
 }
+
+// Participação na turma (C7.2.4), pelo detalhe do aluno. O estado esperado é o que a tela mostra (participationStatus da
+// prévia; ausência = ativo) e o servidor recusa com 409 se outra pessoa mudou antes. Depois de mudar, ou de descobrir
+// que mudou (409) ou que o aluno saiu da publicação (404), detalhe e relatório são recarregados: a tela segue o
+// servidor, sem atualização otimista e sem nova tentativa automática.
+async function setParticipation(status) {
+  const code = state.code, p = state.pendingPreview;
+  const expectedStatus = isWithdrawn(p) ? "WITHDRAWN" : "ACTIVE";
+  if (!p || status === expectedStatus) return;
+  const { id, name } = p.student;
+  if (!confirm(status === "WITHDRAWN"
+    ? `Marcar ${name} como desistente?\n\nO aluno deixará de participar das métricas e dos lembretes da turma. Os dados e notas do Canvas não serão removidos.`
+    : `Reativar ${name}?\n\nO aluno voltará a participar das métricas e poderá receber lembretes. Nada é alterado no Canvas.`)) return;
+  try {
+    await api.cohorts.setParticipation(code, { canvasId: id, status, expectedStatus });
+  } catch (err) {
+    if (err.network) throw new Error("Não foi possível confirmar a alteração. Confira sua conexão e tente de novo.");
+    if (err.status !== 409 && err.status !== 404) throw err;
+    await reloadParticipation(code, id);
+    throw err.status === 409 ? new Error("A participação deste aluno foi alterada por outra pessoa. Os dados foram atualizados.") : err;
+  }
+  await reloadParticipation(code, id);
+  notice(status === "WITHDRAWN" ? "Aluno marcado como desistente." : "Aluno reativado.");
+}
+
+// Detalhe primeiro (some o botão antigo enquanto recarrega), depois o relatório; o foco vai para o título da participação.
+// Um erro ao recarregar o detalhe aparece no próprio detalhe, com "Tentar novamente".
+async function reloadParticipation(code, studentId) {
+  if (state.code !== code) return;
+  if (state.view === "student-pending" && state.pendingStudentId === studentId) {
+    await remindersHandlers.loadPending(studentId).catch(() => {});
+    $("#participation-heading")?.focus();
+  }
+  if (state.code === code) await loadReport();
+}
 // Seletor de imagens único, fora da área redesenhada pelo render(): enquanto a janela de arquivos
 // está aberta, a tela pode ser redesenhada (ex.: a lista de feedbacks termina de carregar) e um
 // <input type=file> dentro dela seria trocado, perdendo a seleção.
@@ -356,6 +392,8 @@ const actions = {
   "refresh-sender": () => remindersHandlers.loadSender(),
   "verify-sender": () => remindersHandlers.verifySender(),
   "send-reminder": () => remindersHandlers.sendReminder(),
+  "withdraw-student": () => setParticipation("WITHDRAWN"),
+  "reactivate-student": () => setParticipation("ACTIVE"),
   login: () => login(config),
   "signup-confirmation-start": () => signupConfirmationHandlers.start(),
   "signup-confirmation-reset": () => signupConfirmationHandlers.reset(),

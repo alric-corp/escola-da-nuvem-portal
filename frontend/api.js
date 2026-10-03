@@ -34,6 +34,7 @@ async function http(path, options = {}) {
   const attempts = method === "GET" ? 4 : 1;
   let res;
   for (let attempt = 0; attempt < attempts; attempt++) {
+    // Sem resposta (rede ou tempo esgotado): o próprio erro do fetch, marcado como network para quem precisa distinguir.
     res = await fetch(config.apiUrl + path, {
       method,
       headers: {
@@ -43,7 +44,7 @@ async function http(path, options = {}) {
       body: options.body ? JSON.stringify(options.body) : undefined,
       cache: "no-store",
       signal: AbortSignal.timeout(35000),
-    });
+    }).catch((err) => { throw Object.assign(err, { network: true }); });
     if (res.status !== 429 || attempt === attempts - 1) break;
     await new Promise((resolve) =>
       setTimeout(resolve, 400 * 2 ** attempt + Math.random() * 200),
@@ -54,16 +55,18 @@ async function http(path, options = {}) {
     ? await res.json().catch(() => ({}))
     : {};
   if (!res.ok) {
+    // O status acompanha a mensagem: quem chama pode tratar um conflito (409) de outro jeito sem ler o texto.
+    const failure = (message) => Object.assign(new Error(message), { status: res.status });
     if (res.status === 401) onSessionExpired();
     if (res.status === 429)
-      throw new Error(
+      throw failure(
         data.error || "O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.",
       );
     if ([502, 503, 504].includes(res.status) && !data.error)
-      throw new Error(
+      throw failure(
         "O portal está temporariamente indisponível. Tente novamente em instantes.",
       );
-    throw new Error(
+    throw failure(
       data.error || "Não foi possível completar a solicitação.",
     );
   }
@@ -89,6 +92,8 @@ export const cohorts = {
   previewImport: (code, body) => post(`/cohorts/${code}/preview`, body),
   publish: (code, body) => post(`/cohorts/${code}/publish`, body),
   restore: (code, body) => post(`/cohorts/${code}/restore`, body),
+  // Marcar ou reativar desistente: { canvasId, status, expectedStatus }; quem pediu vem da sessão, no servidor.
+  setParticipation: (code, body) => post(`/cohorts/${encodeURIComponent(code)}/participation`, body),
 };
 
 export const reminders = {

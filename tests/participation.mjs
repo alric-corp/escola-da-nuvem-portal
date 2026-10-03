@@ -308,3 +308,58 @@ test("Ver por atividade reflete só as estatísticas do backend, com ou sem desi
   assert.match(strip(withMarks), /001 KC Introdução .* KC 75% 25% 33,33% 72,5%/);
   assert.match(strip(withMarks), /002 LAB Rede .* LAB 0% 100% — —/);
 });
+
+// C7.2.4. CSV exportado pelo portal (não o CSV de entrada do Canvas): coluna Participação sempre presente, no fim, com
+// Ativo ou Desistente; Situação continua sendo a situação acadêmica. O export segue a população filtrada da tela.
+const { studentsCsv } = await import("../frontend/pages/teacher.js");
+const { pendingPage } = await import("../frontend/pages/reminders.js");
+const OLD_HEADER = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal"];
+const parseCsv = (csv) => csv.replace(/^﻿/, "").split("\r\n").map((line) => line.split(";").map((cell) => cell.replace(/^"|"$/g, "").replaceAll('""', '"')));
+const exportOf = (students, values = {}) => withState({ report: report(students), ...values }, () => parseCsv(studentsCsv(filteredStudents())));
+
+test("CSV A: sem marcas, a única mudança é a coluna Participação no fim, com Ativo para todos", () => {
+  const [header, ...rows] = exportOf(rowsWith());
+  assert.deepEqual(header, [...OLD_HEADER, "Participação"]);
+  assert.equal(rows.length, 6);
+  assert.ok(rows.every((r) => r.length === 10 && r[9] === "Ativo"));
+  assert.deepEqual(rows.find((r) => r[0] === "Alice Saiu"), ["Alice Saiu", "alice@example.test", "30", "40", "35", "20", "4", "Crítico", "Não", "Ativo"]);
+  assert.deepEqual(rows.find((r) => r[0] === "Abel Sem Média"), ["Abel Sem Média", "abel@example.test", "", "", "", "0", "2", "Sem avaliação completa", "Sim", "Ativo"]);
+});
+
+test("CSV B–F: misto em Todos, Ativos e Desistentes, com Situação acadêmica intacta", () => {
+  const marks = rowsWith(["4", "5"]);
+  const [, ...all] = exportOf(marks);
+  assert.deepEqual(all.map((r) => [r[0], r[7], r[9]]), [["Abel Sem Média", "Sem avaliação completa", "Ativo"], ["Ana Ativa", "Médias na referência", "Ativo"],
+    ["Bruno Atenção", "Atenção", "Ativo"], ["Carla Crítica", "Crítico", "Ativo"], ["Alice Saiu", "Crítico", "Desistente"], ["Caio Saiu", "Médias na referência", "Desistente"]]);
+  const [, ...active] = exportOf(marks, { filter: "active" });
+  assert.deepEqual(active.map((r) => [r[0], r[9]]), [["Abel Sem Média", "Ativo"], ["Ana Ativa", "Ativo"], ["Bruno Atenção", "Ativo"], ["Carla Crítica", "Ativo"]]);
+  const [, ...withdrawn] = exportOf(marks, { filter: "withdrawn" });
+  assert.deepEqual(withdrawn.map((r) => [r[0], r[7], r[9]]), [["Alice Saiu", "Crítico", "Desistente"], ["Caio Saiu", "Médias na referência", "Desistente"]]);
+  const [, ...critical] = exportOf(marks, { filter: "critical" });
+  assert.deepEqual(critical.map((r) => [r[0], r[9]]), [["Carla Crítica", "Ativo"]]);
+});
+
+test("CSV G: escape de fórmula, aspas e ponto e vírgula continua igual, também na linha do desistente", () => {
+  const tricky = [{ ...BASE[0], id: "9", name: '=SOMA(1;2) "x"', email: "+a@example.test", ...WITHDRAWN }];
+  const csv = withState({ report: report(tricky) }, () => studentsCsv(filteredStudents()));
+  assert.equal(csv.split("\r\n")[1], `"'=SOMA(1;2) ""x""";"'+a@example.test";"80";"96";"88";"100";"0";"Médias na referência";"Sim";"Desistente"`);
+});
+
+// Detalhe do aluno: uma só ação de participação, conforme o status que o servidor devolveu na prévia; o título tem
+// id e tabindex para receber o foco depois da mudança.
+const detailOf = (extra = {}) => withState({ pendingError: "", pendingPreview: { student: { id: "4", name: "Alice Saiu", email: "alice@example.test" }, publicationId: "p1",
+  publishedAt: "2026-10-03T09:01:28Z", previewHash: "h", delivery: null, ses: { ready: true, reason: "Remetente confirmado." },
+  activities: [{ id: "k1", name: "001 KC", kind: "kc", state: "pending" }], message: { from: "i@example.test", to: "alice@example.test", subject: "s", text: "t" }, ...extra } },
+() => pendingPage());
+
+test("Detalhe: ativo tem só Marcar como desistente; desistente tem só Reativar aluno, com o badge", () => {
+  const active = detailOf();
+  assert.match(active, /<h2 id="participation-heading" tabindex="-1">Participação na turma<\/h2>/);
+  assert.match(active, /data-action="withdraw-student"[^>]*>Marcar como desistente<\/button>/);
+  assert.doesNotMatch(active, /reactivate-student|Reativar aluno|class="badge withdrawn"/);
+  const withdrawn = detailOf(WITHDRAWN);
+  assert.match(withdrawn, /data-action="reactivate-student"[^>]*>Reativar aluno<\/button>/);
+  assert.doesNotMatch(withdrawn, /data-action="withdraw-student"|Marcar como desistente/);
+  assert.match(withdrawn, /<span class="badge withdrawn">Desistente<\/span>/);
+  assert.equal((withdrawn.match(/data-action="(withdraw|reactivate)-student"/g) || []).length, 1);
+});

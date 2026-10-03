@@ -76,6 +76,7 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | `POST /cohorts/{code}/unlink-student` | admin | Desvincular aluno da conta |
 | `POST /cohorts/{code}/display-name` | admin | Editar nome de exibição |
 | `POST /cohorts/{code}/settings` | admin | Limites de KC/LAB, curso Canvas e atualização automática |
+| `POST /cohorts/{code}/participation` | instrutor da turma ou admin | Marcar desistente ou reativar: `{ canvasId, status, expectedStatus }`, com `ACTIVE` ou `WITHDRAWN`; 409 se o status mudou desde a leitura |
 | `POST /requests/{userId}/reject` | admin | Recusar solicitação de instrutor |
 
 ## Modelo de dados (DynamoDB, tabela única `PK`/`SK`, payload em `data`)
@@ -86,16 +87,27 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | `COHORT#<code>` | `DRAFT#<id>` | Rascunho de importação: autor, `base`, caminho do snapshot, status. Não publicado: expira pelo TTL `expiresAt` |
 | `COHORT#<code>` | `PUB#<id>` | Publicação: metadados do rascunho, `publishedAt`, `publishedBy` (`system:canvas-sync` quando automática), contagem de mudanças, `history` (resumo compacto por aluno), `releasedAt` (data de liberação de cada atividade) |
 | `COHORT#<code>` | `SYNC` | Resultado da última atualização pelo Canvas: `status` (`published`, `unchanged`, `failed`), `message`, `at` |
-| `COHORT#<code>` | `AUDIT#<uuid>` | Registro de restauração, desvínculo, nome de exibição e configurações |
+| `COHORT#<code>` | `AUDIT#<uuid>` | Registro de restauração, desvínculo, nome de exibição, configurações e participação |
 | `COHORT#<code>` | `FOCUS` | `activityIds` (até 3) e `version` |
 | `COHORT#<code>` | `TEACH#<sub>` | Vínculo de instrutor (visão da turma) |
 | `COHORT#<code>` | `OWNER#<canvasId>` | Qual conta (`userId`, `email`, `at`) é dona da matrícula |
 | `COHORT#<code>` | `PROFILE#<canvasId>` | `displayName` opcional, editado pelo admin em "Turmas e acessos" |
+| `COHORT#<code>` | `PARTICIPATION#<canvasId>` | Participação do aluno na turma: `status` (`ACTIVE` ou `WITHDRAWN`), `updatedAt`, `updatedBy`. Sem item, o aluno é ativo |
 | `COHORT#<code>` | `REMINDER#<pubId>#<canvasId>` | Estado do envio: `sending`, `sent`, `failed` ou `unknown` |
 | `USER#<sub>` | `TEACH#<code>` | Vínculo de instrutor (visão do usuário) |
 | `USER#<sub>` | `STUDY#<code>` | Vínculo do aluno com o `canvasId` |
 | `REQUESTS` | `<sub>` | Solicitação de acesso de instrutor |
 | `EMAIL#<messageId>` | `DELIVERY` | Último evento SES relevante |
+
+**Participação.** O Canvas continua sendo a fonte da matrícula e das notas. `PARTICIPATION#` é uma marca local do portal, aplicada na leitura, como o nome de exibição:
+- `WITHDRAWN` (desistente) tira o aluno das métricas e estatísticas da turma e dos lembretes; ele continua listado, com a situação acadêmica de sempre;
+- `ACTIVE`, ou a ausência do item, é a participação normal;
+- sincronização com o Canvas, publicação e Restore não tocam na marca;
+- o aluno não vê o status: ele só vem nas leituras do instrutor (relatório, Notas da turma, prévia do lembrete).
+
+A rota exige o status esperado (`expectedStatus`) e responde 409 quando outra pessoa mudou antes. Cada mudança grava a marca e um `AUDIT#` na mesma transação.
+
+**Rollback do backend com participação.** Com o frontend capaz de marcar desistentes (C7.2.4), um backend anterior à C7.2.2 não é um rollback seguro em geral. Ele ignora `PARTICIPATION#`: qualquer aluno marcado como `WITHDRAWN` voltaria a contar nas métricas e poderia receber lembretes. Antes de voltar para uma versão assim, é preciso garantir que não exista nenhuma marca `WITHDRAWN` efetiva e impedir novas marcações durante a janela. Voltar para uma versão a partir da C7.2.2 continua seguro.
 
 ## S3 de importações
 
@@ -150,6 +162,7 @@ Quando dois domínios se encontram, quem compõe é o `app.js`. Exemplo: ao abri
 
 - **Listeners globais** (`click`, `change`, `input` e `submit` delegados no `document`, e `beforeunload`), assim como o do seletor de imagens: a ordem dos ramos do clique faz parte do comportamento, `busy()` é transversal (desabilita o elemento durante a operação e transforma erro em `notice()`), o foco pode envolver mais de um domínio e a student-view restringe ações de todos eles. Handlers e pages não registram listeners.
 - **Student-view** (admin visualizando como aluno): cruza URL (`?modo=`), `sessionStorage`, relatório, boot, navegação, Turmas e acessos e Feedbacks. É cola transversal, não um domínio.
+- **Participação** (marcar desistente ou reativar, no detalhe do aluno): confirma, chama `api.js` e recarrega o detalhe (handler de Lembretes) e o relatório. Cruza dois domínios, como o Restore. Só o `app.js` chama a rota.
 - **`start()` e `boot()`**: configuração, sessão e retorno do login, contexto salvo, turmas, retomada da view e carga inicial de cada domínio. A raiz orquestra; os handlers implementam os domínios.
 - **Tela sem sessão** (`publicPage()`): a tela de entrada e, nela, a confirmação de cadastro, com o foco de cada etapa e o único timer que libera o reenvio.
 

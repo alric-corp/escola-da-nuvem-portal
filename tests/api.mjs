@@ -143,6 +143,36 @@ test("JSON inválido com Content-Type JSON vira {}", async () => {
   await assert.rejects(api.me.get(), { message: GENERIC });
 });
 
+// Participação (C7.2.4): a rota de escrita recebe exatamente o corpo montado pelo app.js e devolve a resposta do
+// backend. Erros HTTP levam o status (o app.js recarrega o detalhe em 409 e 404); a falha de rede continua sendo o
+// mesmo erro do fetch, só marcada como network.
+test("setParticipation faz POST autenticado com o corpo exato e devolve a resposta", async () => {
+  const reply = { canvasId: "101", participationStatus: "WITHDRAWN", updatedAt: "2026-10-04T12:00:00Z" };
+  const { api, calls } = await load({ responses: [json(200, reply)] });
+  const body = { canvasId: "101", status: "WITHDRAWN", expectedStatus: "ACTIVE" };
+  assert.deepEqual(await api.cohorts.setParticipation("BRSA0267", body), reply);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.example.test/cohorts/BRSA0267/participation");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers.Authorization, "Bearer tok");
+  assert.deepEqual(JSON.parse(calls[0].init.body), body);
+});
+
+test("erros HTTP levam o status; a falha de rede é o mesmo erro do fetch, marcado como network", async () => {
+  for (const [status, error] of [[400, "Solicitação inválida."], [403, "Você não tem acesso a esta operação."], [404, "Aluno não encontrado nesta turma."],
+    [409, "A participação deste aluno foi alterada por outra pessoa. Recarregue e tente de novo."], [500, "Falha interna."]]) {
+    const { api } = await load({ responses: [json(status, { error })] });
+    await assert.rejects(api.cohorts.setParticipation("BRSA0267", {}), { message: error, status });
+  }
+  for (const [response, message, status] of [[raw(503, "<html>Gateway</html>", "text/html"), UNAVAILABLE, 503], [json(429, {}), BUSY, 429], [json(500, {}), GENERIC, 500]]) {
+    const { api } = await load({ responses: [response] });
+    await assert.rejects(api.cohorts.setParticipation("BRSA0267", {}), { message, status });
+  }
+  const boom = new TypeError("Failed to fetch");
+  const { api } = await load({ responses: [boom] });
+  await assert.rejects(api.cohorts.setParticipation("BRSA0267", {}), (err) => err === boom && err.network === true && err.status === undefined);
+});
+
 test("erro de rede propaga o próprio erro do fetch, sem retentativa e sem expirar a sessão", async () => {
   const boom = new TypeError("Failed to fetch");
   const { api, calls, expired } = await load({ responses: [boom] });
@@ -268,6 +298,7 @@ test("contrato das 34 chamadas: path, método e body idênticos aos do app.js an
     ["cohorts.previewImport", () => api.cohorts.previewImport(code, body), "/cohorts/A B/1?/preview", post(body)],
     ["cohorts.publish", () => api.cohorts.publish(code, body), "/cohorts/A B/1?/publish", post(body)],
     ["cohorts.restore", () => api.cohorts.restore(code, body), "/cohorts/A B/1?/restore", post(body)],
+    ["cohorts.setParticipation", () => api.cohorts.setParticipation(code, body), "/cohorts/A%20B%2F1%3F/participation", post(body)],
     ["reminders.pendingPreview", () => api.reminders.pendingPreview(code, body), "/cohorts/A B/1?/pending-preview", post(body)],
     ["reminders.batchPreview", () => api.reminders.batchPreview(code, body), "/cohorts/A B/1?/pending-preview-batch", post(body)],
     ["reminders.send", () => api.reminders.send(code, body), "/cohorts/A B/1?/send-reminder", post(body)],
@@ -304,7 +335,7 @@ test("contrato das 34 chamadas: path, método e body idênticos aos do app.js an
   }
   const exported = ["me", "cohorts", "reminders", "access", "feedback", "adminFeedback"]
     .flatMap((group) => Object.keys(api[group]).map((fn) => `${group}.${fn}`));
-  assert.equal(exported.length, 34);
+  assert.equal(exported.length, 35);
   assert.deepEqual([...covered].sort(), exported.sort());
 });
 

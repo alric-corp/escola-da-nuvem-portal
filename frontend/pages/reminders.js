@@ -31,7 +31,18 @@ export function pendingPage() {
       const items = p.activities.filter((a) => a.kind === kind);
       return `<section aria-label="${label}"><h3>${label} (${items.length})</h3>${items.length ? items.map(activityCard).join("") : '<p class="small">Nenhuma pendência nesta categoria.</p>'}</section>`;
     })
-    .join("")}</div></section>${reminderPreview(p)}${studentDetail(p)}`;
+    .join("")}</div></section>${participationPanel(p)}${reminderPreview(p)}${studentDetail(p)}`;
+}
+
+// Participação na turma (C7.2.4): uma só ação, conforme o status que o servidor devolveu na prévia. Confirmação,
+// requisição e recarga ficam no app.js; o título recebe o foco depois da mudança.
+function participationPanel(p) {
+  const withdrawn = isWithdrawn(p);
+  return `<section class="panel" aria-labelledby="participation-heading"><h2 id="participation-heading" tabindex="-1">Participação na turma</h2><p>${withdrawn
+    ? '<span class="badge withdrawn">Desistente</span> Fora das métricas e dos lembretes desta turma. As notas continuam vindo do Canvas.'
+    : "Ativo: conta nas métricas e pode receber lembretes."}</p>${withdrawn
+    ? `<button class="button secondary" data-action="reactivate-student" ${demo ? "disabled" : ""}>Reativar aluno</button>`
+    : `<button class="button secondary" data-action="withdraw-student" ${demo ? "disabled" : ""}>Marcar como desistente</button>`}</section>`;
 }
 
 // Detalhe completo do aluno para a conversa de acompanhamento (todo/10), somente leitura.

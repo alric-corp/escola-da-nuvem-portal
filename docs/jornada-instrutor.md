@@ -17,8 +17,10 @@ O papel é avaliado **por turma**: a mesma conta pode ser instrutora numa turma 
   - busca por nome ou e-mail;
   - filtros: situação, sem e-mail no Canvas, com atividades sem nota; com algum desistente, também **Ativos** e **Desistentes**. Os demais filtros contam só ativos;
   - ordenação: nome, mais pendências, menores médias;
-  - desistentes continuam na tabela, com o badge **Desistente**, depois dos ativos em Todos os status.
+  - desistentes continuam na tabela, com o badge **Desistente**, depois dos ativos em Todos os status;
+  - **Exportar CSV** gera a lista filtrada da tela, com a coluna **Participação** (Ativo ou Desistente) no fim. A coluna **Situação** continua sendo a situação acadêmica.
 - **Ver detalhes** de um aluno abre as pendências dele e a prévia do lembrete. Os filtros do painel são preservados ao voltar.
+- No detalhe, **Marcar como desistente** ou **Reativar aluno**, depois da confirmação, muda a participação do aluno na turma (`POST /participation`). O portal recarrega o detalhe e o painel. Se outra pessoa mudou a participação antes, o portal avisa e mostra o estado atual, sem repetir o pedido. Nada muda no Canvas.
 
 ## 3. Rotina semanal: Atualizar notas (`frontend/pages/import.js`)
 
