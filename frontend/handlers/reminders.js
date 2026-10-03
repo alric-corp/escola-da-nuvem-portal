@@ -91,10 +91,12 @@ export async function openBatch(ids) {
 
 export async function sendBatch() {
   const code = state.code, p = state.batchPreview;
-  const eligible = p.recipients.filter((r) => !r.skip);
-  if (!eligible.length || !confirm(`Enviar lembrete para ${plural(eligible.length, "aluno", "alunos")}?`)) return;
+  // Só quem a prévia exibida aprovou (sem motivo para pular), qualquer que seja o motivo dos demais: o lote nunca cresce
+  // depois da prévia. O servidor revalida cada um e ainda pode pular quem mudou desde então.
+  const approvedRecipientIds = p.recipients.filter((r) => !r.skip).map((r) => r.id);
+  if (!approvedRecipientIds.length || !confirm(`Enviar lembrete para ${plural(approvedRecipientIds.length, "aluno", "alunos")}?`)) return;
   const result = await api.reminders.sendBatch(code, {
-    studentIds: state.batchIds, expectedPublicationId: p.publicationId });
+    studentIds: approvedRecipientIds, expectedPublicationId: p.publicationId });
   if (state.code === code && state.view === "reminders-batch") {
     state.batchResults = result.results;
     render();

@@ -116,7 +116,7 @@ Módulos ES servidos como estão, sem bundler: `index.html` carrega um único sc
 | `pages/*` | Montam o HTML de cada tela a partir de `state`; o `app.js` encaixa o resultado no layout (a tela de entrada e o resumo `?turma=` escrevem direto em `#app`; a confirmação de cadastro ocupa a coluna de texto da tela de entrada). Não chamam a rede nem alteram `state`. |
 | `handlers/*` | Regras de cada domínio (`access`, `import`, `admin-feedback`, `feedback`, `reminders`, `signup-confirmation`): chamam `api.js`, alteram `state` e pedem `render()`. |
 
-Em resumo: a page diz como representar, o handler o que fazer, o `app.js` como conectar, o `api.js` como falar com o backend e o `state.js` onde vive o estado compartilhado. Completam o frontend `auth.js` (login e tokens, ver [Componentes](#componentes)), `student-journey.js` e `canvas-links.js` (regras puras usadas pelas pages) e `demo.js` (transporte com dados fictícios).
+Em resumo: a page diz como representar, o handler o que fazer, o `app.js` como conectar, o `api.js` como falar com o backend e o `state.js` onde vive o estado compartilhado. Completam o frontend `auth.js` (login e tokens, ver [Componentes](#componentes)), `student-journey.js`, `canvas-links.js` e `participation.js` (regras puras usadas pelas pages) e `demo.js` (transporte com dados fictícios).
 
 ### Dependências e ciclos
 
@@ -130,7 +130,7 @@ index.html ──► app.js
                  ├──► ui.js ──► state.js
                  ├──► handlers/* ──► api.js, state.js, ui.js
                  ├──► pages/* ──► state.js, ui.js
-                 │       ├──► student-journey.js, canvas-links.js
+                 │       ├──► student-journey.js, canvas-links.js, participation.js
                  │       ├──► outra page, para reaproveitar trechos de tela
                  │       └──► constante ou regra pura de um handler, quando precisa de definição única
                  └──► demo.js   (import dinâmico, só no modo de demonstração)

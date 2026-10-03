@@ -508,3 +508,19 @@ test("toda action do app.js tem gatilho: data-action no markup ou errorPanel", (
   const withoutTrigger = actionKeys().filter((key) => !literal.has(key) && !viaErrorPanel.has(key));
   assert.deepEqual(withoutTrigger, [], `actions sem gatilho: ${withoutTrigger.join(", ")}`);
 });
+
+// Participação (C7.2.3): o frontend só lê participationStatus. participation.js é regra pura (sem imports), usada só
+// pelas três telas do instrutor que mostram desistentes; nenhuma tela do aluno conhece o status, e nada chama ainda a
+// rota de participação (o botão de marcar/reativar é da C7.2.4).
+test("participation.js: regra pura, só nas telas do instrutor, sem tela de aluno e sem chamar a rota de participação", async () => {
+  assert.deepEqual(importsOf("participation.js"), []);
+  assert.deepEqual(Object.keys(await import("../frontend/participation.js")), ["isWithdrawn"]);
+  const importers = ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "student-journey.js", "canvas-links.js", ...PAGES, ...HANDLERS]
+    .filter((file) => importsOf(file).includes("participation.js"));
+  assert.deepEqual(importers.sort(), ["pages/class-report.js", "pages/reminders.js", "pages/teacher.js"]);
+  for (const file of ["pages/student.js", "pages/history.js", "pages/landing.js", "pages/feedback.js", "pages/signup-confirmation.js", "student-journey.js", "canvas-links.js"])
+    assert.doesNotMatch(codeOf(file), /participationStatus|isWithdrawn|participation\.js|Desistente/, file);
+  for (const file of ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "participation.js", ...PAGES, ...HANDLERS])
+    assert.doesNotMatch(codeOf(file), /\/participation\b(?!\.js)|setParticipation/, file);
+  assert.ok(!("participation" in (await import("../frontend/api.js")).cohorts));
+});

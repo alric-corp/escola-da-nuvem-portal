@@ -60,10 +60,10 @@ try {
     }
     if (endpoint.endsWith("/send-reminders")) {
       sendCalls++;
-      assert.deepEqual(request.postDataJSON(), { studentIds: ["1", "2"], expectedPublicationId: publication.id });
+      // Só quem a prévia aprovou vai no envio: Bruna, pulada na prévia (sem e-mail), fica de fora (C7.2.3).
+      assert.deepEqual(request.postDataJSON(), { studentIds: ["1"], expectedPublicationId: publication.id });
       return route.fulfill({ json: { publicationId: publication.id, results: [
         { id: "1", name: "Ana Teste", status: "sent" },
-        { id: "2", name: "Bruna Teste", status: "skipped", reason: "no-email" },
       ] } });
     }
     throw new Error("Rota inesperada: " + endpoint);
@@ -88,9 +88,9 @@ try {
   await page.getByRole("button", { name: "Enviar para 1 aluno", exact: true }).click();
   await sent;
   assert.equal(sendCalls, 1);
-  await page.getByText("1 enviado · 1 pulado · 0 com falha.", { exact: true }).waitFor();
+  await page.getByText("1 enviado · 0 pulados · 0 com falha.", { exact: true }).waitFor();
   assert.match(await page.locator("tbody").innerText(), /Ana Teste[\s\S]*Enviado/);
-  assert.match(await page.locator("tbody").innerText(), /Bruna Teste[\s\S]*Pulado.*Sem e-mail no Canvas/);
+  assert.doesNotMatch(await page.locator("tbody").innerText(), /Bruna Teste/);
 
   await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
@@ -565,14 +565,15 @@ try {
   }
 
   // Lote: confirmação cancelada não envia; com confirmação, o botão fica ocupado (sem envio duplo),
-  // o resultado mostra a falha parcial, o aviso aparece e um novo lote limpa o resultado anterior.
+  // o resultado mostra a falha, o aviso aparece e um novo lote limpa o resultado anterior. O envio leva só
+  // Ana, a única aprovada na prévia (Bruna é pulada por não ter e-mail).
   {
     const { context, tab, log } = await open();
     const gate = deferred(), arrived = deferred();
     log.handle = ({ route, entry }) => {
       if (!entry.path.endsWith("/send-reminders")) return;
       arrived.resolve();
-      return held(route, gate, { publicationId: "pub-BRSA0267", results: [{ id: "1", name: "Ana Teste", status: "sent" }, { id: "2", name: "Bruna Teste", status: "failed" }] });
+      return held(route, gate, { publicationId: "pub-BRSA0267", results: [{ id: "1", name: "Ana Teste", status: "failed" }] });
     };
     await tab.locator("#status-filter").selectOption("pending");
     await button(tab, "Enviar lembrete para 2 alunos").click();
@@ -591,9 +592,9 @@ try {
     await send.click({ force: true });
     assert.deepEqual([calls(log, "send-reminders").length, log.dialogs.length], [1, 2]);
     gate.resolve();
-    await tab.getByText("1 enviado · 0 pulados · 1 com falha.", { exact: true }).waitFor();
-    assert.deepEqual(calls(log, "send-reminders"), [{ method: "POST", path: "/cohorts/BRSA0267/send-reminders", query: "", body: { studentIds: ["1", "2"], expectedPublicationId: "pub-BRSA0267" } }]);
-    assert.match(await tab.locator("tbody").innerText(), /Bruna Teste\s+Falhou/);
+    await tab.getByText("0 enviados · 0 pulados · 1 com falha.", { exact: true }).waitFor();
+    assert.deepEqual(calls(log, "send-reminders"), [{ method: "POST", path: "/cohorts/BRSA0267/send-reminders", query: "", body: { studentIds: ["1"], expectedPublicationId: "pub-BRSA0267" } }]);
+    assert.match(await tab.locator("tbody").innerText(), /Ana Teste\s+Falhou/);
     assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Envio em lote concluído. Confira o resultado por aluno." }]);
     assert.equal((await snapshot(tab, "view")).view, "reminders-batch");
     // Um novo lote zera o resultado anterior enquanto a prévia carrega.

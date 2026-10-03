@@ -1,5 +1,6 @@
 import { badge, date, demo, e, errorPanel, heading, metric, percent, plural } from "../ui.js";
 import { state } from "../state.js";
+import { isWithdrawn } from "../participation.js";
 import { activityCard, activityGroups } from "./student.js";
 
 export function senderPage() {
@@ -43,6 +44,7 @@ function studentDetail(p) {
 }
 
 const skipLabels = {
+  withdrawn: "Desistente",
   "no-email": "Sem e-mail no Canvas",
   "no-pending": "Sem atividades sem nota",
   "already-sent": "Já contatado nesta publicação",
@@ -70,7 +72,9 @@ export function batchPage() {
 }
 
 export function reminderPreview(p) {
-  if (!p.message) return '<section class="panel"><h2>Lembrete por e-mail</h2><p>O envio está desativado nesta instalação. Você pode consultar as atividades acima.</p></section>';
+  // Desistente: aviso e envio desabilitado aqui; o servidor recusa o envio de qualquer forma (409).
+  const withdrawn = isWithdrawn(p) ? '<p role="status"><strong>Aluno desistente.</strong> Lembretes estão desativados.</p>' : "";
+  if (!p.message) return `<section class="panel"><h2>Lembrete por e-mail</h2><p>O envio está desativado nesta instalação. Você pode consultar as atividades acima.</p>${withdrawn}</section>`;
   const status = p.delivery?.status;
   const deliveryLabels = { sent: "Aceito pelo serviço de envio; entrega ainda não confirmada.",
     sending: "Envio em processamento. Atualize o status antes de tentar novamente.",
@@ -80,6 +84,6 @@ export function reminderPreview(p) {
     bounced: "E-mail devolvido. Confira o endereço do aluno com a coordenação.",
     complained: "O destinatário marcou a mensagem como indesejada. Não reenvie.",
     rejected: "Mensagem rejeitada pelo serviço de e-mail.", delayed: "Entrega atrasada. Aguarde e consulte novamente." };
-  const allowed = !demo && p.ses?.ready && p.student.email && p.activities.length && (!status || status === "failed");
-  return `<section class="panel reminder-panel"><h2>Prévia do lembrete</h2><dl><dt>De</dt><dd>${e(p.message.from)}</dd><dt>Para</dt><dd>${e(p.message.to || "E-mail ausente no Canvas")}</dd><dt>Assunto</dt><dd>${e(p.message.subject)}</dd></dl><pre class="email-preview">${e(p.message.text)}</pre><p role="status">${e(status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio." : p.ses?.reason || "Verifique seu remetente.")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminder" ${allowed ? "" : "disabled"}>Enviar e-mail para este aluno</button><button class="button secondary" data-action="copy-reminder">Copiar mensagem</button><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
+  const allowed = !demo && !isWithdrawn(p) && p.ses?.ready && p.student.email && p.activities.length && (!status || status === "failed");
+  return `<section class="panel reminder-panel"><h2>Prévia do lembrete</h2>${withdrawn}<dl><dt>De</dt><dd>${e(p.message.from)}</dd><dt>Para</dt><dd>${e(p.message.to || "E-mail ausente no Canvas")}</dd><dt>Assunto</dt><dd>${e(p.message.subject)}</dd></dl><pre class="email-preview">${e(p.message.text)}</pre><p role="status">${e(status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio." : p.ses?.reason || "Verifique seu remetente.")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminder" ${allowed ? "" : "disabled"}>Enviar e-mail para este aluno</button><button class="button secondary" data-action="copy-reminder">Copiar mensagem</button><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
 }

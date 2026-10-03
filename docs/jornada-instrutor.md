@@ -11,12 +11,13 @@ O papel é avaliado **por turma**: a mesma conta pode ser instrutora numa turma 
 
 ## 2. Painel do instrutor (`frontend/pages/teacher.js`)
 
-- Métricas da turma: total de alunos, na referência, atenção e crítico.
+- Métricas da turma: total de alunos, na referência, atenção e crítico. Desistentes (alunos que o backend marca com `participationStatus: "WITHDRAWN"`) ficam fora das métricas: com algum desistente, o primeiro cartão vira **Alunos ativos**, com o número de desistentes na legenda.
 - **Foco da turma**: três campos de seleção com as atividades liberadas (`POST /focus-activities`). O salvamento exige a publicação atual e a versão do foco, para não sobrescrever a alteração de outro instrutor.
 - Tabela de alunos:
   - busca por nome ou e-mail;
-  - filtros: situação, sem e-mail no Canvas, com atividades sem nota;
-  - ordenação: nome, mais pendências, menores médias.
+  - filtros: situação, sem e-mail no Canvas, com atividades sem nota; com algum desistente, também **Ativos** e **Desistentes**. Os demais filtros contam só ativos;
+  - ordenação: nome, mais pendências, menores médias;
+  - desistentes continuam na tabela, com o badge **Desistente**, depois dos ativos em Todos os status.
 - **Ver detalhes** de um aluno abre as pendências dele e a prévia do lembrete. Os filtros do painel são preservados ao voltar.
 
 ## 3. Rotina semanal: Atualizar notas (`frontend/pages/import.js`)
@@ -70,6 +71,8 @@ Envio (sempre **um aluno por vez**):
 
 Só é possível **um lembrete por aluno por publicação**, com exceção dos envios que falharam com certeza (`failed`). Resultados incertos (`unknown`) ficam bloqueados para evitar e-mail duplicado.
 
+Desistente não recebe lembrete: a prévia avisa e o envio fica desabilitado, e o backend recusa o envio (409). No lote (filtro **Com atividades sem nota** → **Enviar lembrete para…**), a prévia mostra quem será pulado e por quê, inclusive **Desistente**. O envio leva só os alunos aprovados nessa prévia, e o backend revalida cada um.
+
 ## 6. Notas da turma (`?turma=<code>`)
 
-`frontend/pages/class-report.js` é uma tela somente leitura, sem e-mails nem IDs. Ela abre por link direto (`?turma=`). O conteúdo se sobrepõe ao painel do instrutor.
+`frontend/pages/class-report.js` é uma tela somente leitura, sem e-mails nem IDs. Ela abre por link direto (`?turma=`). O conteúdo se sobrepõe ao painel do instrutor. Como no painel, desistentes ficam fora dos cartões e dos filtros de situação e aparecem na tabela com o badge, por último em Todos os status.
