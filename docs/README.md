@@ -21,6 +21,14 @@ Guias já existentes, mantidos nos locais originais:
 
 Tarefas planejadas ficam em [../todo/](../todo/README.md).
 
+## Registros de deploy
+
+Implantações específicas, com versões, verificações e decisões — ver [docs/deploys/](deploys/).
+
+| Registro | Conteúdo |
+| --- | --- |
+| [DEPLOY-BACKEND-C7.2-2026-10-02.md](deploys/DEPLOY-BACKEND-C7.2-2026-10-02.md) | Backend da C7.2 (participação): pacote, plano direcionado, smoke e Canvas Sync de fechamento |
+
 ## Histórico / Arquivo
 
 Investigações e registros de contexto de um momento específico, superados pela integração atual com a API do Canvas ou por rodadas posteriores. Preservados como referência, não como instrução operacional atual — ver [docs/archive/](archive/).
