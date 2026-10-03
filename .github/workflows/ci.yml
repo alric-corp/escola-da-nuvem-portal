@@ -55,5 +55,18 @@ jobs:
       - run: terraform fmt -check -recursive
       - run: terraform init -backend=false
       - run: terraform validate
+      # O pytest cria backend/.pytest_cache em execuções locais. O cache simulado prova que o pacote
+      # das Lambdas, montado pelo provider archive durante o terraform test, não o inclui.
+      - name: Simula o cache local do pytest
+        run: mkdir -p ../../backend/.pytest_cache/v/cache && echo '{}' > ../../backend/.pytest_cache/v/cache/lastfailed
       - name: Testes (mock_provider, sem AWS real)
         run: terraform test
+      - name: Pacote das Lambdas sem o cache do pytest
+        run: |
+          pacote=$(unzip -Z1 .build/identity.zip)
+          echo "$pacote"
+          grep -qx 'portal.py' <<< "$pacote"
+          if grep -E '(^|/)\.pytest_cache(/|$)' <<< "$pacote"; then
+            echo "O cache do pytest entrou no pacote das Lambdas." >&2
+            exit 1
+          fi
