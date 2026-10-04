@@ -79,6 +79,34 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | `POST /cohorts/{code}/participation` | instrutor da turma ou admin | Marcar desistente ou reativar: `{ canvasId, status, expectedStatus }`, com `ACTIVE` ou `WITHDRAWN`; 409 se o status mudou desde a leitura |
 | `POST /requests/{userId}/reject` | admin | Recusar solicitação de instrutor |
 
+## Contrato OpenAPI
+
+[`openapi/portal.yaml`](../openapi/portal.yaml) caracteriza as **35 operações**
+da API HTTP do portal em OpenAPI **3.0.3**. Métodos, paths, parâmetros e segurança
+são conferidos com Terraform, chamadas do frontend e dispatchers do backend.
+O [inventário API-1](api-1.md) registra o mapeamento completo, limites dos schemas,
+mutações de teste e plano de migração.
+
+- **API-1:** OpenAPI é a quarta representação temporária; testes impedem
+  divergência com `api.tf`, `api.js` e `Portal.dispatch`.
+  Os testes anteriores da C7.2.4.1 são preservados.
+- **API-2:** Terraform passará a derivar as rotas do contrato, preservando
+  os addresses existentes. Essa alteração ainda não foi implementada.
+- **API-3:** consolidar documentação e retirar duplicações antigas somente
+  após garantir proteção equivalente.
+
+`PortalJwt` descreve bearer JWT sem IDs de ambiente.
+`x-portal-authorization-scopes` registra os scopes exigidos; a extensão
+`x-portal-backend-operation` permite conferir a operação implementada.
+O contrato não contém servidores de produção. Cognito/OAuth, uploads diretos
+ao S3 e outros serviços externos ficam fora dos seus paths.
+
+A validação de runtime continua no backend: OpenAPI não substitui validação
+Python, `require(teach)` nem autorização de negócio. Não há codegen de cliente,
+provisionamento derivado ou documentação pública nesta etapa.
+Os testes novos rodam em `npm test` (ou `node --test tests/openapi.mjs`);
+reutilizam o parser YAML da dependência dev Playwright e Python3 stdlib para AST.
+
 ## Modelo de dados (DynamoDB, tabela única `PK`/`SK`, payload em `data`)
 
 | PK | SK | Conteúdo |
