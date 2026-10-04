@@ -1,5 +1,7 @@
 # 21 · Sessão caindo rápido após o login
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ concluída · **Prioridade:** alta · **Esforço:** pequeno · **Área:** aluno / frontend
 
 ## Problema
@@ -9,7 +11,7 @@ Relatado pelo titular: a sessão caía rápido depois do login. Causa: `frontend
 - `frontend/auth.js`: `sessionStorage` → `localStorage` para a sessão (`avanca.session`) e o estado do fluxo OAuth (`avanca.oauth`). A sessão agora sobrevive a fechar a aba/navegador, até o refresh token expirar (7 dias) ou o instrutor sair explicitamente (logout continua limpando tudo).
 - `frontend/app.js`: mesma troca para `avanca.context` (turma/tela/filtros lembrados) e `avanca.pending-cohort` (link de convite pendente) — evita a inconsistência de a sessão sobreviver a reabrir o navegador mas a turma/tela selecionada não.
 - Nenhuma mudança no backend ou na infraestrutura: o "banco" que guarda a sessão já é local ao navegador; o ajuste foi só de onde guardar (`localStorage` em vez de `sessionStorage`), não de criar um armazenamento novo.
-- Documentação atualizada (`docs/jornada-aluno.md`, `docs/arquitetura.md`, `frontend/README.md`, `infra/README.md`) para refletir `localStorage`; aproveitado para corrigir uma menção desatualizada ao fluxo de `/oauth2/userInfo` em `infra/README.md` (obsoleta desde o todo/04).
+- Documentação atualizada (`docs/jornada-aluno.md`, `docs/arquitetura.md`, `frontend/README.md`, `infra/README.md`) para refletir `localStorage`; aproveitado para corrigir uma menção desatualizada ao fluxo de `/oauth2/userInfo` em `infra/README.md` (obsoleta desde o TODO 04).
 
 ## Testes
 - `tests/auth-refresh.mjs`: mock global `localStorage` (era `sessionStorage`); os 5 testes de renovação continuam passando sem mudança de lógica.

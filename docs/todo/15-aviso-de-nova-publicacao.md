@@ -2,6 +2,8 @@
 
 **Status:** ⏸️ aguardando decisão da coordenação (2026-09-24) · **Prioridade:** baixa · **Esforço:** médio · **Área:** aluno
 
+> Conferido em 04/10/2026: `Portal._publish` em [backend/portal.py](../../backend/portal.py) não dispara e-mail. A opção de aviso, preferências e envio propostos abaixo não estão implementados. Nenhuma decisão nova da coordenação foi presumida.
+
 ## Problema
 O aluno só descobre uma publicação nova se entrar no portal.
 

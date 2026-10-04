@@ -1,5 +1,7 @@
 # 12 · Configuração da turma no backend (curso Canvas, limites, módulos)
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ parte 1 aplicada em 2026-09-24 (limites e curso Canvas); parte 2 (catálogo e módulos pela API do Canvas) feita em 2026-09-25 · **Prioridade:** média · **Esforço:** médio · **Área:** backend / frontend
 
 ## Problema
@@ -15,7 +17,7 @@ O titular optou por dividir a tarefa em duas partes. Esta sessão fez só a **pa
 - `grades.summary()` e `grades.overview()` recebem os limites em vez de usar 70/95 fixos; `changes.student_history()`/`student_changes()` repassam. Todos os pontos que calculam situação (`_report`, `class_report`, `_preview`, `_publish`, lembretes) usam os limites da turma.
 - Os relatórios (`/report`, `/class-report`) devolvem `thresholds` (e `/report` também `canvasCourseId`), para o frontend exibir os números reais.
 - Nova rota `POST /cohorts/{code}/settings` (só admin): `{thresholds: {kc, lab}, canvasCourseId}`, com validação (1–100; ID numérico ou `null`), em transação e com registro `AUDIT#`.
-- Publicações antigas guardam o resumo compacto (todo/06) calculado com os limites da época; mudar os limites vale para cálculos novos, não reescreve o histórico.
+- Publicações antigas guardam o resumo compacto (TODO 06) calculado com os limites da época; mudar os limites vale para cálculos novos, não reescreve o histórico.
 
 ### Frontend
 - Os textos de referência (cartões de média, "Como interpretar minhas notas?", critério de revisão, legendas do painel do instrutor e da consulta da turma) e o rótulo "Foque nos KCs/LABs" usam os limites devolvidos pela API; 70/95 fica só como valor padrão se a resposta não trouxer o campo.

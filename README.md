@@ -10,7 +10,8 @@ Portal de acompanhamento de notas do programa AWS re/Start: alunos consultam o p
 | `backend/` | Lambda Python da API (regras de notas, publicação, vínculos, lembretes). |
 | [`infra/`](infra/README.md) | Terraform da AWS (Cognito, API Gateway, Lambda, DynamoDB, S3, CloudFront, SES). |
 | [`docs/`](docs/README.md) | Jornadas por perfil, arquitetura e notas de contexto. |
-| [`todo/`](todo/README.md) | Melhorias planejadas e o registro do que já foi feito. |
+| [`docs/todo/`](docs/todo/README.md) | Backlog ativo: itens parciais, pendentes e dependências externas. |
+| [`docs/todo/concluido/`](docs/todo/concluido/README.md) | Tarefas implementadas, histórico e mapa de evidências de código/testes. |
 | `tests/` | Testes de navegador (Playwright), de Node e de integração (Moto). |
 
 ## Testes

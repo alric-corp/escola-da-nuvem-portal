@@ -19,16 +19,10 @@ Guias já existentes, mantidos nos locais originais:
 - [infra/README.md](../infra/README.md) e [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md): implantação.
 - [infra/SES.md](../infra/SES.md): e-mail e lembretes.
 
-Tarefas planejadas ficam em [../todo/](../todo/README.md).
+Tarefas parciais e pendentes ficam em [todo/](todo/README.md).
+Os históricos concluídos e o mapa de implementação estão em
+[todo/concluido/](todo/concluido/README.md).
 
-## Registros de deploy
-
-Implantações específicas, com versões, verificações e decisões — ver [docs/deploys/](deploys/).
-
-| Registro | Conteúdo |
-| --- | --- |
-| [DEPLOY-BACKEND-C7.2-2026-10-02.md](deploys/DEPLOY-BACKEND-C7.2-2026-10-02.md) | Backend da C7.2 (participação): pacote, plano direcionado, smoke e Canvas Sync de fechamento |
-
-## Histórico / Arquivo
-
-Investigações e registros de contexto de um momento específico, superados pela integração atual com a API do Canvas ou por rodadas posteriores. Preservados como referência, não como instrução operacional atual — ver [docs/archive/](archive/).
+Relatos antigos de sessão e deploy removidos desta árvore permanecem no
+histórico Git. Os documentos da API-1/API-2 são mantidos durante o fechamento
+da entrega OpenAPI.

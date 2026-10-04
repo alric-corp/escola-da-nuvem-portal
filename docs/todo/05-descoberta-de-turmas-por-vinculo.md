@@ -1,6 +1,20 @@
 # 05 · Descobrir as turmas do aluno pelo vínculo, sem scan
 
-**Status:** ✅ concluída (parcialmente — ver nota) · **Prioridade:** média · **Esforço:** médio · **Área:** backend
+**Status:** 🟨 parcial — otimização por vínculo implementada; scan global permanece · **Prioridade:** média · **Esforço:** médio · **Área:** backend
+
+## Conferência em 04/10/2026
+
+`Portal.dispatch` em `GET /cohorts` já consulta STUDY#/TEACH# e evita
+snapshots das turmas vinculadas. Porém ainda percorre `self.repo.cohorts()`;
+`Repository.cohorts` em [backend/repository.py](../../backend/repository.py)
+usa `self.table.scan`, paginado, para listar as turmas.
+
+Por isso o objetivo literal “sem scan” não foi considerado integralmente
+concluído nesta revisão. O teste de integração existente comprova a redução
+de leituras S3, não a eliminação do scan DynamoDB. A nota histórica abaixo
+sobre `can_teach` continua válida; não há necessidade demonstrada de trocar
+esse GetItem de uma turma específica. O restante requer decisão de escopo
+ou implementação futura, sem mudança nesta rodada.
 
 ## Problema
 `GET /cohorts` fazia um *scan* de todas as turmas e, para quem não é instrutor, lia do S3 o snapshot atual de cada uma para procurar o aluno. O custo crescia com o número de turmas e o tamanho dos snapshots, a cada login.

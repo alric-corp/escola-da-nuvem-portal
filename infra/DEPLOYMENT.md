@@ -145,4 +145,4 @@ Os controles de concorrência de `Repository.transaction` comparam o `data` grav
 
 ## Atualização automática pelo Canvas ligada (24/09/2026)
 
-Ver [todo/17](../todo/17-integracao-api-canvas.md#ativação-2026-09-24). O agendamento roda às 6h e às 18h (horário de Brasília), e as duas turmas estão com `autoSync`. A primeira execução publicou nas duas turmas; a segunda não encontrou mudanças. O token pessoal expira em 22/12/2026.
+Ver [TODO 17](../docs/todo/concluido/17-integracao-api-canvas.md#ativação-2026-09-24). O agendamento roda às 6h e às 18h (horário de Brasília), e as duas turmas estão com `autoSync`. A primeira execução publicou nas duas turmas; a segunda não encontrou mudanças. O token pessoal expira em 22/12/2026.

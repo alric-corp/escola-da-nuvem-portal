@@ -74,9 +74,9 @@ A lista reflete o último CSV publicado; as entregas continuam no Canvas. Detalh
 
 ### Links das atividades no Canvas
 
-**Ativado em 24/09/2026:** `canvasLinksEnabled = true` em `frontend/ui.js`. Os botões passam a ser exibidos nas duas turmas associadas. Ativado sem a validação com contas reais de aluno recomendada anteriormente; ver [todo/02](../todo/02-ativar-links-canvas.md) para o acompanhamento pós-ativação.
+**Ativado em 24/09/2026:** `canvasLinksEnabled = true` em `frontend/ui.js`. Os botões passam a ser exibidos nas duas turmas associadas. Ativado sem a validação com contas reais de aluno recomendada anteriormente; ver [TODO 02](../docs/todo/concluido/02-ativar-links-canvas.md) para o acompanhamento pós-ativação.
 
-**Desde 25/09/2026 os links e os módulos vêm do Canvas, não de listas no código** ([todo/12](../todo/12-configuracao-da-turma-no-backend.md)). A Lambda `canvas-sync` lê os módulos do curso configurado em cada turma (Turmas e acessos → Configurações). O backend anota em cada atividade `module`, `moduleOrder` e `canvasUrl`, associando pelo ID da tarefa, e não pelo título. `frontend/canvas-links.js` só valida que `canvasUrl` é um item de módulo de `awsrestart.instructure.com` antes de exibir. `frontend/student-journey.js` agrupa pela ordem dos módulos no curso. Sem catálogo (curso ainda não lido), as atividades ficam em "Outras atividades" e sem link; nada é deduzido pelo título.
+**Desde 25/09/2026 os links e os módulos vêm do Canvas, não de listas no código** ([TODO 12](../docs/todo/concluido/12-configuracao-da-turma-no-backend.md)). A Lambda `canvas-sync` lê os módulos do curso configurado em cada turma (Turmas e acessos → Configurações). O backend anota em cada atividade `module`, `moduleOrder` e `canvasUrl`, associando pelo ID da tarefa, e não pelo título. `frontend/canvas-links.js` só valida que `canvasUrl` é um item de módulo de `awsrestart.instructure.com` antes de exibir. `frontend/student-journey.js` agrupa pela ordem dos módulos no curso. Sem catálogo (curso ainda não lido), as atividades ficam em "Outras atividades" e sem link; nada é deduzido pelo título.
 
 Atividades pendentes com link mostram **Abrir KC/LAB no Canvas**; atividades com nota mostram **Ver atividade no Canvas**. Os links abrem em nova aba e aparecem:
 - no painel pessoal;

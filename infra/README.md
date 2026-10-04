@@ -104,7 +104,7 @@ terraform -chdir=infra/terraform output -json frontend_config > portal-config.js
 python3 -B scripts/build_frontend.py --config portal-config.json
 ```
 
-Esse JSON contém apenas configuração pública. O frontend usa authorization code com **PKCE S256**, verifica `state`/`nonce` e envia o **access token** com escopo `portal/access` no cabeçalho `Authorization: Bearer ...` da API. O callback é a raiz HTTPS do CloudFront. O backend confirma o `sub` e o e-mail verificado direto pelas claims do access token, incluídas por um gatilho Cognito "pre token generation" (ver todo/04); só cai de volta no endpoint `userInfo` do Cognito se a claim ainda não existir. O frontend guarda o access e o refresh token em `localStorage`; o access token expira em 15 minutos e é renovado com o refresh token (7 dias) sem novo login.
+Esse JSON contém apenas configuração pública. O frontend usa authorization code com **PKCE S256**, verifica `state`/`nonce` e envia o **access token** com escopo `portal/access` no cabeçalho `Authorization: Bearer ...` da API. O callback é a raiz HTTPS do CloudFront. O backend confirma o `sub` e o e-mail verificado direto pelas claims do access token, incluídas por um gatilho Cognito "pre token generation" (ver TODO 04); só cai de volta no endpoint `userInfo` do Cognito se a claim ainda não existir. O frontend guarda o access e o refresh token em `localStorage`; o access token expira em 15 minutos e é renovado com o refresh token (7 dias) sem novo login.
 
 Não publique a raiz deste repositório no S3: ela contém Terraform e poderá conter CSVs e planos locais. O build copia uma lista explícita de arquivos para `frontend/dist`. Publique somente essa pasta:
 

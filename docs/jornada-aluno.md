@@ -17,7 +17,7 @@ Na primeira chamada a `GET /cohorts/{code}/report`, `Portal.student(bind=True)` 
 - `COHORT#<code> / OWNER#<canvasId>` → `{userId}`
 - `USER#<sub> / STUDY#<code>` → `{canvasId}`
 
-A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se outra conta tentar usar o mesmo e-mail, `OWNER#` bloqueia. Um vínculo errado só pode ser corrigido direto no DynamoDB (veja [todo/11](../todo/11-admin-vinculos-e-nomes.md)).
+A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se outra conta tentar usar o mesmo e-mail, `OWNER#` bloqueia. Um administrador pode desfazer um vínculo incorreto pela seção de alunos vinculados, em “Turmas e acessos”; o backend remove OWNER#/STUDY# em transação e registra auditoria (veja [TODO 11 concluído](todo/concluido/11-admin-vinculos-e-nomes.md)).
 
 ## 3. Meu desempenho (`frontend/pages/student.js` → `studentPage`)
 
@@ -33,14 +33,14 @@ A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se 
 
 ## 4. Minhas atividades (`activitiesPage`)
 
-- As atividades são agrupadas por **módulo** (`groupActivities`), na ordem do curso. Nome e ordem do módulo vêm do backend, pelo catálogo lido da API do Canvas ([todo/12](../todo/12-configuracao-da-turma-no-backend.md)). Sem catálogo, todas caem em "Outras atividades".
+- As atividades são agrupadas por **módulo** (`groupActivities`), na ordem do curso. Nome e ordem do módulo vêm do backend, pelo catálogo lido da API do Canvas ([TODO 12](todo/concluido/12-configuracao-da-turma-no-backend.md)). Sem catálogo, todas caem em "Outras atividades".
 - Filtros combináveis:
   - situação: todas, sem nota, revisar, com nota, não liberadas, dispensadas;
   - tipo: KC ou LAB;
   - módulo;
   - busca por texto, que ignora acentos.
 - Os botões de atalho de "Meu desempenho" abrem esta tela já filtrada.
-- Os links "Abrir no Canvas" estão **ativos** desde 24/09/2026 (`canvasLinksEnabled = true` em `frontend/ui.js`) para as atividades que têm item de módulo no catálogo do curso da turma (`canvasUrl`, validado em `frontend/canvas-links.js`). Ativado sem a validação com conta real de aluno recomendada anteriormente — ver [todo/02](../todo/02-ativar-links-canvas.md).
+- Os links "Abrir no Canvas" estão **ativos** desde 24/09/2026 (`canvasLinksEnabled = true` em `frontend/ui.js`) para as atividades que têm item de módulo no catálogo do curso da turma (`canvasUrl`, validado em `frontend/canvas-links.js`). Ativado sem a validação com conta real de aluno recomendada anteriormente — ver [TODO 02](todo/concluido/02-ativar-links-canvas.md).
 
 ## 5. Meu histórico (`historyPage`)
 

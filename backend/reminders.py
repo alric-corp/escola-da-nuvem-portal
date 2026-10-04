@@ -20,7 +20,7 @@ def message_for(code, student, publication, reply_to):
             f"Há atividades sem nota registrada na turma {code}, "
             f"conforme a atualização de {publication['publishedAt'][:10]}.\n\n"
             + "\n\n".join(sections)
-            + "\n\nPrecisa de algum auxílio? Responda a este e-mail para conversar com seu instrutor."
+            + "\n\nPrecisa de algum auxílio? Responda a este e-mail para conversar com a pessoa instrutora."
             "\n\nUma nota em branco não confirma falta de entrega. Se você já entregou, "
             "aguarde a correção e a próxima atualização ou converse com seu instrutor."
             "\n\nConte com a gente!\nEquipe de instrução · Escola da Nuvem · AWS re/Start")

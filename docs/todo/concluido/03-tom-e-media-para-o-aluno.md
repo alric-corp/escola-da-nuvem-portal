@@ -1,5 +1,12 @@
 # 03 · Tom da situação e explicação da média para o aluno
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
+**Evolução posterior:** a tela atual usa `goalIndicator` e as referências
+da turma, em vez dos helpers studentBadge/studentStatusLabel citados no
+relato original. Mantém o tom de progresso e o aviso de notas ausentes como
+zero; o resumo do aluno não apresenta o selo “Crítico”.
+
 **Status:** ✅ concluída · **Prioridade:** alta · **Esforço:** pequeno · **Área:** aluno / frontend
 
 ## Problema
@@ -14,4 +21,4 @@
 ## Critérios de aceite
 - [x] Nenhuma tela do aluno mostra "Crítico" (só `studentBadge`, com os novos rótulos).
 - [x] O cartão de média deixa claro o impacto das atividades sem nota (contagem por tipo na legenda).
-- [ ] `tests/student-journey*.mjs` atualizados — o teste unitário (`tests/student-journey.mjs`) já passa sem alteração; o teste de navegador (`tests/student-journey-browser.mjs`) não pôde ser executado nesta sessão porque o Playwright não está instalado no ambiente. Ele também não faz asserção sobre o texto do badge, então não deveria quebrar, mas recomenda-se rodá-lo antes do deploy (`node --test tests/student-journey-browser.mjs`).
+- [x] Suítes Node e browser, incluindo `tests/student-journey*.mjs`, executadas e aprovadas na API-2, padrão e UTC (ver [base de validação](README.md#base-de-validação)). O impedimento histórico de Playwright indisponível foi superado; não se afirma cobertura dedicada de todas as frases da interface.

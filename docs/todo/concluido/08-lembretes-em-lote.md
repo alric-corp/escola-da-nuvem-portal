@@ -1,5 +1,7 @@
 # 08 · Enviar lembretes em lote
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ concluída (aplicado em produção) · **Prioridade:** média · **Esforço:** médio · **Área:** instrutor
 
 ## Problema

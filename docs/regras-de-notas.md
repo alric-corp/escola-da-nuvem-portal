@@ -39,8 +39,8 @@ Implementadas em `backend/grades.py`. O frontend só as reproduz para exibição
 
 ## Revisão sugerida
 
-`needsReview` vale para uma atividade `completed` com percentual abaixo de 70 (KC) ou de 95 (LAB). Um zero registrado entra em revisão, não em "Sem nota". É uma sugestão de estudo, não uma garantia de nova tentativa no Canvas.
+`needsReview` vale para uma atividade `completed` com percentual abaixo da referência da turma: por padrão, 70 (KC) ou 95 (LAB). Um zero registrado entra em revisão, não em "Sem nota". É uma sugestão de estudo, não uma garantia de nova tentativa no Canvas.
 
-## Onde os limites 70/95 aparecem
+## Configuração dos limites
 
-`backend/grades.py` (`summary`), `frontend/student-journey.js` (`needsReview`) e textos em `frontend/pages/*.js` e `frontend/ui.js`. Para alterar os limites, é preciso mudar todos esses lugares (veja [todo/12](../todo/12-configuracao-da-turma-no-backend.md)).
+Os limites vêm dos metadados da turma e podem ser alterados por um administrador em “Turmas e acessos” → Configurações. O backend calcula médias/situação e `needsReview` usando esses valores e os devolve ao frontend. 70/95 são os padrões quando não há configuração; não é necessário editar código para mudar os limites de uma turma (veja [TODO 12 concluído](todo/concluido/12-configuracao-da-turma-no-backend.md)). Resumos históricos mantêm os limites usados na publicação original.

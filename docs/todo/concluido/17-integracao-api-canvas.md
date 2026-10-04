@@ -1,5 +1,7 @@
 # 17 · Importar notas pela API do Canvas
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ concluída — integração operacional em produção desde 24/09 (token gravado, agendamento `cron(0 6,18 * * ? *)` ativo) · **Prioridade:** estratégica · **Esforço:** grande · **Área:** instrutor / backend
 
 ## Problema
@@ -54,7 +56,7 @@ Feito com um token pessoal de instrutor (somente leitura, nada escrito no Canvas
 
 ## Limitação conhecida
 - Token pessoal expira em 22/12/2026; quando isso acontecer, a atualização falha (alarme) e as notas param na última publicação até o segredo ser atualizado. Desde 25/09 há aviso antecipado: cada execução lê a validade do próprio token no Canvas (`GET /users/self/tokens/<dica>`) e publica a métrica `CanvasTokenDaysLeft`. O alarme `restart-portal-prod-canvas-token-expirando` avisa por e-mail com menos de 15 dias, ou se a validade não for conferida em 24 h. Um token novo gravado no segredo é lido sozinho, sem ajuste no código.
-- Turmas de cursos novos continuam sem links e módulos até a parte 2 da [12](12-configuracao-da-turma-no-backend.md).
+- **Resolvido em 25/09/2026:** a parte 2 da [12](12-configuracao-da-turma-no-backend.md) implementou módulos e links pelo catálogo da API do Canvas, inclusive para novos cursos configurados.
 
 ## Verificação antes de ligar (2026-09-24)
 - Token novo gravado no segredo (`{"token": ...}`), funcionando; o token colado na conversa foi revogado (Canvas responde 401).

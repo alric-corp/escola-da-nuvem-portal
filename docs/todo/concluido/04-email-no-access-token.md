@@ -1,5 +1,7 @@
 # 04 · Remover a chamada ao /oauth2/userInfo em cada requisição
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ concluída (aplicado em produção) · **Prioridade:** alta (antes de novas turmas) · **Esforço:** médio · **Área:** backend / infra
 
 ## Problema

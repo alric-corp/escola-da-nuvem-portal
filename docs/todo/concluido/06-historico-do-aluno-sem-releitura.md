@@ -1,5 +1,7 @@
 # 06 · Relatório do aluno sem reler dezenas de snapshots
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
 **Status:** ✅ concluída · **Prioridade:** média · **Esforço:** médio · **Área:** backend
 
 ## Problema

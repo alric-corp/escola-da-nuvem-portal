@@ -1,5 +1,14 @@
 # 19 · Organização do repositório e robustez do frontend
 
+> Implementação conferida no repositório em 04/10/2026. Veja o [mapa de evidências](README.md). Datas, contagens e relatos de deploy abaixo registram a execução original; esta revisão não acessou produção.
+
+**Evolução posterior:** a movimentação para `legacy/` está no commit
+`4414051`; o diretório foi removido depois em `aadb9b6`.
+As notas antigas foram removidas na limpeza documental e continuam no histórico Git. O tratamento HTTP
+foi extraído para `frontend/api.js`; o mapa de actions e a normalização
+de buscas permanecem implementados. Esses caminhos novos não reabrem
+as tarefas concluídas no relato original.
+
 **Status:** ✅ concluída · **Prioridade:** baixa · **Esforço:** pequeno a médio · **Área:** manutenção
 
 ## Itens
