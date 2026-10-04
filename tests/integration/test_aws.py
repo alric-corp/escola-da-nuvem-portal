@@ -425,5 +425,113 @@ class AWSPersistenceTests(unittest.TestCase):
         self.assertEqual(report["students"][0]["kc"], 90)
 
 
+@mock_aws
+class ReminderAtomicityTests(unittest.TestCase):
+    def setUp(self):
+        env = patch.dict(os.environ, {"AWS_DEFAULT_REGION": "us-east-1", "TABLE_NAME": "atomic-test",
+                                     "IMPORTS_BUCKET": "unused-test", "AWS_ACCESS_KEY_ID": "testing",
+                                     "AWS_SECRET_ACCESS_KEY": "testing"})
+        env.start()
+        self.addCleanup(env.stop)
+        boto3.client("dynamodb").create_table(
+            TableName="atomic-test", KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}],
+            AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}, {"AttributeName": "SK", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST")
+        self.repo = Repository()
+        self.pk = "COHORT#TURMAA"
+        self.cohort = {"code": "TURMAA", "current": "publication-X", "updatedAt": "2026-10-06T21:00:10Z"}
+        self.repo.put(self.pk, "METADATA", self.cohort)
+
+    def reserve(self, previous=None):
+        from reminders import reserve_reminder
+        return reserve_reminder(self.repo, self.cohort, "publication-X", "101", "actor", previous, "2026-10-06T23:00:00Z")
+
+    def test_real_condition_allows_absent_or_explicit_active_and_does_not_write_participation(self):
+        for item in (None, {"canvasId": "101", "status": "ACTIVE", "updatedAt": "at"}):
+            with self.subTest(item=item):
+                if item: self.repo.put(self.pk, "PARTICIPATION#101", item)
+                self.repo.table.delete_item(Key={"PK": self.pk, "SK": "REMINDER#publication-X#101"})
+                self.assertEqual(self.reserve()["status"], "sending")
+                self.assertEqual(self.repo.get(self.pk, "PARTICIPATION#101"), item)
+                self.assertEqual(self.repo.get(self.pk, "METADATA"), self.cohort)
+
+    def test_withdrawn_before_reservation_has_no_send_or_reservation(self):
+        from reminders import RecipientWithdrawn
+        self.repo.put(self.pk, "PARTICIPATION#101", {"canvasId": "101", "status": "WITHDRAWN"})
+        with self.assertRaises(RecipientWithdrawn): self.reserve()
+        self.assertIsNone(self.repo.get(self.pk, "REMINDER#publication-X#101"))
+
+    def test_real_transaction_detects_withdrawal_between_read_and_reservation(self):
+        from reminders import RecipientWithdrawn
+        for prior in (None, {"canvasId": "101", "status": "ACTIVE"}):
+            with self.subTest(prior=prior):
+                self.repo.table.delete_item(Key={"PK": self.pk, "SK": "PARTICIPATION#101"})
+                if prior: self.repo.put(self.pk, "PARTICIPATION#101", prior)
+                original = self.repo.db.transact_write_items
+                def race(**kwargs):
+                    self.repo.put(self.pk, "PARTICIPATION#101", {"canvasId": "101", "status": "WITHDRAWN"})
+                    return original(**kwargs)
+                with patch.object(self.repo.db, "transact_write_items", side_effect=race), self.assertRaises(RecipientWithdrawn):
+                    self.reserve()
+                self.assertIsNone(self.repo.get(self.pk, "REMINDER#publication-X#101"))
+                self.assertEqual(self.repo.get(self.pk, "METADATA"), self.cohort)
+
+    def test_only_one_of_two_reservations_wins(self):
+        first = self.reserve()
+        with self.assertRaises(Conflict): self.reserve()
+        self.assertEqual(self.repo.get(self.pk, "REMINDER#publication-X#101"), first)
+
+    def test_terminal_or_uncertain_record_is_never_reopened_but_failed_can_retry(self):
+        for status in ("sent", "sending", "unknown", "failed"):
+            with self.subTest(status=status):
+                previous = {"status": status}
+                self.repo.put(self.pk, "REMINDER#publication-X#101", previous)
+                if status == "failed":
+                    self.assertEqual(self.reserve(previous)["status"], "sending")
+                else:
+                    with self.assertRaises(Conflict): self.reserve(previous)
+                    self.assertEqual(self.repo.get(self.pk, "REMINDER#publication-X#101"), previous)
+
+    def test_publication_condition_remains_atomic(self):
+        new = {**self.cohort, "current": "publication-Y"}
+        original = self.repo.db.transact_write_items
+        def race(**kwargs):
+            self.repo.put(self.pk, "METADATA", new)
+            return original(**kwargs)
+        with patch.object(self.repo.db, "transact_write_items", side_effect=race), self.assertRaises(Conflict):
+            self.reserve()
+        self.assertIsNone(self.repo.get(self.pk, "REMINDER#publication-X#101"))
+        self.assertEqual(self.repo.get(self.pk, "METADATA"), new)
+
+    def test_sync_unchanged_condition_does_not_claim_a_later_publication(self):
+        from sync_runs import SyncRun, scheduled_context
+        event = {"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": "2026-10-06T21:00:00Z",
+                 "executionId": "execution-1", "attemptNumber": 1}
+        proof = SyncRun(self.repo, self.cohort, scheduled_context(event), lambda: "2026-10-06T21:01:00Z")
+        proof.stages.update(catalog="succeeded", roster="succeeded")
+        original = self.repo.db.transact_write_items
+        def race(**kwargs):
+            self.repo.put(self.pk, "METADATA", {**self.cohort, "current": "publication-Y"})
+            return original(**kwargs)
+        with patch.object(self.repo.db, "transact_write_items", side_effect=race), self.assertRaises(Conflict):
+            proof.complete_unchanged(self.cohort)
+        recorded = self.repo.get(self.pk, "SYNC_RUN#2026-10-06T21:00:00Z")
+        self.assertEqual(recorded["status"], "running")
+        self.assertIsNone(recorded["publicationId"])
+
+    def test_late_sync_attempt_cannot_overwrite_a_newer_attempt(self):
+        from sync_runs import SyncRun, scheduled_context
+        event = {"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": "2026-10-06T21:00:00Z",
+                 "executionId": "execution-1", "attemptNumber": 1}
+        old = SyncRun(self.repo, self.cohort, scheduled_context(event), lambda: "2026-10-06T21:01:00Z")
+        new = SyncRun(self.repo, self.cohort, scheduled_context({**event, "executionId": "execution-2", "attemptNumber": 2}),
+                      lambda: "2026-10-06T21:02:00Z")
+        old.stages.update(catalog="succeeded", roster="succeeded")
+        new.stages.update(catalog="succeeded", roster="succeeded")
+        new.complete_unchanged(self.cohort)
+        with self.assertRaises(Conflict): old.complete_unchanged(self.cohort)
+        self.assertEqual(self.repo.get(self.pk, new.sk), new.record)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,8 @@ from grades import ValidationError, overview, parse_csv, summary
 from identity import groups_from_claim, response
 from repository import Conflict, Repository
 from reminders import SESMailer, SendFailure, message_for
+from reminders import cohort_thresholds, display_snapshot, participation, withdrawn_ids
+import reminders
 from changes import snapshot_changes, change_counts, student_changes, student_history
 from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
 from integrity import check as integrity_check
@@ -34,12 +36,6 @@ def now():
 
 
 DRAFT_TTL_DAYS = 30
-
-
-def cohort_thresholds(cohort):
-    """Limites de referência (%) da turma; 70/95 se a turma não tiver configurado os seus."""
-    thresholds = cohort.get("thresholds") or {}
-    return {"kc": thresholds.get("kc", 70), "lab": thresholds.get("lab", 95)}
 
 
 def released_at(publication, snapshot):
@@ -85,30 +81,9 @@ def with_catalog(repo, cohort, snapshot):
     return {**snapshot, "activities": activities}
 
 
-def display_snapshot(repo, code, snapshot):
-    """Aplica nomes de exibição por matrícula sem alterar CSV, notas ou e-mail."""
-    profiles = {p["canvasId"]: p for p in repo.list("COHORT#" + code, "PROFILE#")}
-    return {**snapshot, "students": [
-        {**s, "name": profiles.get(s["id"], {}).get("displayName", s["name"])}
-        for s in snapshot["students"]
-    ]}
-
-
 # Participação do aluno na turma, marcada à mão no portal; o Canvas continua com a matrícula. Sem registro
 # PARTICIPATION#<idCanvas>, o aluno está ACTIVE: ninguém precisa ser marcado para seguir como antes.
 PARTICIPATION_STATUSES = ("ACTIVE", "WITHDRAWN")
-
-
-def participation(repo, code, canvas_id):
-    """Registro de participação do aluno na turma (ou None) e o status efetivo."""
-    item = repo.get("COHORT#" + code, "PARTICIPATION#" + canvas_id)
-    return item, item["status"] if item else "ACTIVE"
-
-
-def withdrawn_ids(repo, code):
-    """IDs Canvas marcados WITHDRAWN na turma, numa única consulta à partição; registros ACTIVE valem como ausentes.
-    Um ID que não está na publicação exibida não cria aluno: só quem está no snapshot é marcado."""
-    return {p["canvasId"] for p in repo.list("COHORT#" + code, "PARTICIPATION#") if p["status"] == "WITHDRAWN"}
 
 
 def participation_flag(withdrawn, student_id):
@@ -663,8 +638,11 @@ class Portal:
         expected_keys = {"studentId"} if operation == "pending-preview" else {"studentId", "publicationId", "previewHash"}
         require(set(body) == expected_keys, 400, "Solicitação de lembrete inválida.")
         require(cohort.get("current"), 409, "Publique as notas antes de consultar pendências.")
-        publication = self.publication(code, cohort["current"])
-        snap = with_catalog(self.repo, cohort, display_snapshot(self.repo, code, self.snapshot(publication)))
+        try:
+            publication, snap = reminders.fixed_publication(self.repo, cohort, self.snapshot)
+        except reminders.PublicationMissing as err:
+            raise APIError(404, str(err)) from None
+        snap = with_catalog(self.repo, cohort, snap)
         raw_student = next((s for s in snap["students"] if s["id"] == body["studentId"]), None)
         require(raw_student is not None, 404, "Aluno não encontrado nesta publicação.")
         # Desistente: o detalhe continua abrindo, com a marca; o envio é recusado antes de qualquer efeito, conferindo
@@ -684,7 +662,7 @@ class Portal:
                     "publicationId": publication["id"], "publishedAt": publication["publishedAt"],
                     "remindersEnabled": False, **detail, **participation_flag(withdrawn, raw_student["id"])}
         message, digest, pending = message_for(code, student, publication, self.user["email"])
-        sk = "REMINDER#" + publication["id"] + "#" + student["id"]
+        sk = reminders.reminder_key(publication["id"], student["id"])
         previous = self.repo.get(pk, sk)
         delivery = dict(previous) if previous else None
         if delivery and delivery.get("messageId"):
@@ -705,17 +683,14 @@ class Portal:
         require(readiness["ready"], 409, readiness["reason"])
         require(not previous or previous["status"] == "failed", 409,
                 "Já existe envio ou tentativa em andamento para este aluno nesta publicação. Consulte o status.")
-        record = {"studentId": student["id"], "publicationId": publication["id"],
-                  "by": self.uid, "at": now(), "status": "sending"}
-        self.repo.transaction([(pk, "METADATA", cohort, cohort), (pk, sk, record, previous)])
         try:
-            message_id = mailer.send(message)
-        except SendFailure as err:
-            record["status"] = "unknown" if err.uncertain else "failed"
-            self.repo.put(pk, sk, record)
+            record = reminders.reserve_reminder(self.repo, cohort, publication["id"], student["id"], self.uid, previous, now())
+        except reminders.RecipientWithdrawn:
+            raise APIError(409, "Aluno marcado como desistente nesta turma: lembretes desativados.") from None
+        try:
+            reminders.send_reserved_reminder(self.repo, code, record, message, mailer)
+        except SendFailure:
             raise APIError(503, "Não foi possível confirmar o envio. Atualize a prévia para consultar o status.") from None
-        record.update(status="sent", messageId=message_id)
-        self.repo.put(pk, sk, record)
         return {"delivery": record}
 
     def _reminder_batch(self, operation, code, cohort, pk, teach, body):
@@ -730,30 +705,15 @@ class Portal:
         require(isinstance(ids, list) and 1 <= len(ids) <= 200 and len(set(ids)) == len(ids)
                 and all(isinstance(i, str) for i in ids), 400, "Selecione até 200 alunos, sem repetição.")
         require(cohort.get("current"), 409, "Publique as notas antes de consultar pendências.")
-        publication = self.publication(code, cohort["current"])
-        snap = display_snapshot(self.repo, code, self.snapshot(publication))
-        by_id = {s["id"]: s for s in snap["students"]}
+        try:
+            publication, snap = reminders.fixed_publication(self.repo, cohort, self.snapshot)
+        except reminders.PublicationMissing as err:
+            raise APIError(404, str(err)) from None
         # Conferido em cada chamada, prévia e envio: quem foi marcado depois da prévia é pulado no envio.
         withdrawn = withdrawn_ids(self.repo, code)
         mailer = self.mailer or SESMailer()
         readiness = mailer.readiness(self.user["email"])
-        candidates = []
-        for sid in ids:
-            raw_student = by_id.get(sid)
-            if raw_student is None:
-                candidates.append({"id": sid, "name": None, "email": None, "pending": 0, "skip": "not-found"})
-                continue
-            student = summary(raw_student, snap["activities"], cohort_thresholds(cohort))
-            pending = [a for a in student["activities"] if a["state"] == "pending"]
-            sk = "REMINDER#" + publication["id"] + "#" + student["id"]
-            previous = self.repo.get(pk, sk)
-            skip = ("withdrawn" if student["id"] in withdrawn else
-                    "no-email" if not student["email"] else
-                    "no-pending" if not pending else
-                    "already-sent" if previous and previous["status"] != "failed" else None)
-            candidates.append({"id": student["id"], "name": student["name"], "email": student["email"],
-                                "pending": len(pending), "skip": skip,
-                                "_student": student, "_previous": previous})
+        candidates = [reminders.evaluate_recipient(self.repo, cohort, publication, snap, sid, withdrawn) for sid in ids]
         if operation == "pending-preview-batch":
             sample_candidate = next((c for c in candidates if not c["skip"]), None)
             sample = message_for(code, sample_candidate["_student"], publication, self.user["email"])[0] if sample_candidate else None
@@ -770,24 +730,20 @@ class Portal:
                                 "reason": "publication-changed" if stopped else c["skip"]})
                 continue
             message, _, _ = message_for(code, c["_student"], publication, self.user["email"])
-            sk = "REMINDER#" + publication["id"] + "#" + c["id"]
-            record = {"studentId": c["id"], "publicationId": publication["id"],
-                      "by": self.uid, "at": now(), "status": "sending"}
             try:
-                self.repo.transaction([(pk, "METADATA", cohort, cohort), (pk, sk, record, c["_previous"])])
+                record = reminders.reserve_reminder(self.repo, cohort, publication["id"], c["id"], self.uid, c["_previous"], now())
+            except reminders.RecipientWithdrawn:
+                results.append({"id": c["id"], "name": c["name"], "status": "skipped", "reason": "withdrawn"})
+                continue
             except Conflict:
                 stopped = True
                 results.append({"id": c["id"], "name": c["name"], "status": "skipped", "reason": "publication-changed"})
                 continue
             try:
-                message_id = mailer.send(message)
-            except SendFailure as err:
-                record["status"] = "unknown" if err.uncertain else "failed"
-                self.repo.put(pk, sk, record)
+                reminders.send_reserved_reminder(self.repo, code, record, message, mailer)
+            except SendFailure:
                 results.append({"id": c["id"], "name": c["name"], "status": "failed"})
                 continue
-            record.update(status="sent", messageId=message_id)
-            self.repo.put(pk, sk, record)
             results.append({"id": c["id"], "name": c["name"], "status": "sent"})
             if i < len(candidates) - 1:
                 time.sleep(float(os.environ.get("REMINDER_BATCH_DELAY_SECONDS", "0.25")))
@@ -966,7 +922,7 @@ class Portal:
         return {"draft": draft, **overview(display_snapshot(self.repo, code, snapshot), cohort_thresholds(cohort)),
                 "changes": snapshot_changes(before, snapshot)}
 
-    def _publish(self, cohort, pk, teach, body, kind="publish"):
+    def _publish(self, cohort, pk, teach, body, kind="publish", sync_run=None):
         require(teach)
         draft = self.repo.get(pk, "DRAFT#" + str(body.get("draftId", "")))
         require(draft is not None and draft["createdBy"] == self.uid, 404, "Prévia não encontrada para sua conta.")
@@ -1023,7 +979,12 @@ class Portal:
                 "cohort": cohort["code"], "publicationId": draft["id"], "at": published_at,
                 "filename": draft.get("filename"), "students": len(snap["students"]),
                 "activities": len(snap["activities"]), "warnings": issue_counts(report, snap.get("warnings", []))}, None))
+        proof = sync_run.completion_write(next_cohort, "published") if sync_run else None
+        if proof:
+            writes.append(proof)
         self.repo.transaction(writes)
+        if proof:
+            sync_run.accept(proof)
         return {"publication": publication}
 
     def _restore(self, cohort, pk, teach, body):
@@ -1116,7 +1077,7 @@ class Portal:
 SYNC_USER = {"sub": "system:canvas-sync", "email": "canvas-sync@system", "groups": ["admin"]}
 
 
-def sync_from_canvas(repo, code, csv_text, api_students):
+def sync_from_canvas(repo, code, csv_text, api_students, sync_run=None):
     """Publica as notas vindas do Canvas (todo/17), como se o instrutor tivesse enviado o CSV.
 
     Não publica se nada mudou (evita encher o histórico do aluno) nem se a turma veio vazia ou
@@ -1126,6 +1087,8 @@ def sync_from_canvas(repo, code, csv_text, api_students):
     portal = Portal(repo, SYNC_USER)
     pk = "COHORT#" + code
     cohort = portal.cohort(code)
+    if sync_run and cohort != sync_run.cohort:
+        raise Conflict()
     current = portal.snapshot(portal.publication(code, cohort["current"])) if cohort.get("current") else None
 
     def record(status, message, publication_id=None):
@@ -1147,11 +1110,13 @@ def sync_from_canvas(repo, code, csv_text, api_students):
                 "gradesChanged", "studentsAdded", "studentsRemoved", "studentsUpdated", "activitiesAdded",
                 "activitiesRemoved", "activitiesReleased", "activitiesPaused", "scalesChanged")):
             # Compara antes de gravar: execução sem mudança não deixa rascunho para trás.
+            if sync_run:
+                sync_run.complete_unchanged(cohort)
             return record("unchanged", "Nenhuma mudança no Canvas desde a última publicação.")
         preview = portal._save_draft(code, cohort, pk, body, snapshot, before)
-        publication = portal._publish(portal.cohort(code), pk, True,
+        publication = portal._publish(cohort if sync_run else portal.cohort(code), pk, True,
                                       {"draftId": preview["draft"]["id"], "acknowledgeRemoved": True},
-                                      kind="canvas")["publication"]
+                                      kind="canvas", sync_run=sync_run)["publication"]
         return record("published", f"{changes['gradesChanged']} nota(s) alterada(s).", publication["id"])
     except (APIError, ValidationError) as err:
         record("failed", err.message if isinstance(err, APIError) else str(err))

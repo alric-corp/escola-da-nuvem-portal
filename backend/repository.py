@@ -108,11 +108,12 @@ class Repository:
         # com chaves em ordens diferentes.
         return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
-    def transaction(self, writes, counters=()):
+    def transaction(self, writes, counters=(), checks=()):
         """Escritas atômicas. Cada escrita é (pk, sk, dados, esperado[, expiresAt]): dados None
         apaga; esperado None exige item inexistente, senão exige o item igual a `esperado`.
         Cada contador é (pk, sk, {atributo: incremento}, (atributo, máximo) | None, expiresAt | None):
-        soma atômica, e com máximo só aplica se o atributo ainda estiver abaixo dele."""
+        soma atômica, e com máximo só aplica se o atributo ainda estiver abaixo dele.
+        checks: (pk, sk, esperado), condição de igualdade/ausência sem gravar o item."""
         actions = []
         for write in writes:
             pk, sk, data, expected = write[:4]
@@ -134,6 +135,16 @@ class Repository:
                 if expires_at:
                     action["Item"]["expiresAt"] = {"N": str(int(expires_at))}
                 actions.append({"Put": action})
+        for pk, sk, expected in checks:
+            check = {"TableName": self.table.name, "Key": {"PK": {"S": pk}, "SK": {"S": sk}},
+                     "ConditionExpression": "attribute_not_exists(PK)" if expected is None else "#d = :old"}
+            if expected is not None:
+                check["ExpressionAttributeNames"] = {"#d": "data"}
+                if expected.get("_seed"):
+                    check["ConditionExpression"] = "attribute_exists(PK) AND attribute_not_exists(#d)"
+                else:
+                    check["ExpressionAttributeValues"] = {":old": {"S": self._encode(expected)}}
+            actions.append({"ConditionCheck": check})
         for pk, sk, deltas, limit, expires_at in counters:
             names = {f"#c{i}": name for i, name in enumerate(deltas)}
             values = {f":c{i}": {"N": str(int(delta))} for i, delta in enumerate(deltas.values())}

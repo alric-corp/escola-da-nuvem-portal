@@ -29,6 +29,88 @@ class Mailer:
         pass
 
 
+class AutomaticSenderSettingsTests(unittest.TestCase):
+    def setUp(self):
+        self.repo, self.mailer = MemoryRepository(), Mailer()
+        self.code = "TURMAA"
+        self.pk = "COHORT#" + self.code
+        self.at = "2026-10-06T20:00:00+00:00"
+
+    def configure(self, enabled=True, version=1):
+        from reminders import reminder_settings
+        settings = reminder_settings("teacher-1", enabled, version, self.at)
+        self.repo.put(self.pk, "REMINDER_SETTINGS", settings)
+        self.repo.put(self.pk, "TEACH#teacher-1", {"userId": "teacher-1", "code": self.code,
+                                                   "email": "teacher@example.test"})
+        self.repo.put("USER#teacher-1", "TEACH#" + self.code, {"code": self.code})
+        return settings
+
+    def resolve(self):
+        from reminders import automatic_sender_readiness
+        return automatic_sender_readiness(self.repo, self.code, "example.test", self.mailer)
+
+    def test_missing_or_disabled_settings_never_calls_ses(self):
+        with patch.object(self.mailer, "readiness", side_effect=AssertionError("SES not needed")):
+            self.assertEqual(self.resolve(), {"ready": False, "reason": "settings-missing"})
+            self.configure(enabled=False)
+            self.assertEqual(self.resolve(), {"ready": False, "reason": "automatic-disabled"})
+
+    def test_config_contains_only_reference_flag_version_and_utc_time(self):
+        settings = self.configure(version=3)
+        self.assertEqual(settings, {"senderUserId": "teacher-1", "automaticEnabled": True,
+                                    "version": 3, "updatedAt": self.at})
+        self.assertNotIn("@", str(self.repo.get(self.pk, "REMINDER_SETTINGS")))
+        from reminders import reminder_settings
+        for args in (("", True, 1, self.at), ("teacher-1", "true", 1, self.at),
+                     ("teacher-1", True, True, self.at), ("teacher-1", True, 0, self.at),
+                     ("teacher-1", True, 1, "2026-10-06T20:00:00")):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                reminder_settings(*args)
+
+    def test_sender_is_resolved_from_current_link_without_persistence_or_verification(self):
+        self.configure()
+        before = copy.deepcopy(self.repo.items)
+        with patch.object(self.mailer, "ensure_identity", side_effect=AssertionError("no verification")):
+            result = self.resolve()
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["sender"], "teacher@example.test")
+        self.assertEqual(self.repo.items, before)
+        self.repo.items[self.pk, "TEACH#teacher-1"]["email"] = "changed@example.test"
+        self.assertEqual(self.resolve()["sender"], "changed@example.test")
+
+    def test_removed_link_does_not_fall_back_to_another_teacher(self):
+        self.configure()
+        self.repo.put(self.pk, "TEACH#other", {"userId": "other", "code": self.code, "email": "other@example.test"})
+        for key in ((self.pk, "TEACH#teacher-1"), ("USER#teacher-1", "TEACH#" + self.code)):
+            before = copy.deepcopy(self.repo.items)
+            del self.repo.items[key]
+            with patch.object(self.mailer, "readiness", side_effect=AssertionError("invalid sender")):
+                self.assertEqual(self.resolve(), {"ready": False, "reason": "sender-unlinked"})
+            self.repo.items = before
+
+    def test_invalid_settings_and_sender_fail_closed(self):
+        self.configure()
+        valid = self.repo.get(self.pk, "REMINDER_SETTINGS")
+        for changes in ({"senderUserId": None}, {"version": 0}, {"email": "hidden@example.test"}):
+            self.repo.put(self.pk, "REMINDER_SETTINGS", {**valid, **changes})
+            self.assertEqual(self.resolve(), {"ready": False, "reason": "settings-invalid"})
+        self.repo.put(self.pk, "REMINDER_SETTINGS", valid)
+        for email in (None, "bad", "outside@elsewhere.test"):
+            self.repo.items[self.pk, "TEACH#teacher-1"]["email"] = email
+            self.assertEqual(self.resolve(), {"ready": False, "reason": "sender-invalid"})
+
+    def test_readiness_false_is_preserved_and_two_cohorts_use_their_own_sender(self):
+        self.configure()
+        self.mailer.ready = False
+        self.assertFalse(self.resolve()["ready"])
+        self.assertEqual(self.resolve()["reason"], "SES aguardando liberação")
+        from reminders import automatic_sender_readiness, reminder_settings
+        self.repo.put("COHORT#TURMAB", "REMINDER_SETTINGS", reminder_settings("teacher-2", True, 1, self.at))
+        self.repo.put("COHORT#TURMAB", "TEACH#teacher-2", {"userId": "teacher-2", "code": "TURMAB", "email": "other@example.test"})
+        self.repo.put("USER#teacher-2", "TEACH#TURMAB", {"code": "TURMAB"})
+        self.assertEqual(automatic_sender_readiness(self.repo, "TURMAB", "example.test", self.mailer)["sender"], "other@example.test")
+
+
 class ReminderTests(unittest.TestCase):
     def setUp(self):
         env = patch.dict("os.environ", {"REMINDERS_ENABLED": "true", "REMINDER_BATCH_DELAY_SECONDS": "0"})
@@ -230,11 +312,11 @@ class ReminderTests(unittest.TestCase):
         original = self.repo.transaction
         calls = {"n": 0}
 
-        def flaky(writes):
+        def flaky(writes, **kwargs):
             calls["n"] += 1
             if calls["n"] == 2:
                 raise Conflict()
-            return original(writes)
+            return original(writes, **kwargs)
 
         with patch.object(self.repo, "transaction", side_effect=flaky):
             result = self.call("send-reminders", {"studentIds": ["101", "202"],
@@ -256,6 +338,111 @@ class ReminderTests(unittest.TestCase):
         with self.assertRaises(APIError): self.call("send-reminder", body)
         self.assertEqual(len(self.mailer.sent), 1)
 
+
+
+class SharedReminderReservationTests(unittest.TestCase):
+    setUp = ReminderTests.setUp
+    call = ReminderTests.call
+    publish = ReminderTests.publish
+    publish_csv = ReminderTests.publish_csv
+    preview = ReminderTests.preview
+    payload = ReminderTests.payload
+
+    def withdraw(self, sid="101"):
+        self.repo.put("COHORT#BRSA0267", "PARTICIPATION#" + sid,
+                      {"canvasId": sid, "status": "WITHDRAWN", "updatedAt": "2026-10-06T21:59:00Z", "updatedBy": "other"})
+
+    def test_individual_withdrawal_after_read_before_transaction_reserves_nothing(self):
+        body = self.payload()
+        original = self.repo.transaction
+        def race(writes, **kwargs):
+            if any(w[1].startswith("REMINDER#") for w in writes):
+                self.withdraw()
+            return original(writes, **kwargs)
+        with patch.object(self.repo, "transaction", side_effect=race), self.assertRaises(APIError) as err:
+            self.call("send-reminder", body)
+        self.assertEqual(err.exception.status, 409)
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_batch_reauthorizes_the_next_recipient_after_the_first_send(self):
+        self.publish_csv(canvas_csv(kc="", lab="", extra=["Second", "202", "second@example.test", "", "", "0"]))
+        pub = self.preview()["publicationId"]
+        original = self.mailer.send
+        def send(message):
+            result = original(message)
+            self.withdraw("202")
+            return result
+        with patch.object(self.mailer, "send", side_effect=send):
+            result = self.call("send-reminders", {"studentIds": ["101", "202"], "expectedPublicationId": pub})
+        self.assertEqual([r["status"] for r in result["results"]], ["sent", "skipped"])
+        self.assertEqual(result["results"][1]["reason"], "withdrawn")
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "REMINDER#" + pub + "#202"))
+
+    def test_withdrawal_after_reservation_does_not_claim_to_recall_the_email(self):
+        body = self.payload()
+        original = self.mailer.send
+        def after_reservation(message):
+            record = self.repo.get("COHORT#BRSA0267", "REMINDER#" + body["publicationId"] + "#101")
+            self.assertEqual(record["status"], "sending")
+            self.withdraw()
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=after_reservation):
+            self.assertEqual(self.call("send-reminder", body)["delivery"]["status"], "sent")
+        self.assertEqual(len(self.mailer.sent), 1)
+
+    def test_both_manual_adapters_use_the_shared_reservation(self):
+        import reminders
+        body = self.payload()
+        with patch.object(reminders, "reserve_reminder", wraps=reminders.reserve_reminder) as reserve:
+            self.call("send-reminder", body)
+            self.assertEqual(reserve.call_count, 1)
+        self.publish(kc="1")
+        pub = self.preview()["publicationId"]
+        with patch.object(reminders, "reserve_reminder", wraps=reminders.reserve_reminder) as reserve:
+            self.call("send-reminders", {"studentIds": ["101"], "expectedPublicationId": pub})
+            self.assertEqual(reserve.call_count, 1)
+
+    def test_shared_primitive_has_the_same_key_for_manual_and_future_automatic(self):
+        import reminders
+        from repository import Conflict
+        self.call("send-reminder", self.payload())
+        cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+        pub = cohort["current"]
+        key = "REMINDER#" + pub + "#101"
+        previous = self.repo.get("COHORT#BRSA0267", key)
+        with self.assertRaises(Conflict):
+            reminders.reserve_reminder(self.repo, cohort, pub, "101", "system:auto", previous, "2026-10-06T23:00:00Z")
+        self.assertEqual(self.repo.keys("COHORT#BRSA0267", "REMINDER#"), [key])
+
+    def test_reservation_states_and_active_implicit_or_explicit(self):
+        import reminders
+        from repository import Conflict
+        cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+        pub, pk = cohort["current"], "COHORT#BRSA0267"
+        for participation_status in (None, "ACTIVE", "WITHDRAWN"):
+            for prior in (None, "failed", "sending", "unknown", "sent"):
+                with self.subTest(participation=participation_status, prior=prior):
+                    self.repo.items.pop((pk, "PARTICIPATION#101"), None)
+                    if participation_status:
+                        self.repo.put(pk, "PARTICIPATION#101", {"canvasId": "101", "status": participation_status})
+                    key = "REMINDER#" + pub + "#101"
+                    previous = {"status": prior} if prior else None
+                    self.repo.items.pop((pk, key), None)
+                    if previous: self.repo.put(pk, key, previous)
+                    if participation_status == "WITHDRAWN":
+                        with self.assertRaises(reminders.RecipientWithdrawn):
+                            reminders.reserve_reminder(self.repo, cohort, pub, "101", "actor", previous, "at")
+                    elif prior in ("sending", "unknown", "sent"):
+                        with self.assertRaises(Conflict):
+                            reminders.reserve_reminder(self.repo, cohort, pub, "101", "actor", previous, "at")
+                    else:
+                        record = reminders.reserve_reminder(self.repo, cohort, pub, "101", "actor", previous, "at")
+                        self.assertEqual(record["status"], "sending")
+                        with self.assertRaises(Conflict):
+                            reminders.reserve_reminder(self.repo, cohort, pub, "101", "actor", previous, "at")
+        self.assertEqual(self.mailer.sent, [])
 
 
 def pending_csv(*rows):

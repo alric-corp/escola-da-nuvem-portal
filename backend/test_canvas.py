@@ -390,5 +390,207 @@ class RunTests(unittest.TestCase):
         self.assertIsNotNone(repo.get("COHORT#TURMAA", "METADATA")["current"])
 
 
+class ScheduledSyncProofTests(unittest.TestCase):
+    setUp = SyncTests.setUp
+
+    def event(self, scheduled="2026-10-06T18:00:00-03:00", attempt=1):
+        return {"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": scheduled,
+                "executionId": "execution-" + str(attempt), "attemptNumber": attempt}
+
+    def execute(self, event=None, **kwargs):
+        client = CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()}))
+        at = "2026-10-06T21:01:00+00:00"
+        with patch("portal.now", return_value=at):
+            return run(self.repo, client, event=event, clock=lambda: at, **kwargs)
+
+    def proof(self, slot="2026-10-06T21:00:00Z"):
+        return self.repo.get("COHORT#BRSA0267", "SYNC_RUN#" + slot)
+
+    def test_legacy_and_manual_events_create_no_scheduled_proof(self):
+        for event in (None, {}, {"source": "manual", "type": "canvas-sync", "scheduledFor": "2026-10-06T21:00:00Z"}):
+            with self.subTest(event=event):
+                results, failures = self.execute(event)
+                self.assertIn(results["BRSA0267"], ("published", "unchanged"))
+                self.assertEqual(failures, [])
+                self.assertEqual(self.repo.list("COHORT#BRSA0267", "SYNC_RUN#"), [])
+
+    def test_evening_published_proof_is_tied_to_the_actual_publication(self):
+        from sync_runs import metadata_version
+        self.assertEqual(self.execute(self.event()), ({"BRSA0267": "published"}, []))
+        proof = self.proof()
+        metadata = self.repo.get("COHORT#BRSA0267", "METADATA")
+        self.assertEqual(proof["status"], "succeeded")
+        self.assertEqual(proof["publicationId"], metadata["current"])
+        self.assertEqual(proof["metadataVersion"], metadata_version(metadata))
+        self.assertEqual(proof["scheduledFor"], "2026-10-06T21:00:00Z")
+        self.assertEqual(proof["stages"], {"catalog": "succeeded", "roster": "succeeded", "grades": "published"})
+        self.assertIsNotNone(proof["startedAt"])
+        self.assertIsNotNone(proof["finishedAt"])
+
+    def test_unchanged_has_a_real_publication_without_changing_legacy_sync(self):
+        self.execute()
+        publication = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+        self.assertEqual(self.execute(self.event()), ({"BRSA0267": "unchanged"}, []))
+        self.assertEqual(self.proof()["publicationId"], publication)
+        self.assertEqual(self.proof()["status"], "succeeded")
+        self.assertEqual(self.proof()["stages"]["grades"], "unchanged")
+        self.assertIsNone(self.repo.get("COHORT#BRSA0267", "SYNC")["publicationId"])
+
+    def test_morning_slot_is_distinct_and_lookup_uses_iana_timezone(self):
+        from sync_runs import evening_sync_key
+        self.execute(self.event("2026-10-06T06:00:00-03:00"))
+        self.assertIsNone(self.proof())
+        self.assertEqual(self.proof("2026-10-06T09:00:00Z")["status"], "succeeded")
+        self.assertEqual(evening_sync_key("2026-10-06T23:00:00Z"), "SYNC_RUN#2026-10-06T21:00:00Z")
+        # São Paulo tinha DST nesta data: não fixar UTC-3 no identificador.
+        self.assertEqual(evening_sync_key("2018-11-06T22:00:00Z"), "SYNC_RUN#2018-11-06T20:00:00Z")
+
+    def test_retry_reuses_slot_and_changes_only_attempt_telemetry(self):
+        self.execute(self.event())
+        pub = self.proof()["publicationId"]
+        self.execute(self.event("2026-10-06T21:00:00Z", attempt=2))
+        self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "SYNC_RUN#")), 1)
+        self.assertEqual(self.proof()["publicationId"], pub)
+        self.assertEqual((self.proof()["attemptNumber"], self.proof()["executionId"]), (2, "execution-2"))
+        before = self.proof()
+        self.execute(self.event())  # tentativa atrasada não substitui a prova mais nova
+        self.assertEqual(self.proof(), before)
+
+    def test_catalog_failure_invalidates_each_cohort_sharing_that_course(self):
+        from canvas import CanvasError
+        self.repo.put("COHORT#TURMAB", "METADATA", {"code": "TURMAB", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        with patch("canvas_sync.course_catalog", side_effect=CanvasError("private@example.test")):
+            self.execute(self.event())
+        for code in ("BRSA0267", "TURMAB"):
+            proof = self.repo.get("COHORT#" + code, "SYNC_RUN#2026-10-06T21:00:00Z")
+            self.assertEqual(proof["status"], "failed")
+            self.assertEqual(proof["stages"]["catalog"], "failed")
+            self.assertNotIn("private@example.test", json.dumps(proof))
+
+    def test_roster_and_grade_failure_are_recorded_without_false_success(self):
+        from canvas import CanvasError
+        for function, stage in (("course_students", "roster"), ("course_csv", "grades")):
+            with self.subTest(stage=stage):
+                self.setUp()
+                with patch("canvas_sync." + function, side_effect=CanvasError("sensitive details")):
+                    self.execute(self.event())
+                proof = self.proof()
+                self.assertEqual(proof["status"], "failed")
+                self.assertEqual(proof["stages"][stage], "failed")
+                self.assertIsNone(proof["publicationId"])
+                self.assertNotIn("sensitive", json.dumps(proof))
+
+    def test_abrupt_interruption_leaves_an_incomplete_run(self):
+        with patch("canvas_sync.course_csv", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+            self.execute(self.event())
+        self.assertEqual(self.proof()["status"], "running")
+        self.assertIsNone(self.proof()["finishedAt"])
+        self.assertIsNone(self.proof()["publicationId"])
+
+    def test_publication_race_cannot_attach_a_later_current_to_the_run(self):
+        original = self.repo.transaction
+        for unchanged in (False, True):
+            with self.subTest(unchanged=unchanged):
+                self.setUp()
+                if unchanged: self.execute()
+                original = self.repo.transaction
+                def race(writes, **kwargs):
+                    if any(w[1].startswith("SYNC_RUN#") and w[2]["status"] == "succeeded" for w in writes):
+                        metadata = self.repo.get("COHORT#BRSA0267", "METADATA")
+                        metadata.update(current="later-publication", updatedAt="later")
+                        self.repo.put("COHORT#BRSA0267", "METADATA", metadata)
+                    return original(writes, **kwargs)
+                with patch.object(self.repo, "transaction", side_effect=race):
+                    self.execute(self.event())
+                proof = self.proof()
+                self.assertEqual(proof["status"], "failed")
+                self.assertIsNone(proof["publicationId"])
+                self.assertIsNone(proof["metadataVersion"])
+
+    def test_proof_does_not_store_event_or_student_information(self):
+        event = {**self.event(), "email": "do-not-store@example.test", "token": "private-token", "body": {"name": "private-name"}}
+        self.execute(event)
+        proof = self.proof()
+        self.assertEqual(set(proof), {"source", "scheduledFor", "executionId", "attemptNumber", "startedAt",
+                                     "finishedAt", "status", "publicationId", "metadataVersion", "stages"})
+        self.assertNotIn("@", json.dumps(proof))
+        self.assertNotIn("private", json.dumps(proof))
+
+    def test_unchanged_cannot_reread_and_claim_current_after_its_comparison(self):
+        from sync_runs import SyncRun
+        self.execute()
+        original = SyncRun.complete_unchanged
+        def change_current(proof, compared_metadata):
+            self.repo.put("COHORT#BRSA0267", "METADATA", {**compared_metadata, "current": "later-publication"})
+            return original(proof, compared_metadata)
+        with patch.object(SyncRun, "complete_unchanged", change_current):
+            self.execute(self.event())
+        self.assertEqual(self.proof()["status"], "failed")
+        self.assertIsNone(self.proof()["publicationId"])
+
+    def test_course_configuration_cannot_change_while_canvas_is_being_read(self):
+        import canvas_sync
+        original = canvas_sync.course_csv
+        def change_course(*args):
+            result = original(*args)
+            metadata = self.repo.get("COHORT#BRSA0267", "METADATA")
+            self.repo.put("COHORT#BRSA0267", "METADATA", {**metadata, "canvasCourseId": "different"})
+            return result
+        with patch.object(canvas_sync, "course_csv", side_effect=change_course):
+            self.execute(self.event())
+        self.assertEqual(self.proof()["status"], "failed")
+        self.assertIsNone(self.proof()["publicationId"])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "PUB#"), [])
+
+    def test_metadata_proof_detects_restore_to_the_same_publication(self):
+        from sync_runs import metadata_version
+        self.execute(self.event())
+        metadata = self.repo.get("COHORT#BRSA0267", "METADATA")
+        restored = {**metadata, "updateKind": "restore", "updatedAt": "2026-10-06T22:00:00Z"}
+        self.assertEqual(restored["current"], self.proof()["publicationId"])
+        self.assertNotEqual(metadata_version(restored), self.proof()["metadataVersion"])
+
+    def test_one_failed_scheduled_cohort_does_not_block_the_other(self):
+        from canvas import CanvasError
+        import canvas_sync
+        self.repo.put("COHORT#TURMAB", "METADATA", {"code": "TURMAB", "current": None, "canvasCourseId": "4436", "autoSync": True})
+        original = canvas_sync.sync_from_canvas
+        def fail_first(repo, code, *args, **kwargs):
+            if code == "BRSA0267": raise CanvasError("failed")
+            return original(repo, code, *args, **kwargs)
+        with patch.object(canvas_sync, "sync_from_canvas", side_effect=fail_first):
+            self.execute(self.event())
+        self.assertEqual(self.proof()["status"], "failed")
+        self.assertEqual(self.repo.get("COHORT#TURMAB", "SYNC_RUN#2026-10-06T21:00:00Z")["status"], "succeeded")
+
+    def test_invalid_scheduled_context_cannot_become_proof(self):
+        for change in ({"scheduledFor": "bad"}, {"scheduledFor": "2026-10-06T21:00:00"},
+                       {"scheduledFor": "2026-10-06T20:00:00Z"}, {"executionId": ""}, {"attemptNumber": True}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.execute({**self.event(), **change})
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "SYNC_RUN#"), [])
+
+    def test_run_model_rejects_a_raw_event_instead_of_persisting_it(self):
+        from sync_runs import SyncRun
+        cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+        with self.assertRaises(ValueError):
+            SyncRun(self.repo, cohort, self.event(), lambda: "2026-10-06T21:01:00Z")
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "SYNC_RUN#"), [])
+
+    def test_monitoring_failure_after_data_does_not_invalidate_proof(self):
+        import canvas_sync
+        client = CanvasClient(BASE, "t", opener=FakeCanvas({"4436": course()}))
+        with patch.dict("os.environ", {"CANVAS_BASE_URL": BASE, "CANVAS_SECRET_ARN": "fake", "METRICS_NAMESPACE": "test"}), \
+             patch.object(canvas_sync, "read_token", return_value="fake"), \
+             patch.object(canvas_sync, "CanvasClient", return_value=client), \
+             patch.object(canvas_sync, "Repository", return_value=self.repo), \
+             patch("boto3.client") as aws, \
+             patch("sync_runs.utc_now", return_value="2026-10-06T21:01:00+00:00"), \
+             self.assertLogs(level="ERROR"):
+            aws.return_value.put_metric_data.side_effect = RuntimeError("metrics unavailable")
+            canvas_sync.handler(self.event(), None)
+        self.assertEqual(self.proof()["status"], "succeeded")
+
+
 if __name__ == "__main__":
     unittest.main()

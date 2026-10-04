@@ -95,9 +95,11 @@ class MemoryRepository:
         # Como Repository.cohorts: só COHORT#…/METADATA (CATALOG# e ROSTER# também usam METADATA).
         return [copy.deepcopy(v) for (p, s), v in self.items.items() if s == "METADATA" and p.startswith("COHORT#")]
 
-    def transaction(self, writes, counters=()):
+    def transaction(self, writes, counters=(), checks=()):
         # Mesma semântica do Repository.transaction: tudo ou nada, com as mesmas condições.
         if self.fail_transaction or any(self.get(w[0], w[1]) != w[3] for w in writes):
+            raise Conflict()
+        if any(self.get(pk, sk) != expected for pk, sk, expected in checks):
             raise Conflict()
         for p, s, deltas, limit, expires_at in counters:
             current = self.counters.get((p, s), {})
