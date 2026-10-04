@@ -5,11 +5,10 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { read, root, terraformRoutes, frontendRoutes, backendRoutes } from "./contracts/sources.mjs";
-import { parseContract, operations, validateStructure, compareTerraform, compareSecurity, compareFrontend, compareBackend } from "./contracts/openapi.mjs";
+import { read, root, frontendRoutes, backendRoutes } from "./contracts/sources.mjs";
+import { parseContract, operations, validateStructure, validateBaselineSecurity, compareFrontend, compareBackend } from "./contracts/openapi.mjs";
 
 const contract = parseContract();
-const terraform = terraformRoutes();
 const frontend = await frontendRoutes();
 const backend = backendRoutes();
 const participationPath = "/cohorts/{code}/participation";
@@ -21,7 +20,6 @@ const originalHashes = fingerprint();
 test("OpenAPI 3.0.3: metadata, references, operationIds, parameters, responses and security", () => validateStructure(contract));
 test("OpenAPI counts exactly 35 HTTP operations; metadata is not a method", () => {
   assert.equal(operations(contract).length, 35);
-  assert.equal(terraform.length, 35);
   assert.equal(backend.length, 35);
   const c = copy();
   c.paths["/me"].summary = "Metadata";
@@ -29,8 +27,10 @@ test("OpenAPI counts exactly 35 HTTP operations; metadata is not a method", () =
   c.paths["/me"].parameters = [];
   assert.equal(operations(c).length, 35);
 });
-test("OpenAPI ↔ Terraform: exact methods and path parameter names", () => compareTerraform(contract, terraform));
-test("OpenAPI security ↔ Terraform authorization type and scopes", () => compareSecurity(contract, terraform));
+test("OpenAPI ↔ backend: exact methods and path parameter names", () => {
+  assert.deepEqual(operations(contract).map((r) => r.signature).sort(), backend.map((r) => r.signature).sort());
+});
+test("OpenAPI baseline requires JWT and portal/access; Terraform equivalence runs in native tests", () => validateBaselineSecurity(contract));
 test("Every frontend Portal API call has an OpenAPI operation", () => compareFrontend(contract, frontend));
 test("OpenAPI ↔ all public backend dispatchers and operation mapping", () => compareBackend(contract, backend));
 test("Participation preserves exact request fields, statuses and nullable no-record timestamp", () => {
@@ -53,14 +53,14 @@ test("Contract contains no environment IDs, servers, contact data or credential 
 test("YAML duplicate keys are rejected", () => assert.throws(() => parseContract("openapi: 3.0.3\nopenapi: 3.0.3\n"), /Invalid YAML/));
 
 const mutations = [
-  ["A / participation missing", (c) => { delete c.paths[participationPath]; }, (c) => compareTerraform(c, terraform), /route mismatch/],
-  ["B / ghost route", (c) => { c.paths["/ghost"] = structuredClone(c.paths["/me"]); c.paths["/ghost"].get.operationId = "ghost"; }, (c) => compareTerraform(c, terraform), /route mismatch/],
-  ["C / participation changed to GET", (c) => { c.paths[participationPath].get = c.paths[participationPath].post; delete c.paths[participationPath].post; }, (c) => compareTerraform(c, terraform), /route mismatch/],
-  ["D / wrong path, including parameter spelling", (c) => { c.paths["/cohorts/{cohort}/participation"] = c.paths[participationPath]; delete c.paths[participationPath]; }, (c) => compareTerraform(c, terraform), /route mismatch/],
+  ["A / participation missing", (c) => { delete c.paths[participationPath]; }, (c) => compareBackend(c, backend), /route mismatch/],
+  ["B / ghost route", (c) => { c.paths["/ghost"] = structuredClone(c.paths["/me"]); c.paths["/ghost"].get.operationId = "ghost"; }, (c) => compareBackend(c, backend), /route mismatch/],
+  ["C / participation changed to GET", (c) => { c.paths[participationPath].get = c.paths[participationPath].post; delete c.paths[participationPath].post; }, (c) => compareBackend(c, backend), /route mismatch/],
+  ["D / wrong path, including parameter spelling", (c) => { c.paths["/cohorts/{cohort}/participation"] = c.paths[participationPath]; delete c.paths[participationPath]; }, (c) => compareBackend(c, backend), /route mismatch/],
   ["E / duplicate operationId", (c) => { c.paths[participationPath].post.operationId = c.paths["/me"].get.operationId; }, validateStructure, /Duplicate operationId/],
   ["F / undeclared path parameter", (c) => { c.paths[participationPath].post.parameters = []; }, validateStructure, /Path parameter mismatch/],
-  ["G / JWT route becomes public", (c) => { c.paths[participationPath].post.security = []; c.paths[participationPath].post["x-portal-authorization-scopes"] = []; }, (c) => compareSecurity(c, terraform), /Security mismatch/],
-  ["H / portal\/access removed", (c) => { c.paths[participationPath].post["x-portal-authorization-scopes"] = []; }, (c) => compareSecurity(c, terraform), /Security mismatch/],
+  ["G / JWT route becomes public", (c) => { c.paths[participationPath].post.security = []; c.paths[participationPath].post["x-portal-authorization-scopes"] = []; }, (c) => validateBaselineSecurity(c), /Security mismatch/],
+  ["H / portal\/access removed", (c) => { c.paths[participationPath].post["x-portal-authorization-scopes"] = []; }, (c) => validateBaselineSecurity(c), /Security mismatch/],
 ];
 for (const [name, mutate, validate, failure] of mutations) {
   test("Mutation " + name + " is detected; source hashes stay unchanged", () => {
@@ -96,11 +96,11 @@ test("Wrong backend handler is detected even when method/path exist", () => {
   c.paths[participationPath].post["x-portal-backend-operation"] = "Portal._report";
   assert.throws(() => compareBackend(c, backend), /Backend operation mapping mismatch/);
 });
-test("Terraform security mutations are detected independently of route presence", () => {
-  for (const source of [
-    read("infra/terraform/api.tf").replaceAll('authorization_type   = "JWT"', 'authorization_type   = "NONE"').replaceAll('authorization_scopes = ["portal/access"]', "authorization_scopes = []"),
-    read("infra/terraform/api.tf").replaceAll('["portal/access"]', '["portal/wrong"]'),
-  ]) {
-    assert.throws(() => compareSecurity(contract, terraformRoutes(source)), /Security mismatch/);
-  }
+test("API-2 mutation G: valid operationId rename preserves route keys and backend mapping", () => {
+  const c = copy();
+  c.paths[participationPath].post.operationId = "changeParticipation";
+  validateStructure(c);
+  compareBackend(c, backend);
+  assert.deepEqual(operations(c).map((r) => r.signature), operations(contract).map((r) => r.signature));
+  assert.deepEqual(fingerprint(), originalHashes);
 });

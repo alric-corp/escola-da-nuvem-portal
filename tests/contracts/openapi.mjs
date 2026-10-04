@@ -121,16 +121,11 @@ export function validateStructure(contract) {
 }
 
 const keys = (routes) => [...new Set(routes.map((r) => r.signature))].sort();
-export function compareTerraform(contract, routes) {
-  assert.deepEqual(keys(operations(contract)), keys(routes), "OpenAPI/Terraform route mismatch");
-}
-export function compareSecurity(contract, routes) {
-  const byRoute = new Map(routes.map((r) => [r.signature, r]));
+// Baseline policy remains explicit in tests; Terraform derives evaluated values in routes.tftest.hcl.
+export function validateBaselineSecurity(contract) {
   for (const { signature: key, operation } of operations(contract)) {
-    const expected = byRoute.get(key);
-    assert(expected, "Unknown Terraform route: " + key);
     assert.deepEqual(authorization(contract, operation),
-      { authorization: expected.authorization, scopes: expected.scopes }, "Security mismatch: " + key);
+      { authorization: "JWT", scopes: ["portal/access"] }, "Security mismatch: " + key);
   }
 }
 export function compareFrontend(contract, routes) {

@@ -10,35 +10,6 @@ export const signature = (method, path) => {
   return method.toUpperCase() + " " + path;
 };
 
-export function terraformRoutes(source = read("infra/terraform/api.tf")) {
-  const routes = [];
-  const blocks = [...source.matchAll(/^resource "aws_apigatewayv2_route" "(\w+)" \{([\s\S]*?)^\}/gm)];
-  assert.equal(blocks.length, [...source.matchAll(/\bresource\s+"aws_apigatewayv2_route"/g)].length, "Review Terraform resource formatting");
-  for (const match of blocks) {
-    const [, resource, block] = match;
-    const literal = block.match(/^\s*route_key\s*=\s*"([^"]+)"/m);
-    const set = block.match(/for_each\s*=\s*toset\(\[([\s\S]*?)\]\)/);
-    assert(literal || (set && /route_key\s*=\s*each\.value/.test(block)), "Review Terraform route expression");
-    const keys = literal ? [literal[1]] : [...set[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-    if (set) assert.match(set[1].replace(/"[^"]+"/g, ""), /^[\s,]*$/, "Review Terraform route set");
-    const authorization = block.match(/authorization_type\s*=\s*"([^"]+)"/);
-    assert(authorization || !/authorization_type\s*=/.test(block), "Review Terraform authorization expression");
-    const scopeMatch = block.match(/authorization_scopes\s*=\s*\[([^\]]*)\]/);
-    assert(scopeMatch || !/authorization_scopes\s*=/.test(block), "Review Terraform scope expression");
-    const scopeText = scopeMatch?.[1] || "";
-    assert.match(scopeText.replace(/"[^"]+"/g, ""), /^[\s,]*$/);
-    const scopes = [...scopeText.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
-    for (const key of keys) {
-      const [method, path, ...rest] = key.split(" ");
-      assert.equal(rest.length, 0);
-      routes.push({ signature: signature(method, path), authorization: authorization?.[1] || "NONE", scopes, resource });
-    }
-  }
-  assert(routes.length > 0);
-  assert.equal(new Set(routes.map((r) => r.signature)).size, routes.length, "Duplicate Terraform route");
-  return routes;
-}
-
 export async function frontendRoutes(url = new URL("frontend/api.js", root)) {
   const api = await import(url.href);
   const originalFetch = globalThis.fetch;

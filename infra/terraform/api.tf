@@ -85,41 +85,81 @@ resource "aws_apigatewayv2_integration" "identity" {
   payload_format_version = "2.0"
 }
 
+locals {
+  openapi_spec         = yamldecode(file("${path.module}/../../openapi/portal.yaml"))
+  openapi_http_methods = toset(["get", "post", "put", "patch", "delete", "head", "options"])
+  openapi_operations = flatten([
+    for path, item in local.openapi_spec.paths : [
+      for method, operation in item : {
+        route_key = "${upper(method)} ${path}"
+        authorization_type = try(anytrue([
+          for requirement in try(operation.security, local.openapi_spec.security, []) :
+          contains(keys(requirement), "PortalJwt")
+        ]), false) ? "JWT" : "NONE"
+        authorization_scopes = toset(try(operation["x-portal-authorization-scopes"], []))
+      } if contains(local.openapi_http_methods, method)
+    ]
+  ])
+  routes        = { for operation in local.openapi_operations : operation.route_key => operation }
+  me_route_key  = "GET /me" # Seleção do address histórico, não uma segunda declaração da rota.
+  portal_routes = { for key, route in local.routes : key => route if key != local.me_route_key }
+
+  # Falhar antes de provisionar se uma forma de segurança não suportada pudesse virar pública.
+  # O adapter atual suporta [] (pública) ou exatamente PortalJwt; alternativas OR não são inferidas.
+  openapi_routing_valid = (
+    local.openapi_spec.openapi == "3.0.3"
+    && local.openapi_spec.components.securitySchemes.PortalJwt.type == "http"
+    && local.openapi_spec.components.securitySchemes.PortalJwt.scheme == "bearer"
+    && local.openapi_spec.components.securitySchemes.PortalJwt.bearerFormat == "JWT"
+    && alltrue(flatten([
+      for path, item in local.openapi_spec.paths : [
+        can(regex("^/[^\\s?#]*$", path)),
+        alltrue([for key in keys(item) :
+          contains(local.openapi_http_methods, key)
+          || contains(["parameters", "summary", "description", "servers"], key)
+          || startswith(key, "x-")
+        ]),
+        alltrue([for method, operation in item : try(
+          jsonencode(try(operation.security, local.openapi_spec.security, [])) == jsonencode([{ PortalJwt = [] }])
+          || (length(try(operation.security, local.openapi_spec.security, [])) == 0
+          && length(try(operation["x-portal-authorization-scopes"], [])) == 0), false
+        ) if contains(local.openapi_http_methods, method)])
+      ]
+    ]))
+  )
+}
+
 resource "aws_apigatewayv2_route" "me" {
   api_id               = aws_apigatewayv2_api.portal.id
-  route_key            = "GET /me"
+  route_key            = local.routes[local.me_route_key].route_key
   target               = "integrations/${aws_apigatewayv2_integration.identity.id}"
-  authorization_type   = "JWT"
-  authorizer_id        = aws_apigatewayv2_authorizer.portal.id
-  authorization_scopes = ["portal/access"]
+  authorization_type   = local.routes[local.me_route_key].authorization_type
+  authorizer_id        = local.routes[local.me_route_key].authorization_type == "JWT" ? aws_apigatewayv2_authorizer.portal.id : null
+  authorization_scopes = local.routes[local.me_route_key].authorization_scopes
+
+  lifecycle {
+    precondition {
+      condition     = local.openapi_routing_valid
+      error_message = "OpenAPI: path/método ou segurança não suportados; use PortalJwt ou security=[] sem scopes."
+    }
+  }
 }
 
 resource "aws_apigatewayv2_route" "portal" {
-  for_each = toset([
-    "GET /cohorts", "POST /cohorts", "POST /access-request", "GET /requests",
-    "GET /cohorts/{code}/class-report", "GET /cohorts/{code}/report", "POST /cohorts/{code}/preview",
-    "POST /cohorts/{code}/publish", "POST /cohorts/{code}/restore",
-    "POST /cohorts/{code}/focus-activities",
-    "POST /cohorts/{code}/instructors", "GET /cohorts/{code}/instructors",
-    "POST /cohorts/{code}/revoke-instructor",
-    "POST /cohorts/{code}/pending-preview", "POST /cohorts/{code}/send-reminder",
-    "POST /cohorts/{code}/pending-preview-batch", "POST /cohorts/{code}/send-reminders",
-    "GET /cohorts/{code}/reminder-settings", "POST /cohorts/{code}/verify-sender",
-    "POST /cohorts/{code}/students-search", "POST /cohorts/{code}/unlink-student",
-    "POST /cohorts/{code}/student-view",
-    "POST /cohorts/{code}/display-name", "POST /requests/{userId}/reject",
-    "POST /cohorts/{code}/participation",
-    "POST /cohorts/{code}/settings",
-    "POST /feedback", "GET /feedback", "GET /admin/feedback", "POST /admin/feedback/{id}/status",
-    "POST /feedback/{feedbackId}/attachments", "POST /feedback/{feedbackId}/attachments/{attachmentId}/complete",
-    "GET /feedback/{feedbackId}/attachments", "GET /feedback/{feedbackId}/attachments/{attachmentId}"
-  ])
+  for_each             = local.portal_routes
   api_id               = aws_apigatewayv2_api.portal.id
-  route_key            = each.value
+  route_key            = each.value.route_key
   target               = "integrations/${aws_apigatewayv2_integration.identity.id}"
-  authorization_type   = "JWT"
-  authorizer_id        = aws_apigatewayv2_authorizer.portal.id
-  authorization_scopes = ["portal/access"]
+  authorization_type   = each.value.authorization_type
+  authorizer_id        = each.value.authorization_type == "JWT" ? aws_apigatewayv2_authorizer.portal.id : null
+  authorization_scopes = each.value.authorization_scopes
+
+  lifecycle {
+    precondition {
+      condition     = local.openapi_routing_valid
+      error_message = "OpenAPI: path/método ou segurança não suportados; use PortalJwt ou security=[] sem scopes."
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "portal_data" {

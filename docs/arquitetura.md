@@ -82,30 +82,44 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 ## Contrato OpenAPI
 
 [`openapi/portal.yaml`](../openapi/portal.yaml) caracteriza as **35 operações**
-da API HTTP do portal em OpenAPI **3.0.3**. Métodos, paths, parâmetros e segurança
-são conferidos com Terraform, chamadas do frontend e dispatchers do backend.
+da API HTTP do portal em OpenAPI **3.0.3**. É a fonte das rotas Terraform:
+`yamldecode(file("${path.module}/../../openapi/portal.yaml"))` deriva método,
+path, tipo de autorização e scopes, sem copiar o YAML para a infraestrutura.
 O [inventário API-1](api-1.md) registra o mapeamento completo, limites dos schemas,
-mutações de teste e plano de migração.
+mutações de teste e a etapa anterior à migração. O [relatório API-2](api-2.md)
+registra os testes e os planos somente leitura da migração.
 
-- **API-1:** OpenAPI é a quarta representação temporária; testes impedem
-  divergência com `api.tf`, `api.js` e `Portal.dispatch`.
-  Os testes anteriores da C7.2.4.1 são preservados.
-- **API-2:** Terraform passará a derivar as rotas do contrato, preservando
-  os addresses existentes. Essa alteração ainda não foi implementada.
+- **API-1:** caracterização concluída em `c64921b`, com CI verde.
+- **API-2:** implementação local entregue para aprovação, sem commit/apply.
+  A lista manual saiu de `api.tf`; `aws_apigatewayv2_route.me` mantém `/me`
+  e `aws_apigatewayv2_route.portal` mantém as outras 34 chaves `METHOD /path`.
+  Os planos direcionado e completo mantiveram as 35 rotas em **0/0/0**.
 - **API-3:** consolidar documentação e retirar duplicações antigas somente
   após garantir proteção equivalente.
+
+Frontend e dispatchers públicos são comparados com OpenAPI. A equivalência
+Terraform é testada nos recursos avaliados por `terraform test`, com mocks,
+e não por um parser da sintaxe HCL. As proteções da C7.2.4.1 continuam,
+adaptadas para usar OpenAPI como referência. O teste Python reutiliza o parser
+YAML Node via um helper JSON; executar integração requer `npm ci` previamente.
 
 `PortalJwt` descreve bearer JWT sem IDs de ambiente.
 `x-portal-authorization-scopes` registra os scopes exigidos; a extensão
 `x-portal-backend-operation` permite conferir a operação implementada.
+O ambiente continua fornecendo `aws_apigatewayv2_authorizer.portal.id` e
+`aws_apigatewayv2_integration.identity.id`. Terraform aceita somente os métodos
+HTTP declarados no filtro; metadata não gera rota. Segurança não suportada
+é recusada por preconditions, sem conversão silenciosa em acesso público.
 O contrato não contém servidores de produção. Cognito/OAuth, uploads diretos
 ao S3 e outros serviços externos ficam fora dos seus paths.
 
 A validação de runtime continua no backend: OpenAPI não substitui validação
 Python, `require(teach)` nem autorização de negócio. Não há codegen de cliente,
-provisionamento derivado ou documentação pública nesta etapa.
-Os testes novos rodam em `npm test` (ou `node --test tests/openapi.mjs`);
+validação de payload pelo gateway ou documentação pública nesta etapa.
+Os testes de contrato rodam em `npm test` (ou `node --test tests/openapi.mjs`);
 reutilizam o parser YAML da dependência dev Playwright e Python3 stdlib para AST.
+As mutações nativas rodam com `python3 tests/contracts/terraform_mutations.py`,
+após inicializar os providers Terraform; usam cópias temporárias e mocks.
 
 ## Modelo de dados (DynamoDB, tabela única `PK`/`SK`, payload em `data`)
 
