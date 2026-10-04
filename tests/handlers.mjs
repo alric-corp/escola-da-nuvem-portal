@@ -1,5 +1,6 @@
 // Comportamento dos handlers sem navegador: render simulado e, quando há rede, transporte falso.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 // ui.js lê location ao ser carregado (flag de demonstração).
@@ -9,6 +10,7 @@ const importHandlers = await import("../frontend/handlers/import.js");
 const feedbackHandlers = await import("../frontend/handlers/feedback.js");
 const remindersHandlers = await import("../frontend/handlers/reminders.js");
 const apiModule = await import("../frontend/api.js");
+const { notice } = await import("../frontend/ui.js");
 
 // A troca de usuário zera arquivo e prévia, mas não acknowledgeRemoved nem importLoading (comportamento
 // anterior à extração, sem teste de navegador direto para importLoading).
@@ -92,6 +94,173 @@ test("loadBatchPreview: a chamada antiga que termina por último não aplica suc
     Object.assign(direct, saved);
   }
 });
+
+// C7.3: transporte pendente controlado. Executa o busy real de app.js para verificar a fronteira de
+// erro/double submit/finally, sem manter uma cópia dessa lógica e sem importar o boot do aplicativo.
+const busySource = readFileSync(new URL("../frontend/app.js", import.meta.url), "utf8")
+  .match(/^async function busy\(element, fn\) \{[\s\S]*?^\}/m)?.[0];
+assert.ok(busySource, "Rever a fronteira busy se sua declaração mudar");
+const batchBusy = new Function("notice", `${busySource}; return busy;`)(notice);
+const batchKeys = ["code", "view", "batchIds", "batchPreview", "batchError", "batchResults", "teacherFilters"];
+const batchSnapshot = () => structuredClone(Object.fromEntries(batchKeys.map((k) => [k, direct[k]])));
+const batchPreview = (ids, publicationId) => ({ publicationId,
+  recipients: ids.map((id) => ({ id, skip: id === "2" ? "withdrawn" : null })) });
+
+async function batchScenario(run) {
+  const saved = Object.fromEntries(batchKeys.map((k) => [k, direct[k]]));
+  const globals = ["document", "confirm", "setTimeout"].map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]);
+  const calls = [], notices = [], confirms = [];
+  let renders = 0, currentButton = null;
+  const render = () => { renders++; if (currentButton) currentButton.isConnected = false; currentButton = null; };
+  globalThis.document = {
+    createElement: () => ({ children: [], setAttribute() {}, addEventListener() {}, remove() {}, append(...children) { this.children.push(...children); } }),
+    querySelector: (selector) => selector === "#notices"
+      ? { replaceChildren: (item) => notices.push({ message: item.children[0].textContent, error: item.className.includes("error") }) }
+      : selector === '[data-action="send-reminders-batch"]' ? currentButton : null,
+  };
+  globalThis.confirm = (message) => { confirms.push(message); return true; };
+  globalThis.setTimeout = () => 0;
+  apiModule.setTransport((path, { body }) => new Promise((resolve, reject) => calls.push({ path, body, resolve, reject })));
+  remindersHandlers.configure({ render });
+  Object.assign(direct, { code: "BRSA0001", view: "reminders-batch", batchIds: [], batchPreview: null, batchError: "", batchResults: null });
+  const h = {
+    calls, notices, confirms, renders: () => renders,
+    button: () => { if (currentButton) currentButton.isConnected = false; return currentButton = { disabled: false, isConnected: true }; },
+    click: (button) => batchBusy(button, remindersHandlers.sendBatch),
+    close: (view = "overview", code = direct.code) => { direct.view = view; direct.code = code; render(); },
+    async preview(ids, publicationId, open = false) {
+      direct.batchIds = ids;
+      const pending = open ? remindersHandlers.openBatch(ids.join(",")) : remindersHandlers.loadBatchPreview();
+      calls.at(-1).resolve(batchPreview(ids, publicationId));
+      await pending;
+      return direct.batchPreview;
+    },
+  };
+  try { await run(h); }
+  finally {
+    Object.assign(direct, saved);
+    remindersHandlers.configure({ render: null });
+    apiModule.setTransport(() => { throw new Error("Sem rede nos testes de lote."); });
+    for (const [name, descriptor] of globals) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else delete globalThis[name];
+    }
+  }
+}
+
+test("C7.3: envio atual preserva aprovados, resultado withdrawn, render e aviso", async () => batchScenario(async (h) => {
+  const preview = await h.preview(["1", "2", "3"], "A");
+  const send = h.click(h.button()), request = h.calls.at(-1), renders = h.renders();
+  assert.deepEqual(request.body, { studentIds: ["1", "3"], expectedPublicationId: "A" });
+  const results = [{ id: "1", status: "sent" }, { id: "3", status: "skipped", reason: "withdrawn" }];
+  request.resolve({ results });
+  await send;
+  assert.equal(direct.batchPreview, preview);
+  assert.equal(direct.batchResults, results);
+  assert.equal(h.renders(), renders + 1);
+  assert.deepEqual(h.notices, [{ message: "Envio em lote concluído. Confira o resultado por aluno.", error: false }]);
+  assert.deepEqual(h.confirms, ["Enviar lembrete para 2 alunos?"]);
+}));
+
+test("C7.3: erro atual permanece visível e libera o botão sem apagar a prévia", async () => batchScenario(async (h) => {
+  await h.preview(["1", "2"], "A");
+  const before = batchSnapshot(), button = h.button(), renders = h.renders();
+  const send = h.click(button);
+  assert.equal(button.disabled, true);
+  h.calls.at(-1).reject(new Error("Falha atual."));
+  await send;
+  assert.deepEqual(batchSnapshot(), before);
+  assert.equal(h.renders(), renders);
+  assert.equal(button.disabled, false);
+  assert.deepEqual(h.notices, [{ message: "Falha atual.", error: true }]);
+}));
+
+for (const failure of [false, true]) {
+  test(`C7.3: ${failure ? "erro" : "sucesso"} stale após nova prévia não altera B nem cria aviso`, async () => batchScenario(async (h) => {
+    await h.preview(["1", "2"], "A");
+    const send = h.click(h.button()), request = h.calls.at(-1);
+    const previewB = await h.preview(["3", "2"], "B");
+    const before = batchSnapshot(), renders = h.renders(), requests = h.calls.length;
+    if (failure) request.reject(new Error("Falha antiga."));
+    else request.resolve({ results: [{ id: "1", status: "sent" }] });
+    await send;
+    assert.deepEqual(batchSnapshot(), before);
+    assert.equal(direct.batchPreview, previewB);
+    assert.equal(h.renders(), renders);
+    assert.deepEqual(h.notices, []);
+    assert.equal(h.calls.length, requests);
+    const sendB = h.click(h.button()), requestB = h.calls.at(-1);
+    assert.deepEqual(requestB.body, { studentIds: ["3"], expectedPublicationId: "B" });
+    requestB.resolve({ results: [] });
+    await sendB;
+  }));
+
+  test(`C7.3: ${failure ? "erro" : "sucesso"} stale durante carregamento da nova prévia é ignorado`, async () => batchScenario(async (h) => {
+    await h.preview(["1"], "A");
+    const send = h.click(h.button()), request = h.calls.at(-1);
+    const next = remindersHandlers.loadBatchPreview(), previewRequest = h.calls.at(-1);
+    const before = batchSnapshot(), renders = h.renders();
+    if (failure) request.reject(new Error("Falha antiga."));
+    else request.resolve({ results: [{ id: "1", status: "sent" }] });
+    await send;
+    assert.deepEqual(batchSnapshot(), before);
+    assert.equal(h.renders(), renders);
+    assert.deepEqual(h.notices, []);
+    previewRequest.resolve(batchPreview(["1"], "B"));
+    await next;
+  }));
+
+  for (const [name, view, code] of [["fechar lote", "overview", "BRSA0001"], ["sair para Lembretes", "reminders", "BRSA0001"], ["trocar turma", "overview", "BRSA0002"]]) {
+    test(`C7.3: ${name} descarta ${failure ? "erro" : "sucesso"} antigo`, async () => batchScenario(async (h) => {
+      await h.preview(["1"], "A");
+      const send = h.click(h.button()), request = h.calls.at(-1);
+      h.close(view, code);
+      const before = batchSnapshot(), renders = h.renders();
+      if (failure) request.reject(new Error("Falha antiga."));
+      else request.resolve({ results: [{ id: "1", status: "sent" }] });
+      await send;
+      assert.deepEqual(batchSnapshot(), before);
+      assert.equal(h.renders(), renders);
+      assert.deepEqual(h.notices, []);
+    }));
+  }
+}
+
+test("C7.3: voltar e reabrir os mesmos IDs na mesma turma inicia outro contexto", async () => batchScenario(async (h) => {
+  await h.preview(["1", "2"], "mesma-publicacao");
+  const send = h.click(h.button()), request = h.calls.at(-1);
+  h.close();
+  await h.preview(["1", "2"], "mesma-publicacao", true);
+  const before = batchSnapshot(), renders = h.renders();
+  request.resolve({ results: [{ id: "1", status: "sent" }] });
+  await send;
+  assert.deepEqual(batchSnapshot(), before);
+  assert.equal(h.renders(), renders);
+  assert.deepEqual(h.notices, []);
+}));
+
+test("C7.3: finally antigo não libera busy de B e double submit de B continua bloqueado", async () => batchScenario(async (h) => {
+  await h.preview(["1"], "A");
+  const buttonA = h.button(), sendA = h.click(buttonA), requestA = h.calls.at(-1);
+  await h.click(buttonA);
+  assert.equal(h.confirms.length, 1);
+  await h.preview(["3"], "B", true);
+  const buttonB = h.button(), sendB = h.click(buttonB), requestB = h.calls.at(-1);
+  const before = batchSnapshot(), renders = h.renders();
+  requestA.resolve({ results: [{ id: "1", status: "sent" }] });
+  await sendA;
+  assert.deepEqual(batchSnapshot(), before);
+  assert.equal(h.renders(), renders);
+  assert.equal(buttonB.disabled, true);
+  assert.deepEqual(h.notices, []);
+  await h.click(buttonB);
+  assert.equal(h.calls.filter((r) => r.path.endsWith("/send-reminders")).length, 2);
+  assert.equal(h.confirms.length, 2);
+  requestB.reject(new Error("Falha atual de B."));
+  await sendB;
+  assert.equal(buttonB.disabled, false);
+  assert.deepEqual(h.notices, [{ message: "Falha atual de B.", error: true }]);
+}));
 
 // Confirmação de cadastro. Aqui o handler roda isolado do app.js, com o api.js real, um fetch falso no lugar do
 // Cognito, relógio fixo e render simulado. Valores fictícios, nenhuma chamada de rede real.

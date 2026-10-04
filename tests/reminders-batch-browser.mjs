@@ -636,6 +636,96 @@ try {
     await context.close();
   }
 
+  // C7.3: a navegação continua disponível com send pendente. A resposta antiga não pertence ao
+  // contexto atual, mesmo na mesma turma. Requests reais do browser, API fictícia e gates sem sleeps.
+  for (const failure of [false, true]) {
+    for (const mode of ["new-preview", "new-send", "close", "sender", "cohort"]) {
+      const { context, tab, log } = await open();
+      const gateA = deferred(), arrivedA = deferred(), gateB = deferred(), arrivedB = deferred();
+      let sends = 0;
+      log.handle = ({ route, entry }) => {
+        if (!entry.path.endsWith("/send-reminders")) return;
+        const isA = sends++ === 0;
+        (isA ? arrivedA : arrivedB).resolve();
+        return held(route, isA ? gateA : gateB,
+          isA ? (failure ? { error: "Erro do envio antigo A." } : { results: [{ id: "1", name: "Resultado antigo A", status: "sent" }] })
+            : { error: "Erro do envio atual B." },
+          isA && !failure ? 200 : 500);
+      };
+      await tab.locator("#status-filter").selectOption("pending");
+      await button(tab, "Enviar lembrete para 2 alunos").click();
+      await tab.getByText(/1 de 2 alunos vai receber/).waitFor();
+      await button(tab, "Enviar para 1 aluno").click();
+      await arrivedA.promise;
+      const sendA = button(tab, "Enviar para 1 aluno");
+      assert.ok(await sendA.isDisabled());
+      await sendA.click({ force: true });
+      assert.equal(calls(log, "send-reminders").length, 1, "double submit de A bloqueado");
+
+      if (mode === "sender") {
+        await button(tab, "Lembretes").click();
+        await tab.getByText("Confirme o remetente da BRSA0267.", { exact: true }).waitFor();
+      } else if (mode === "cohort") {
+        await tab.locator("#cohort").selectOption("BRSA0268");
+        await heading(tab, "Painel da BRSA0268").waitFor();
+        await tab.locator("#status-filter").selectOption("pending");
+        await button(tab, "Enviar lembrete para 2 alunos").click();
+        await tab.getByText(/2 de 2 alunos vão receber/).waitFor();
+      } else {
+        await button(tab, "Voltar ao painel").click();
+        await heading(tab, "Painel da BRSA0267").waitFor();
+        if (mode !== "close") {
+          await tab.locator("#search").fill("Ana");
+          await button(tab, "Enviar lembrete para 1 aluno").click();
+          await tab.getByText(/1 de 1 aluno vai receber/).waitFor();
+        }
+      }
+      if (mode === "new-send") {
+        await button(tab, "Enviar para 1 aluno").click();
+        await arrivedB.promise;
+        assert.ok(await button(tab, "Enviar para 1 aluno").isDisabled());
+      }
+
+      await tab.locator("#cohort").focus();
+      await tab.evaluate(() => { window.__batchFocus = document.activeElement; });
+      const keys = ["code", "view", "batchIds", "batchPreview", "batchResults", "batchError"];
+      const before = await snapshot(tab, ...keys), html = await tab.locator("#app").innerHTML();
+      const requestCount = log.requests.length, dialogCount = log.dialogs.length;
+      await watchRenders(tab);
+      const late = tab.waitForResponse((r) => r.url().endsWith("/send-reminders"));
+      gateA.resolve();
+      await (await late).finished();
+      await flushNetwork(tab);
+      assert.deepEqual(await snapshot(tab, ...keys), before, `${mode}: state de B intacto após A`);
+      assert.equal(await tab.locator("#app").innerHTML(), html, `${mode}: DOM intacto`);
+      assert.equal(await rendersSince(tab), 0, `${mode}: zero render stale`);
+      assert.deepEqual(await noticeTexts(tab), [], `${mode}: zero notice stale`);
+      assert.ok(await tab.evaluate(() => document.activeElement === window.__batchFocus), `${mode}: foco preservado`);
+      assert.equal(log.requests.length, requestCount, "descartar não gera requests");
+      assert.equal(log.dialogs.length, dialogCount);
+
+      if (mode === "new-send") {
+        const sendB = button(tab, "Enviar para 1 aluno");
+        assert.ok(await sendB.isDisabled(), "finally de A não libera o botão de B");
+        await sendB.click({ force: true });
+        assert.equal(calls(log, "send-reminders").length, 2, "double submit de B bloqueado");
+        assert.equal(log.dialogs.length, 2);
+        assert.deepEqual(calls(log, "send-reminders").map((r) => r.body), [
+          { studentIds: ["1"], expectedPublicationId: "pub-BRSA0267" },
+          { studentIds: ["1"], expectedPublicationId: "pub-BRSA0267" },
+        ]);
+        gateB.resolve();
+        await tab.locator("#notices .notice.error").waitFor();
+        assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Erro do envio atual B." }]);
+        assert.ok(await sendB.isEnabled(), "erro atual libera o botão");
+        assert.deepEqual(await snapshot(tab, ...keys), before);
+      } else assert.equal(calls(log, "send-reminders").length, 1);
+      assert.deepEqual(log.errors, []);
+      await context.close();
+    }
+  }
+  console.log("C7.3: sucesso/erro stale em nova prévia, novo envio, saída e troca de turma; state, DOM, foco, avisos, busy e requests OK.");
+
   // Remetente: contrato do GET e resposta atrasada de outra turma descartada (guarda por turma).
   {
     const { context, tab, log } = await open();

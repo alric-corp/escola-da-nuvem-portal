@@ -91,17 +91,24 @@ export async function openBatch(ids) {
 
 export async function sendBatch() {
   const code = state.code, p = state.batchPreview;
+  // Uma nova prévia invalida também o resultado do envio anterior, mesmo com os mesmos alunos/publicação.
+  // Sair do lote ou trocar de turma torna a resposta irrelevante para a tela, sem cancelar o envio no servidor.
+  const request = batchPreviewRequest;
+  const current = () => request === batchPreviewRequest && state.code === code && state.view === "reminders-batch";
   // Só quem a prévia exibida aprovou (sem motivo para pular), qualquer que seja o motivo dos demais: o lote nunca cresce
   // depois da prévia. O servidor revalida cada um e ainda pode pular quem mudou desde então.
   const approvedRecipientIds = p.recipients.filter((r) => !r.skip).map((r) => r.id);
   if (!approvedRecipientIds.length || !confirm(`Enviar lembrete para ${plural(approvedRecipientIds.length, "aluno", "alunos")}?`)) return;
-  const result = await api.reminders.sendBatch(code, {
-    studentIds: approvedRecipientIds, expectedPublicationId: p.publicationId });
-  if (state.code === code && state.view === "reminders-batch") {
+  try {
+    const result = await api.reminders.sendBatch(code, {
+      studentIds: approvedRecipientIds, expectedPublicationId: p.publicationId });
+    if (!current()) return;
     state.batchResults = result.results;
     render();
+    notice("Envio em lote concluído. Confira o resultado por aluno.");
+  } catch (err) {
+    if (current()) throw err;
   }
-  notice("Envio em lote concluído. Confira o resultado por aluno.");
 }
 
 export async function copyReminder() {
