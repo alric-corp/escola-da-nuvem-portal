@@ -16,6 +16,24 @@ from test_portal import MemoryRepository
 BASE = "https://canvas.example.test"
 
 
+class SchedulerAdapterTests(unittest.TestCase):
+    def test_native_canvas_input_reaches_domain_with_integer_attempt(self):
+        import canvas_sync
+        from unittest.mock import Mock
+        import os
+        event = {"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": "2026-10-06T21:00:00Z",
+                 "executionId": "scheduler-1", "attemptNumber": "1"}
+        with patch.dict(os.environ, {"CANVAS_BASE_URL": BASE, "CANVAS_SECRET_ARN": "test-secret", "METRICS_NAMESPACE": "test"}), \
+                patch.object(canvas_sync, "CanvasClient"), patch.object(canvas_sync, "read_token"), \
+                patch.object(canvas_sync, "Repository"), patch.object(canvas_sync, "report_token_expiry"), \
+                patch("boto3.client", return_value=Mock()), patch.object(canvas_sync, "run", return_value=({}, [])) as run_mock:
+            for candidate in (event, {}):
+                canvas_sync.handler(candidate, None)
+                expected = {**event, "attemptNumber": 1} if candidate else {}
+                self.assertEqual(run_mock.call_args.kwargs["event"], expected)
+        self.assertEqual(event["attemptNumber"], "1")
+
+
 class FakeCanvas:
     """Responde como a API do Canvas, com paginação por cabeçalho Link."""
 

@@ -176,6 +176,16 @@ resource "aws_iam_role_policy" "portal_data" {
         Resource = aws_dynamodb_table.portal.arn
       },
       {
+        # Delivery compartilha esta role, mas não executa ConditionCheck. A condição
+        # concede a nova ação somente às chamadas originadas na função identity.
+        Effect   = "Allow"
+        Action   = ["dynamodb:ConditionCheckItem"]
+        Resource = aws_dynamodb_table.portal.arn
+        Condition = { ArnEquals = {
+          "lambda:SourceFunctionArn" = "arn:${data.aws_partition.current.partition}:lambda:${var.aws_region}:${var.aws_account_id}:function:${local.name}-identity"
+        } }
+      },
+      {
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:PutObjectTagging"]
         Resource = "${aws_s3_bucket.imports.arn}/cohorts/*"

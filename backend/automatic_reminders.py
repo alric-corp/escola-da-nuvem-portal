@@ -1,18 +1,19 @@
-"""Orquestração interna, sem handler/agendamento. Dependências e gates são explícitos.
+"""Orquestração interna e adaptador Lambda. Dependências e gates são explícitos.
 
-O worker não constrói clientes AWS. AUTO-2.3 fornecerá o adaptador e sua configuração.
+Somente o handler constrói clientes AWS; o domínio continua injetável.
 Dry-run é o padrão; nenhum evento pode fornecer remetente, destinatários ou habilitação.
 """
 import json
 import logging
+import os
 import re
 import time
 import uuid
 from datetime import timedelta
 
 import reminders
-from repository import Conflict
-from sync_runs import SOURCE, TIMEZONE, canonical_time, evening_sync_key, instant, metadata_version, utc_now
+from repository import Conflict, Repository
+from sync_runs import SOURCE, TIMEZONE, canonical_time, evening_sync_key, instant, metadata_version, scheduler_event, utc_now
 
 WINDOW = timedelta(minutes=30)
 LEASE = timedelta(seconds=120)
@@ -295,4 +296,40 @@ def run(repo, mailer, event, cohort_codes, domain, *, enabled=False, dry_run=Tru
                     pass  # Reserva sending continua bloqueada; lease permite investigar/retomar o restante.
         emit(result)
         results.append(result)
+    return results
+
+
+def handler(event, context):
+    """Contrato técnico do Scheduler; nenhuma identidade/destinatário vem do payload."""
+    event = scheduler_event(event)
+    fields = {"source", "type", "version", "cohortCode", "scheduledFor", "executionId", "attemptNumber", "dryRun"}
+    if (not isinstance(event, dict) or set(event) != fields or type(event["version"]) is not int
+            or event["version"] != 1 or type(event["dryRun"]) is not bool):
+        raise ValueError("Evento automático inválido")
+    technical = occurrence_context({key: event[key] for key in fields - {"version", "cohortCode", "dryRun"}})
+    try:
+        codes = json.loads(os.environ.get("AUTOMATIC_REMINDER_COHORTS", "[]"))
+        gate = os.environ.get("AUTOMATIC_REMINDERS_ENABLED", "false")
+        domain = os.environ["INSTRUCTOR_EMAIL_DOMAIN"]
+        if (not isinstance(codes, list) or not codes or any(not isinstance(code, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", code) for code in codes)
+                or len(codes) != len(set(codes)) or event["cohortCode"] not in codes
+                or gate not in ("true", "false") or not re.fullmatch(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+", domain)):
+            raise ValueError()
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("Configuração automática inválida") from None
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    # O caminho bloqueado reutiliza o guard/resultado do worker, sem construir clientes.
+    repo = mailer = None
+    if gate == "true" or event["dryRun"]:
+        repo, mailer = Repository(), reminders.SESMailer()
+    results = run(repo, mailer, technical, [event["cohortCode"]], domain,
+                  enabled=gate == "true", dry_run=event["dryRun"],
+                  remaining_ms=context.get_remaining_time_in_millis,
+                  emit=lambda result: logger.info(json.dumps({"automaticReminder": result}, sort_keys=True)))
+    # Scheduler confirma a entrega assíncrona, não o resultado do domínio. Erro técnico
+    # solicita retry limitado pela configuração Lambda e pela janela original do worker.
+    # Lease ativo também precisa de retry: pode pertencer a uma tentativa interrompida.
+    if not event["dryRun"] and any(result["retryable"] or result.get("reason") == "lease-active" for result in results):
+        raise RuntimeError("Retentativa de lembretes automáticos necessária")
     return results

@@ -52,9 +52,9 @@ resource "aws_iam_role_policy" "canvas_sync" {
     Statement = [
       { Effect = "Allow", Action = ["logs:CreateLogStream", "logs:PutLogEvents"], Resource = "${aws_cloudwatch_log_group.canvas_sync.arn}:*" },
       {
-        # Transações usam as permissões PutItem/DeleteItem das ações subjacentes.
+        # Transações usam ações subjacentes; SYNC_RUN também condiciona METADATA.
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:ConditionCheckItem"]
         Resource = aws_dynamodb_table.portal.arn
       },
       {
@@ -127,6 +127,14 @@ resource "aws_scheduler_schedule" "canvas_sync" {
   target {
     arn      = aws_lambda_function.canvas_sync.arn
     role_arn = aws_iam_role.canvas_sync_scheduler.arn
+    # Preserva os keywords literais; jsonencode escapa < e > por compatibilidade HTML.
+    input = replace(replace(jsonencode({
+      source        = "portal.scheduler"
+      type          = "canvas-sync"
+      scheduledFor  = "<aws.scheduler.scheduled-time>"
+      executionId   = "<aws.scheduler.execution-id>"
+      attemptNumber = "<aws.scheduler.attempt-number>"
+    }), "\\u003c", "<"), "\\u003e", ">")
     retry_policy {
       # A própria Lambda já tenta de novo as falhas temporárias do Canvas; repetir a execução
       # inteira só duplicaria o trabalho.

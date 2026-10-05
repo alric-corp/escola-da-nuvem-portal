@@ -29,6 +29,22 @@ def canonical_time(value):
     return instant(value).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def scheduler_event(event):
+    """Borda do Scheduler: jsonencode mantém o placeholder numérico como string JSON.
+
+    Não altera eventos legados nem fabrica horário/tentativa. O domínio recebe int.
+    """
+    if (not isinstance(event, dict) or event.get("source") != SOURCE
+            or event.get("type") not in ("canvas-sync", "automatic-reminders")):
+        return event
+    attempt = event.get("attemptNumber")
+    if isinstance(attempt, str) and re.fullmatch(r"[1-9][0-9]{0,8}", attempt):
+        attempt = int(attempt)
+    if type(attempt) is not int or attempt < 1:
+        raise ValueError("Tentativa agendada inválida")
+    return {**event, "attemptNumber": attempt}
+
+
 def scheduled_context(event):
     if not isinstance(event, dict) or event.get("source") != SOURCE or event.get("type") != "canvas-sync":
         return None

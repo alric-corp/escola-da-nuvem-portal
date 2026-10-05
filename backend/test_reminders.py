@@ -29,6 +29,97 @@ class Mailer:
         pass
 
 
+class AutomaticReminderAdapterTests(unittest.TestCase):
+    def setUp(self):
+        import os
+        self.env = patch.dict(os.environ, {"AUTOMATIC_REMINDER_COHORTS": '["TURMAA","TURMAB"]',
+                                          "INSTRUCTOR_EMAIL_DOMAIN": "example.test",
+                                          "AUTOMATIC_REMINDERS_ENABLED": "true"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "version": 1,
+                      "cohortCode": "TURMAA", "scheduledFor": "2026-10-06T23:00:00Z",
+                      "executionId": "scheduler-1", "attemptNumber": "1", "dryRun": False}
+
+    def invoke(self, result):
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        context = Mock()
+        context.get_remaining_time_in_millis.return_value = 15000
+        with patch.object(automatic, "Repository") as repo, patch.object(automatic.reminders, "SESMailer") as mailer, \
+                patch.object(automatic, "run", return_value=result) as worker:
+            response = automatic.handler(self.event, context)
+            return response, worker.call_args, repo, mailer, context
+
+    def test_native_event_is_normalized_and_only_selected_cohort_is_passed(self):
+        result = [{"status": "completed", "retryable": False}]
+        response, call, repo, mailer, context = self.invoke(result)
+        self.assertEqual(response, result)
+        self.assertEqual(call.args[:2], (repo.return_value, mailer.return_value))
+        self.assertEqual(call.args[2], {k: (1 if k == "attemptNumber" else self.event[k]) for k in
+                                      ("source", "type", "scheduledFor", "executionId", "attemptNumber")})
+        self.assertEqual(call.args[3:], (["TURMAA"], "example.test"))
+        self.assertTrue(call.kwargs["enabled"])
+        self.assertFalse(call.kwargs["dry_run"])
+        self.assertEqual(call.kwargs["remaining_ms"], context.get_remaining_time_in_millis)
+
+    def test_invalid_or_unconfigured_event_is_rejected_before_clients(self):
+        import automatic_reminders as automatic
+        for change in ({"cohortCode": "UNKNOWN"}, {"version": True}, {"version": 2}, {"dryRun": "false"},
+                       {"sender": "private@example.test"}, {"attemptNumber": "0"}, {"attemptNumber": True},
+                       {"attemptNumber": "1.0"}, {"scheduledFor": "2026-10-05T23:00:00Z"}):
+            with self.subTest(change=change), patch.object(automatic, "Repository") as repo, \
+                    patch.object(automatic.reminders, "SESMailer") as mailer:
+                with self.assertRaises(ValueError) as error:
+                    automatic.handler({**self.event, **change}, None)
+                self.assertNotIn("private@example.test", str(error.exception))
+                repo.assert_not_called()
+                mailer.assert_not_called()
+
+    def test_dry_run_and_disabled_infrastructure_are_forwarded_without_inferred_enable(self):
+        import os
+        self.event["dryRun"] = True
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "false"}):
+            _, call, *_ = self.invoke([{"status": "dry-run", "retryable": False}])
+        self.assertFalse(call.kwargs["enabled"])
+        self.assertTrue(call.kwargs["dry_run"])
+
+    def test_disabled_live_returns_existing_skip_without_clients_writes_or_send(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        repo, mailer = MemoryRepository(), Mailer()
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "false"}), \
+                patch.object(automatic, "utc_now", return_value=self.event["scheduledFor"]), \
+                patch.object(automatic, "Repository", return_value=repo) as repository, \
+                patch.object(automatic.reminders, "SESMailer", return_value=mailer) as ses_mailer, \
+                patch("boto3.client") as client, patch("boto3.resource") as resource, \
+                patch.object(repo, "put") as put, patch.object(repo, "transaction") as transaction, \
+                patch.object(mailer, "send") as send:
+            response = automatic.handler(self.event, Mock())
+        self.assertEqual(len(response), 1)
+        self.assertEqual((response[0]["status"], response[0]["reason"]), ("skipped", "infrastructure-disabled"))
+        self.assertEqual(response[0]["cohort"], self.event["cohortCode"])
+        self.assertEqual(response[0]["scheduledFor"], self.event["scheduledFor"])
+        self.assertFalse(response[0]["dryRun"])
+        self.assertFalse(response[0]["retryable"])
+        self.assertIsNone(response[0]["publicationId"])
+        self.assertEqual(response[0]["counts"]["sent"], 0)
+        for operation in (repository, ses_mailer, client, resource, put, transaction, send):
+            operation.assert_not_called()
+
+    def test_retryable_partial_requests_async_retry_without_exposing_summary(self):
+        with self.assertRaisesRegex(RuntimeError, "Retentativa de lembretes automáticos"):
+            self.invoke([{"status": "partial", "retryable": True}])
+
+    def test_active_lease_contention_requests_retry_but_business_skips_do_not(self):
+        with self.assertRaises(RuntimeError):
+            self.invoke([{"status": "skipped", "reason": "lease-active", "retryable": False}])
+        for reason in ("sync-invalid", "window-expired", "sender-not-ready", "already-finished", "infrastructure-disabled"):
+            result = [{"status": "skipped", "reason": reason, "retryable": False}]
+            self.assertEqual(self.invoke(result)[0], result)
+
+
 class AutomaticSenderSettingsTests(unittest.TestCase):
     def setUp(self):
         self.repo, self.mailer = MemoryRepository(), Mailer()
@@ -716,9 +807,31 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
 
     def test_dry_run_is_read_only_even_with_infrastructure_disabled(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
         before = copy.deepcopy(self.repo.items)
         with patch.object(self.mailer, "send", side_effect=AssertionError("dry run must not send")):
             result = self.execute(dry_run=True, enabled=False)[0]
+        event = {**self.event, "version": 1, "cohortCode": "BRSA0267", "dryRun": True}
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "false",
+                                    "AUTOMATIC_REMINDER_COHORTS": '["BRSA0267"]',
+                                    "INSTRUCTOR_EMAIL_DOMAIN": "escoladanuvem.org"}), \
+                patch.object(automatic, "utc_now", return_value=self.at), \
+                patch.object(automatic, "Repository", return_value=self.repo) as repository, \
+                patch.object(automatic.reminders, "SESMailer", return_value=self.mailer) as ses_mailer, \
+                patch.object(self.repo, "get", wraps=self.repo.get) as read, \
+                patch.object(self.mailer, "readiness", wraps=self.mailer.readiness) as readiness, \
+                patch.object(self.repo, "put", side_effect=AssertionError("dry run must not write")) as put, \
+                patch.object(self.repo, "transaction", side_effect=AssertionError("dry run must not reserve")) as transaction, \
+                patch.object(self.mailer, "send", side_effect=AssertionError("dry run must not send")) as send:
+            self.assertEqual(automatic.handler(event, Mock()), [result])
+        repository.assert_called_once_with()
+        ses_mailer.assert_called_once_with()
+        self.assertGreater(read.call_count, 0)
+        self.assertGreater(readiness.call_count, 0)
+        for operation in (put, transaction, send):
+            operation.assert_not_called()
         self.assertEqual(result["status"], "dry-run")
         self.assertEqual(result["counts"]["pending"], 1)
         self.assertEqual(self.repo.items, before)

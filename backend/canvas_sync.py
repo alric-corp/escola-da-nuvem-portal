@@ -128,6 +128,8 @@ def _now():
 
 
 def handler(event, context):
+    from sync_runs import scheduler_event
+    event = scheduler_event(event)
     client = CanvasClient(os.environ["CANVAS_BASE_URL"], read_token(os.environ["CANVAS_SECRET_ARN"]))
     results, failures = run(Repository(), client, event=event)
     import boto3
