@@ -108,11 +108,13 @@ class RecipientWithdrawn(Exception):
     pass
 
 
-def reserve_reminder(repo, cohort, publication_id, student_id, actor, previous, at):
+def reserve_reminder(repo, cohort, publication_id, student_id, actor, previous, at, *, checks=()):
     """Ponto de autorização: publicação, participação e dedupe são condicionados atomicamente.
 
     ACTIVE implícito é condição de ausência; ACTIVE explícito exige o registro lido.
     Depois da reserva, uma desistência não recolhe a mensagem já autorizada/em trânsito.
+    checks permite ao automático condicionar também lease/prova/configuração na mesma
+    transação. Os adaptadores manuais mantêm a chamada e as condições existentes.
     """
     code, pk = cohort["code"], "COHORT#" + cohort["code"]
     item, status = participation(repo, code, student_id)
@@ -124,7 +126,7 @@ def reserve_reminder(repo, cohort, publication_id, student_id, actor, previous, 
     try:
         repo.transaction([(pk, "METADATA", cohort, cohort),
                           (pk, reminder_key(publication_id, student_id), record, previous)],
-                         checks=[(pk, "PARTICIPATION#" + student_id, item)])
+                         checks=[(pk, "PARTICIPATION#" + student_id, item), *checks])
     except Conflict:
         if participation(repo, code, student_id)[1] != "ACTIVE":
             raise RecipientWithdrawn() from None

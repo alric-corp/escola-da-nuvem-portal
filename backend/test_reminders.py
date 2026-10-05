@@ -587,4 +587,461 @@ class WithdrawnReminderTests(unittest.TestCase):
         self.assertEqual(sorted(r["id"] for r in preview["recipients"] if r["skip"] == "withdrawn"), ["1000", "1050"])
 
 
+class AutomaticReminderWorkerTests(unittest.TestCase):
+    call = ReminderTests.call
+    publish = ReminderTests.publish
+    publish_csv = ReminderTests.publish_csv
+    preview = ReminderTests.preview
+    payload = ReminderTests.payload
+
+    def setUp(self):
+        ReminderTests.setUp(self)
+        self.at = "2026-10-06T23:00:00Z"
+        self.event = {"source": "portal.scheduler", "type": "automatic-reminders",
+                      "scheduledFor": self.at, "executionId": "execution-test", "attemptNumber": 1}
+        self.events = []
+        self.prepare()
+
+    def prepare(self, code="BRSA0267", sender="teacher"):
+        from reminders import reminder_settings
+        from sync_runs import SyncRun, scheduled_context, evening_sync_key
+        pk = "COHORT#" + code
+        self.repo.put(pk, "REMINDER_SETTINGS", reminder_settings(sender, True, 1, self.at))
+        self.repo.put(pk, "TEACH#" + sender, {"userId": sender, "code": code, "email": sender + "@escoladanuvem.org"})
+        self.repo.put("USER#" + sender, "TEACH#" + code, {"code": code})
+        key = evening_sync_key(self.event["scheduledFor"])
+        previous = self.repo.get(pk, key)
+        context = scheduled_context({"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": key[9:],
+                                     "executionId": "sync-test", "attemptNumber": (previous or {}).get("attemptNumber", 0) + 1})
+        proof = SyncRun(self.repo, self.repo.get(pk, "METADATA"), context, lambda: key[9:])
+        proof.stages.update(catalog="succeeded", roster="succeeded")
+        proof.complete_unchanged(self.repo.get(pk, "METADATA"))
+
+    def execute(self, **kwargs):
+        from automatic_reminders import run
+        options = {"enabled": True, "dry_run": False, "clock": lambda: self.at,
+                   "sleep": lambda _: None, "emit": self.events.append}
+        options.update(kwargs)
+        return run(self.repo, self.mailer, self.event, options.pop("cohort_codes", ["BRSA0267"]),
+                   "escoladanuvem.org", **options)
+
+    def record(self, code="BRSA0267"):
+        from sync_runs import canonical_time
+        return self.repo.get("COHORT#" + code, "AUTO_REMINDER#" + canonical_time(self.event["scheduledFor"]))
+
+    def test_tuesday_and_friday_use_the_same_occurrence_key_on_retry(self):
+        for scheduled in ("2026-10-06T20:00:00-03:00", "2026-10-09T23:00:00Z"):
+            with self.subTest(scheduled=scheduled):
+                self.setUp()
+                self.event["scheduledFor"] = self.at = scheduled
+                self.prepare()
+                result = self.execute()[0]
+                self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 1))
+                self.event.update(executionId="retry", attemptNumber=2)
+                self.assertEqual(self.execute()[0]["reason"], "already-finished")
+                self.assertEqual(len(self.mailer.sent), 1)
+                self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUTO_REMINDER#")), 1)
+
+    def test_invalid_day_time_or_event_never_sends_or_claims(self):
+        for changes in ({"scheduledFor": "2026-10-07T23:00:00Z"}, {"scheduledFor": "2026-10-06T22:00:00Z"},
+                        {"scheduledFor": "2026-10-06T20:00:00"}, {"source": "manual"},
+                        {"attemptNumber": True}, {"sender": "injected@example.test"}):
+            with self.subTest(changes=changes):
+                previous = self.event
+                self.event = {**previous, **changes}
+                with self.assertRaises(ValueError): self.execute()
+                self.event = previous
+        self.assertEqual(self.mailer.sent, [])
+        self.assertIsNone(self.record())
+
+    def test_window_uses_original_slot_not_invocation_time(self):
+        for at, reason in (("2026-10-06T22:59:59Z", "not-due"), ("2026-10-06T23:30:00Z", "window-expired"),
+                           ("2026-10-09T23:00:00Z", "window-expired")):
+            with self.subTest(at=at):
+                self.at = at
+                self.assertEqual(self.execute()[0]["reason"], reason)
+        self.assertIsNone(self.record())
+        self.assertEqual(self.mailer.sent, [])
+        self.at = "2026-10-06T23:29:59Z"
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+
+    def test_both_gates_and_readiness_are_required_without_sender_fallback(self):
+        self.assertEqual(self.execute(enabled=False)[0]["reason"], "infrastructure-disabled")
+        pk = "COHORT#BRSA0267"
+        valid = copy.deepcopy(self.repo.items)
+        for key, value, reason in (
+                ((pk, "REMINDER_SETTINGS"), None, "settings-missing"),
+                ((pk, "REMINDER_SETTINGS"), {**self.repo.get(pk, "REMINDER_SETTINGS"), "automaticEnabled": False}, "automatic-disabled"),
+                ((pk, "TEACH#teacher"), None, "sender-unlinked")):
+            with self.subTest(reason=reason):
+                self.repo.items = copy.deepcopy(valid)
+                if value is None: self.repo.items.pop(key)
+                else: self.repo.put(*key, value)
+                self.assertEqual(self.execute()[0]["reason"], reason)
+        self.repo.items = valid
+        self.mailer.ready = False
+        self.assertEqual(self.execute()[0]["reason"], "sender-not-ready")
+        self.assertIsNone(self.record())
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_sync_proof_requires_all_stages_same_day_evening_and_current_metadata(self):
+        from sync_runs import evening_sync_key
+        # Uma reentrega às 20h05 não pode adotar sync que só terminou às 20h01.
+        self.at = "2026-10-06T23:05:00Z"
+        key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
+        original = self.repo.get(*key)
+        for changes in (None, {"status": "running"}, {"status": "failed"}, {"publicationId": None},
+                        {"scheduledFor": "2026-10-05T21:00:00Z"}, {"scheduledFor": "2026-10-06T09:00:00Z"},
+                        {"source": "manual"}, {"metadataVersion": "wrong"}, {"finishedAt": "2026-10-06T23:01:00Z"},
+                        {"stages": {"catalog": "failed", "roster": "succeeded", "grades": "published"}}):
+            with self.subTest(changes=changes):
+                if changes is None: self.repo.items.pop(key, None)
+                else: self.repo.put(*key, {**original, **changes})
+                self.assertEqual(self.execute()[0]["status"], "skipped")
+        self.assertEqual(self.mailer.sent, [])
+        self.assertIsNone(self.record())
+        self.repo.put(*key, original)
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+
+    def test_published_and_unchanged_are_equally_valid_with_proof(self):
+        from sync_runs import evening_sync_key
+        for state in ("published", "unchanged"):
+            with self.subTest(state=state):
+                self.setUp()
+                key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
+                proof = self.repo.get(*key)
+                proof["stages"]["grades"] = state
+                proof["finishedAt"] = self.event["scheduledFor"]  # limite inclusivo: até 20h
+                self.repo.put(*key, proof)
+                self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+
+    def test_dry_run_is_read_only_even_with_infrastructure_disabled(self):
+        before = copy.deepcopy(self.repo.items)
+        with patch.object(self.mailer, "send", side_effect=AssertionError("dry run must not send")):
+            result = self.execute(dry_run=True, enabled=False)[0]
+        self.assertEqual(result["status"], "dry-run")
+        self.assertEqual(result["counts"]["pending"], 1)
+        self.assertEqual(self.repo.items, before)
+
+    def test_worker_defaults_to_dry_run_and_never_enables_itself(self):
+        from automatic_reminders import run
+        before = copy.deepcopy(self.repo.items)
+        run(self.repo, self.mailer, self.event, ["BRSA0267"], "escoladanuvem.org", clock=lambda: self.at)
+        self.assertEqual(self.repo.items, before)
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_manual_before_and_after_automatic_share_dedupe(self):
+        self.call("send-reminder", self.payload())
+        result = self.execute()[0]
+        self.assertEqual(result["counts"]["skipReasons"], {"already-sent": 1})
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.setUp()
+        self.execute()
+        with self.assertRaises(APIError): self.call("send-reminder", self.payload())
+        self.assertEqual(len(self.mailer.sent), 1)
+
+    def test_current_snapshot_skip_reasons_and_withdrawn_race_use_shared_domain(self):
+        import reminders
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test"),
+                                     ("Missing", "303", "")))
+        self.prepare()
+        original = self.mailer.send
+        def withdraw_next(message):
+            self.repo.put("COHORT#BRSA0267", "PARTICIPATION#202", {"canvasId": "202", "status": "WITHDRAWN"})
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=withdraw_next), \
+             patch.object(reminders, "reserve_reminder", wraps=reminders.reserve_reminder) as reserve:
+            result = self.execute()[0]
+        self.assertGreaterEqual(reserve.call_count, 1)
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(result["counts"]["skipReasons"], {"withdrawn": 1, "no-email": 1})
+
+    def test_no_pending_means_no_reservation(self):
+        self.publish(kc="10", lab="100")
+        self.prepare()
+        result = self.execute()[0]
+        self.assertEqual(result["counts"]["skipReasons"], {"no-pending": 1})
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_two_cohorts_are_independent_and_use_their_own_senders(self):
+        first = self.repo.get("COHORT#BRSA0267", "METADATA")
+        pub = self.repo.get("COHORT#BRSA0267", "PUB#" + first["current"])
+        self.repo.put("COHORT#BRSA0257", "METADATA", {**first, "code": "BRSA0257"})
+        self.repo.put("COHORT#BRSA0257", "PUB#" + pub["id"], pub)
+        self.prepare("BRSA0257", "other-teacher")
+        self.repo.items.pop(("COHORT#BRSA0267", "REMINDER_SETTINGS"))
+        results = self.execute(cohort_codes=["BRSA0267", "BRSA0257"])
+        self.assertEqual([r["status"] for r in results], ["skipped", "completed"])
+        self.assertEqual([m["from"] for m in self.mailer.sent], ["other-teacher@escoladanuvem.org"])
+        self.prepare()
+        self.execute()
+        self.assertEqual(self.mailer.sent[-1]["from"], "teacher@escoladanuvem.org")
+
+    def test_partial_failure_resumes_only_failed_or_not_yet_reserved(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        original = self.mailer.send
+        def fail_first(message):
+            if message["to"] == "one@example.test": raise SendFailure()
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=fail_first):
+            first = self.execute()[0]
+        self.assertEqual((first["status"], first["counts"]["sent"], first["counts"]["failed"]), ("partial", 1, 1))
+        self.assertTrue(first["retryable"])
+        result = self.execute()[0]
+        self.assertEqual((result["status"], result["counts"]["sent"], result["counts"]["failed"]), ("completed", 2, 0))
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_unknown_and_sending_are_never_retried(self):
+        from reminders import reminder_key
+        pub = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
+        for status in ("unknown", "sending", "sent"):
+            with self.subTest(status=status):
+                self.repo.put("COHORT#BRSA0267", reminder_key(pub, "101"), {"status": status, "by": "manual"})
+                self.assertEqual(self.execute(dry_run=True)[0]["counts"]["skipReasons"], {"already-sent": 1})
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_live_claim_blocks_a_second_worker_and_lease_expiry_allows_resume(self):
+        original = self.mailer.send
+        nested = []
+        def concurrent(message):
+            nested.extend(self.execute())
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=concurrent): self.execute()
+        self.assertEqual(nested[0]["reason"], "lease-active")
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.setUp()
+        with patch.object(self.mailer, "send", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+            self.execute()
+        self.assertEqual(self.record()["status"], "running")
+        self.at = "2026-10-06T23:02:01Z"
+        result = self.execute()[0]
+        self.assertEqual(result["counts"]["sending"], 1)
+        self.assertFalse(result["retryable"])
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_crash_after_sent_before_summary_recovers_counts_without_resending(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        original = self.repo.put
+        def crash(pk, sk, record, *args, **kwargs):
+            result = original(pk, sk, record, *args, **kwargs)
+            if sk.startswith("REMINDER#") and record["status"] == "sent": raise KeyboardInterrupt()
+            return result
+        with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.at = "2026-10-06T23:02:01Z"
+        result = self.execute()[0]
+        self.assertEqual(result["counts"]["sent"], 2)
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_timeout_budget_yields_a_partial_occurrence_without_claiming_the_next_recipient(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        result = self.execute(remaining_ms=lambda: 5000 if self.mailer.sent else 60000)[0]
+        self.assertEqual(result["reason"], "time-budget")
+        self.assertTrue(result["retryable"])
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 2)
+
+    def test_window_is_rechecked_before_each_reservation(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        original = self.mailer.send
+        def expire(message):
+            self.at = "2026-10-06T23:30:00Z"
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=expire): result = self.execute()[0]
+        self.assertEqual(result["reason"], "window-expired")
+        self.assertFalse(result["retryable"])
+        self.assertEqual(len(self.mailer.sent), 1)
+
+    def test_publication_change_interrupts_and_retry_never_repins(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        original = self.mailer.send
+        def change(message):
+            result = original(message)
+            cohort = self.repo.get("COHORT#BRSA0267", "METADATA")
+            self.repo.put("COHORT#BRSA0267", "METADATA", {**cohort, "current": "different"})
+            return result
+        with patch.object(self.mailer, "send", side_effect=change): result = self.execute()[0]
+        self.assertEqual(result["reason"], "publication-changed")
+        self.assertEqual(len(self.mailer.sent), 1)
+        pinned = self.record()["publicationId"]
+        self.assertNotEqual(pinned, "different")
+        self.execute()
+        self.assertEqual(self.record()["publicationId"], pinned)
+        self.assertEqual(len(self.mailer.sent), 1)
+
+    def test_settings_disable_or_link_removal_between_students_stops_sending(self):
+        for key in ("REMINDER_SETTINGS", "TEACH#teacher"):
+            with self.subTest(key=key):
+                self.setUp()
+                self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+                self.prepare()
+                original = self.mailer.send
+                def remove(message):
+                    self.repo.items.pop(("COHORT#BRSA0267", key))
+                    return original(message)
+                with patch.object(self.mailer, "send", side_effect=remove): result = self.execute()[0]
+                self.assertEqual(len(self.mailer.sent), 1)
+                self.assertFalse(result["retryable"])
+
+    def test_new_slot_same_publication_dedupes_but_new_publication_can_send(self):
+        self.execute()
+        self.event["scheduledFor"] = self.at = "2026-10-09T23:00:00Z"
+        self.prepare()
+        self.assertEqual(self.execute()[0]["counts"]["skipReasons"], {"already-sent": 1})
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.publish(kc="1")
+        self.event["scheduledFor"] = self.at = "2026-10-13T23:00:00Z"
+        self.prepare()
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+        self.assertEqual(len(self.mailer.sent), 2)
+
+    def test_logs_summary_and_occurrence_record_contain_no_pii_or_messages(self):
+        import json
+        result = self.execute()[0]
+        text = json.dumps([result, self.record(), self.events])
+        for forbidden in ("@", "Marina", "Costa", "subject", "previewHash", "private", '"studentId"', '"senderUserId"'):
+            self.assertNotIn(forbidden, text)
+        self.assertEqual(result["counts"]["sent"], 1)
+        self.assertTrue(self.events)
+
+    def test_expired_lease_cannot_authorize_a_recipient_even_without_a_successor(self):
+        import reminders
+        original = reminders.message_for
+        def slow_message(*args):
+            self.at = "2026-10-06T23:02:01Z"
+            return original(*args)
+        with patch.object(reminders, "message_for", side_effect=slow_message):
+            result = self.execute()[0]
+        self.assertEqual(result["reason"], "lease-lost")
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_lost_lease_between_renewal_and_reservation_cannot_send_or_finalize(self):
+        original = self.repo.transaction
+        successor = []
+        def race(writes, **kwargs):
+            if any(w[1].startswith("REMINDER#") for w in writes):
+                record = {**self.record(), "owner": "successor"}
+                self.repo.put("COHORT#BRSA0267", "AUTO_REMINDER#" + record["scheduledFor"], record)
+                successor.append(record)
+            return original(writes, **kwargs)
+        with patch.object(self.repo, "transaction", side_effect=race): result = self.execute()[0]
+        self.assertEqual(result["reason"], "lease-lost")
+        self.assertEqual(self.record(), successor[0])
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_sender_and_sync_checks_are_atomic_with_each_reservation(self):
+        from sync_runs import evening_sync_key
+        for key in ("REMINDER_SETTINGS", "TEACH#teacher", evening_sync_key(self.event["scheduledFor"])):
+            with self.subTest(key=key):
+                self.setUp()
+                original = self.repo.transaction
+                def race(writes, **kwargs):
+                    if any(w[1].startswith("REMINDER#") for w in writes):
+                        self.repo.items.pop(("COHORT#BRSA0267", key))
+                    return original(writes, **kwargs)
+                with patch.object(self.repo, "transaction", side_effect=race): self.execute()
+                self.assertEqual(self.mailer.sent, [])
+                self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_readiness_may_not_move_claim_outside_the_window(self):
+        original = self.mailer.readiness
+        def too_late(sender):
+            self.at = "2026-10-06T23:30:00Z"
+            return original(sender)
+        with patch.object(self.mailer, "readiness", side_effect=too_late): result = self.execute()[0]
+        self.assertEqual(result["reason"], "window-expired")
+        self.assertIsNone(self.record())
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_partial_retry_does_not_adopt_a_new_even_valid_publication(self):
+        self.mailer.failure = SendFailure()
+        self.execute()
+        pinned = self.record()["publicationId"]
+        self.publish(kc="1")
+        self.prepare()
+        self.mailer.failure = None
+        self.assertEqual(self.execute()[0]["reason"], "publication-changed")
+        self.assertEqual(self.record()["publicationId"], pinned)
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.execute(dry_run=True)[0]["reason"], "publication-changed")
+
+    def test_ses_accepted_but_status_write_failed_never_reopens_sending(self):
+        self.publish_csv(pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")))
+        self.prepare()
+        original = self.repo.put
+        def fail_status(pk, sk, value, *args, **kwargs):
+            if sk.startswith("REMINDER#") and value["status"] == "sent":
+                raise RuntimeError("private@example.test message content")
+            return original(pk, sk, value, *args, **kwargs)
+        with patch.object(self.repo, "put", side_effect=fail_status): first = self.execute()[0]
+        self.assertEqual(first["counts"]["sending"], 1)
+        self.assertEqual(first["counts"]["pending"], 1)
+        self.assertEqual(len(self.mailer.sent), 1)
+        result = self.execute()[0]
+        self.assertEqual((result["counts"]["sent"], result["counts"]["sending"]), (1, 1))
+        self.assertFalse(result["retryable"])
+        self.assertEqual(len(self.mailer.sent), 2)
+        self.assertNotIn("private", str(self.events))
+
+    def test_uncertain_ses_failure_is_terminal_for_that_recipient(self):
+        self.mailer.failure = SendFailure(uncertain=True)
+        first = self.execute()[0]
+        self.assertEqual(first["counts"]["unknown"], 1)
+        self.assertFalse(first["retryable"])
+        self.mailer.failure = None
+        self.execute()
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_iana_timezone_includes_historical_dst(self):
+        self.at = self.event["scheduledFor"] = "2018-11-06T22:00:00Z"
+        self.prepare()
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+        self.assertEqual(self.record()["syncKey"], "SYNC_RUN#2018-11-06T20:00:00Z")
+
+    def test_failure_in_one_cohort_does_not_stop_another(self):
+        first = self.repo.get("COHORT#BRSA0267", "METADATA")
+        pub = self.repo.get("COHORT#BRSA0267", "PUB#" + first["current"])
+        self.repo.put("COHORT#BRSA0257", "METADATA", {**first, "code": "BRSA0257"})
+        self.repo.put("COHORT#BRSA0257", "PUB#" + pub["id"], pub)
+        self.prepare("BRSA0257", "other")
+        original = self.mailer.send
+        def fail_first(message):
+            if message["from"] == "teacher@escoladanuvem.org": raise RuntimeError("private@example.test")
+            return original(message)
+        with patch.object(self.mailer, "send", side_effect=fail_first):
+            results = self.execute(cohort_codes=["BRSA0267", "BRSA0257"])
+        self.assertEqual([r["status"] for r in results], ["partial", "completed"])
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertNotIn("private", str(self.events))
+
+    def test_failed_final_summary_does_not_recommend_retry_after_deadline(self):
+        original_send, original_transaction = self.mailer.send, self.repo.transaction
+        def finish_late(message):
+            self.at = "2026-10-06T23:30:00Z"
+            return original_send(message)
+        def fail_summary(writes, **kwargs):
+            if any(w[1].startswith("AUTO_REMINDER#") and w[2]["status"] != "running" for w in writes):
+                raise RuntimeError("private@example.test")
+            return original_transaction(writes, **kwargs)
+        with patch.object(self.mailer, "send", side_effect=finish_late), \
+             patch.object(self.repo, "transaction", side_effect=fail_summary): result = self.execute()[0]
+        self.assertFalse(result["retryable"])
+        self.assertEqual(result["counts"]["sent"], 1)
+        self.assertEqual(self.record()["status"], "running")
+        self.assertNotIn("private", str(self.events))
+
+    def test_cohort_configuration_is_an_explicit_list_not_event_or_string(self):
+        for codes in ("TURMA", [], ["BRSA0267", "BRSA0267"], ["private@example.test"]):
+            with self.subTest(codes=codes), self.assertRaises(ValueError): self.execute(cohort_codes=codes)
+        self.assertEqual(self.mailer.sent, [])
+        self.assertIsNone(self.record())
+
+
 if __name__ == "__main__": unittest.main()

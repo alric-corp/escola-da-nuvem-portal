@@ -533,5 +533,126 @@ class ReminderAtomicityTests(unittest.TestCase):
         self.assertEqual(self.repo.get(self.pk, new.sk), new.record)
 
 
+@mock_aws
+class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
+    call = AWSPersistenceTests.call
+
+    def setUp(self):
+        AWSPersistenceTests.setUp(self)
+        import test_reminders as fixtures
+        from reminders import reminder_settings
+        from sync_runs import SyncRun, scheduled_context
+        self.mailer = fixtures.Mailer()
+        draft = self.call("preview", {"csv": fixtures.pending_csv(("One", "101", "one@example.test"),
+                                                                 ("Two", "202", "two@example.test")),
+                                       "activeIds": ["001 KC (123)", "002 Lab (456)"]})["draft"]
+        self.call("publish", {"draftId": draft["id"]})
+        self.pk = "COHORT#BRSA0267"
+        self.at = "2026-10-06T23:00:00Z"
+        self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "scheduledFor": self.at,
+                      "executionId": "test-execution", "attemptNumber": 1}
+        self.sk = "AUTO_REMINDER#" + self.at
+        self.repo.put(self.pk, "REMINDER_SETTINGS", reminder_settings("teacher", True, 1, self.at))
+        self.repo.put(self.pk, "TEACH#teacher", {"userId": "teacher", "code": "BRSA0267", "email": "teacher@example.test"})
+        self.repo.put("USER#teacher", "TEACH#BRSA0267", {"code": "BRSA0267"})
+        context = scheduled_context({**self.event, "type": "canvas-sync", "scheduledFor": "2026-10-06T21:00:00Z"})
+        metadata = self.repo.get(self.pk, "METADATA")
+        proof = SyncRun(self.repo, metadata, context, lambda: "2026-10-06T21:01:00Z")
+        proof.stages.update(catalog="succeeded", roster="succeeded")
+        proof.complete_unchanged(metadata)
+
+    def execute(self, **kwargs):
+        from automatic_reminders import run
+        return run(self.repo, self.mailer, self.event, ["BRSA0267"], "example.test", enabled=True,
+                   dry_run=kwargs.get("dry_run", False), clock=lambda: self.at, sleep=lambda _: None, emit=lambda _: None)[0]
+
+    def reminder_write(self, actions):
+        return any(a.get("Put", {}).get("Item", {}).get("SK", {}).get("S", "").startswith("REMINDER#") for a in actions)
+
+    def test_worker_persists_one_occurrence_and_shared_reminder_keys(self):
+        first = self.execute()
+        self.assertEqual((first["status"], first["counts"]["sent"]), ("completed", 2))
+        self.assertEqual(self.execute()["reason"], "already-finished")
+        self.assertEqual(len(self.mailer.sent), 2)
+        pub = self.repo.get(self.pk, "METADATA")["current"]
+        self.assertEqual(self.repo.keys(self.pk, "REMINDER#"), [f"REMINDER#{pub}#101", f"REMINDER#{pub}#202"])
+        self.assertEqual(self.repo.keys(self.pk, "AUTO_REMINDER#"), [self.sk])
+
+    def test_dry_run_does_not_write_to_real_repository(self):
+        with patch.object(self.repo.db, "transact_write_items", side_effect=AssertionError("no transaction")), \
+             patch.object(self.repo, "put", side_effect=AssertionError("no put")):
+            result = self.execute(dry_run=True)
+        self.assertEqual(result["counts"]["pending"], 2)
+        self.assertIsNone(self.repo.get(self.pk, self.sk))
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_concurrent_first_claim_is_rejected_by_real_condition(self):
+        original = self.repo.db.transact_write_items
+        def claim(**kwargs):
+            for action in kwargs["TransactItems"]:
+                item = action.get("Put", {}).get("Item", {})
+                if item.get("SK", {}).get("S") == self.sk:
+                    import json
+                    record = json.loads(item["data"]["S"])
+                    self.repo.put(self.pk, self.sk, {**record, "owner": "concurrent"})
+            return original(**kwargs)
+        with patch.object(self.repo.db, "transact_write_items", side_effect=claim): result = self.execute()
+        self.assertEqual(result["reason"], "claim-conflict")
+        self.assertEqual(self.repo.get(self.pk, self.sk)["owner"], "concurrent")
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_lease_fence_is_in_the_real_recipient_transaction(self):
+        original = self.repo.db.transact_write_items
+        def takeover(**kwargs):
+            if self.reminder_write(kwargs["TransactItems"]):
+                current = self.repo.get(self.pk, self.sk)
+                self.repo.put(self.pk, self.sk, {**current, "owner": "successor"})
+            return original(**kwargs)
+        with patch.object(self.repo.db, "transact_write_items", side_effect=takeover): result = self.execute()
+        self.assertEqual(result["reason"], "lease-lost")
+        self.assertEqual(self.repo.get(self.pk, self.sk)["owner"], "successor")
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.repo.list(self.pk, "REMINDER#"), [])
+
+    def test_real_recipient_transaction_checks_settings_sync_and_sender_link(self):
+        for sk in ("REMINDER_SETTINGS", "TEACH#teacher", "SYNC_RUN#2026-10-06T21:00:00Z"):
+            with self.subTest(key=sk):
+                original = self.repo.db.transact_write_items
+                before = self.repo.get(self.pk, sk)
+                def remove(**kwargs):
+                    if self.reminder_write(kwargs["TransactItems"]):
+                        self.repo.table.delete_item(Key={"PK": self.pk, "SK": sk})
+                    return original(**kwargs)
+                with patch.object(self.repo.db, "transact_write_items", side_effect=remove): self.execute()
+                self.assertEqual(self.repo.list(self.pk, "REMINDER#"), [])
+                self.assertEqual(self.mailer.sent, [])
+                self.repo.put(self.pk, sk, before)
+                self.repo.table.delete_item(Key={"PK": self.pk, "SK": self.sk})
+
+    def test_real_withdrawn_race_in_worker_reserves_and_sends_nothing_for_that_student(self):
+        original = self.repo.db.transact_write_items
+        def withdraw(**kwargs):
+            if self.reminder_write(kwargs["TransactItems"]):
+                self.repo.put(self.pk, "PARTICIPATION#101", {"canvasId": "101", "status": "WITHDRAWN"})
+            return original(**kwargs)
+        with patch.object(self.repo.db, "transact_write_items", side_effect=withdraw): result = self.execute()
+        self.assertEqual((result["counts"]["sent"], result["counts"]["skipReasons"]), (1, {"withdrawn": 1}))
+        self.assertEqual([m["to"] for m in self.mailer.sent], ["two@example.test"])
+
+    def test_crash_recovery_reads_durable_reminders_without_resending(self):
+        original = self.repo.put
+        def crash(pk, sk, record, *args, **kwargs):
+            result = original(pk, sk, record, *args, **kwargs)
+            if sk.startswith("REMINDER#") and record["status"] == "sent": raise KeyboardInterrupt()
+            return result
+        with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(self.repo.get(self.pk, self.sk)["status"], "running")
+        self.at = "2026-10-06T23:02:01Z"
+        result = self.execute()
+        self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 2))
+        self.assertEqual(len(self.mailer.sent), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
