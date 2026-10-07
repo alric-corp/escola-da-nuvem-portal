@@ -34,9 +34,11 @@ futuro; este worker não consulta ou modifica o estado de um Scheduler.
 
 ## Ocorrência e calendário
 
-- Terça e sexta às 20h em `America/Sao_Paulo`, usando regras IANA, inclusive DST.
+Horário ajustado a pedido em 06/10/2026, durante a validação da AUTO-2.3.
+
+- Terça e sexta às 23h30 em `America/Sao_Paulo`, usando regras IANA, inclusive DST.
 - A ocorrência é turma + `scheduledFor` original, normalizado em UTC.
-- Janela de autorização: de 20h inclusive até 20h30 exclusive.
+- Janela de autorização: de 23h30 inclusive até 00h do dia seguinte exclusive.
 - Retry não troca scheduledFor nem reinicia a janela; executionId/attemptNumber
   são telemetria, inclusive quando uma reentrega mantém o mesmo evento.
 - O relógio é conferido novamente antes de cada reserva. Não inicia novas reservas
@@ -47,7 +49,7 @@ futuro; este worker não consulta ou modifica o estado de um Scheduler.
 
 O worker busca deterministicamente o SYNC_RUN das 18h da mesma data local. Exige
 origem agendada, status succeeded, catálogo e matrícula succeeded, notas published
-ou unchanged, horários coerentes e término até as 20h da ocorrência original,
+ou unchanged, horários coerentes e término até as 23h30 da ocorrência original,
 inclusive. Tentativa posterior não amplia esse limite. SYNC legado, slot das 06h,
 prova antiga, falha ou execução incompleta não autorizam envio.
 

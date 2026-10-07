@@ -38,7 +38,7 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "version": 1,
-                      "cohortCode": "TURMAA", "scheduledFor": "2026-10-06T23:00:00Z",
+                      "cohortCode": "TURMAA", "scheduledFor": "2026-10-07T02:30:00Z",
                       "executionId": "scheduler-1", "attemptNumber": "1", "dryRun": False}
 
     def invoke(self, result):
@@ -111,6 +111,26 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
     def test_retryable_partial_requests_async_retry_without_exposing_summary(self):
         with self.assertRaisesRegex(RuntimeError, "Retentativa de lembretes automáticos"):
             self.invoke([{"status": "partial", "retryable": True}])
+
+    def test_disabled_live_respects_2330_window_through_midnight_without_aws(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        for at, reason in (("2026-10-07T02:29:59Z", "not-due"),
+                           ("2026-10-07T02:30:00Z", "infrastructure-disabled"),
+                           ("2026-10-07T02:59:59Z", "infrastructure-disabled"),
+                           ("2026-10-07T03:00:00Z", "window-expired")):
+            with self.subTest(at=at), patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "false"}), \
+                    patch.object(automatic, "utc_now", return_value=at), \
+                    patch.object(automatic, "Repository") as repo, \
+                    patch.object(automatic.reminders, "SESMailer") as mailer, \
+                    patch("boto3.client") as client, patch("boto3.resource") as resource:
+                result = automatic.handler(self.event, Mock())[0]
+                self.assertEqual((result["status"], result["reason"]), ("skipped", reason))
+                self.assertIsNone(result["publicationId"])
+                self.assertEqual(result["counts"], automatic.empty_counts())
+                for operation in (repo, mailer, client, resource):
+                    operation.assert_not_called()
 
     def test_active_lease_contention_requests_retry_but_business_skips_do_not(self):
         with self.assertRaises(RuntimeError):
@@ -687,7 +707,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def setUp(self):
         ReminderTests.setUp(self)
-        self.at = "2026-10-06T23:00:00Z"
+        self.at = "2026-10-07T02:30:00Z"
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders",
                       "scheduledFor": self.at, "executionId": "execution-test", "attemptNumber": 1}
         self.events = []
@@ -721,7 +741,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         return self.repo.get("COHORT#" + code, "AUTO_REMINDER#" + canonical_time(self.event["scheduledFor"]))
 
     def test_tuesday_and_friday_use_the_same_occurrence_key_on_retry(self):
-        for scheduled in ("2026-10-06T20:00:00-03:00", "2026-10-09T23:00:00Z"):
+        for scheduled in ("2026-10-06T23:30:00-03:00", "2026-10-10T02:30:00Z"):
             with self.subTest(scheduled=scheduled):
                 self.setUp()
                 self.event["scheduledFor"] = self.at = scheduled
@@ -735,6 +755,8 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def test_invalid_day_time_or_event_never_sends_or_claims(self):
         for changes in ({"scheduledFor": "2026-10-07T23:00:00Z"}, {"scheduledFor": "2026-10-06T22:00:00Z"},
+                        {"scheduledFor": "2026-10-06T23:00:00Z"}, {"scheduledFor": "2026-10-07T02:31:00Z"},
+                        {"scheduledFor": "2026-10-07T02:30:01Z"}, {"scheduledFor": "2026-10-08T02:30:00Z"},
                         {"scheduledFor": "2026-10-06T20:00:00"}, {"source": "manual"},
                         {"attemptNumber": True}, {"sender": "injected@example.test"}):
             with self.subTest(changes=changes):
@@ -746,15 +768,16 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.assertIsNone(self.record())
 
     def test_window_uses_original_slot_not_invocation_time(self):
-        for at, reason in (("2026-10-06T22:59:59Z", "not-due"), ("2026-10-06T23:30:00Z", "window-expired"),
-                           ("2026-10-09T23:00:00Z", "window-expired")):
+        for at, reason in (("2026-10-07T02:29:59Z", "not-due"), ("2026-10-07T03:00:00Z", "window-expired"),
+                           ("2026-10-10T02:30:00Z", "window-expired")):
             with self.subTest(at=at):
                 self.at = at
                 self.assertEqual(self.execute()[0]["reason"], reason)
         self.assertIsNone(self.record())
         self.assertEqual(self.mailer.sent, [])
-        self.at = "2026-10-06T23:29:59Z"
+        self.at = "2026-10-07T02:59:59Z"
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+        self.assertEqual(self.record()["syncKey"], "SYNC_RUN#2026-10-06T21:00:00Z")
 
     def test_both_gates_and_readiness_are_required_without_sender_fallback(self):
         self.assertEqual(self.execute(enabled=False)[0]["reason"], "infrastructure-disabled")
@@ -777,13 +800,13 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def test_sync_proof_requires_all_stages_same_day_evening_and_current_metadata(self):
         from sync_runs import evening_sync_key
-        # Uma reentrega às 20h05 não pode adotar sync que só terminou às 20h01.
-        self.at = "2026-10-06T23:05:00Z"
+        # Uma reentrega às 23h35 não pode adotar sync que só terminou às 23h31.
+        self.at = "2026-10-07T02:35:00Z"
         key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
         original = self.repo.get(*key)
         for changes in (None, {"status": "running"}, {"status": "failed"}, {"publicationId": None},
                         {"scheduledFor": "2026-10-05T21:00:00Z"}, {"scheduledFor": "2026-10-06T09:00:00Z"},
-                        {"source": "manual"}, {"metadataVersion": "wrong"}, {"finishedAt": "2026-10-06T23:01:00Z"},
+                        {"source": "manual"}, {"metadataVersion": "wrong"}, {"finishedAt": "2026-10-07T02:31:00Z"},
                         {"stages": {"catalog": "failed", "roster": "succeeded", "grades": "published"}}):
             with self.subTest(changes=changes):
                 if changes is None: self.repo.items.pop(key, None)
@@ -802,7 +825,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
                 proof = self.repo.get(*key)
                 proof["stages"]["grades"] = state
-                proof["finishedAt"] = self.event["scheduledFor"]  # limite inclusivo: até 20h
+                proof["finishedAt"] = self.event["scheduledFor"]  # limite inclusivo: até 23h30
                 self.repo.put(*key, proof)
                 self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
 
@@ -927,7 +950,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         with patch.object(self.mailer, "send", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
             self.execute()
         self.assertEqual(self.record()["status"], "running")
-        self.at = "2026-10-06T23:02:01Z"
+        self.at = "2026-10-07T02:32:01Z"
         result = self.execute()[0]
         self.assertEqual(result["counts"]["sending"], 1)
         self.assertFalse(result["retryable"])
@@ -943,7 +966,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
             return result
         with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
         self.assertEqual(len(self.mailer.sent), 1)
-        self.at = "2026-10-06T23:02:01Z"
+        self.at = "2026-10-07T02:32:01Z"
         result = self.execute()[0]
         self.assertEqual(result["counts"]["sent"], 2)
         self.assertEqual(len(self.mailer.sent), 2)
@@ -962,7 +985,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.prepare()
         original = self.mailer.send
         def expire(message):
-            self.at = "2026-10-06T23:30:00Z"
+            self.at = "2026-10-07T03:00:00Z"
             return original(message)
         with patch.object(self.mailer, "send", side_effect=expire): result = self.execute()[0]
         self.assertEqual(result["reason"], "window-expired")
@@ -1003,12 +1026,12 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def test_new_slot_same_publication_dedupes_but_new_publication_can_send(self):
         self.execute()
-        self.event["scheduledFor"] = self.at = "2026-10-09T23:00:00Z"
+        self.event["scheduledFor"] = self.at = "2026-10-10T02:30:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["skipReasons"], {"already-sent": 1})
         self.assertEqual(len(self.mailer.sent), 1)
         self.publish(kc="1")
-        self.event["scheduledFor"] = self.at = "2026-10-13T23:00:00Z"
+        self.event["scheduledFor"] = self.at = "2026-10-14T02:30:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
         self.assertEqual(len(self.mailer.sent), 2)
@@ -1026,7 +1049,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         import reminders
         original = reminders.message_for
         def slow_message(*args):
-            self.at = "2026-10-06T23:02:01Z"
+            self.at = "2026-10-07T02:32:01Z"
             return original(*args)
         with patch.object(reminders, "message_for", side_effect=slow_message):
             result = self.execute()[0]
@@ -1066,7 +1089,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_readiness_may_not_move_claim_outside_the_window(self):
         original = self.mailer.readiness
         def too_late(sender):
-            self.at = "2026-10-06T23:30:00Z"
+            self.at = "2026-10-07T03:00:00Z"
             return original(sender)
         with patch.object(self.mailer, "readiness", side_effect=too_late): result = self.execute()[0]
         self.assertEqual(result["reason"], "window-expired")
@@ -1113,7 +1136,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.assertEqual(self.mailer.sent, [])
 
     def test_iana_timezone_includes_historical_dst(self):
-        self.at = self.event["scheduledFor"] = "2018-11-06T22:00:00Z"
+        self.at = self.event["scheduledFor"] = "2018-11-07T01:30:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
         self.assertEqual(self.record()["syncKey"], "SYNC_RUN#2018-11-06T20:00:00Z")
@@ -1137,7 +1160,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_failed_final_summary_does_not_recommend_retry_after_deadline(self):
         original_send, original_transaction = self.mailer.send, self.repo.transaction
         def finish_late(message):
-            self.at = "2026-10-06T23:30:00Z"
+            self.at = "2026-10-07T03:00:00Z"
             return original_send(message)
         def fail_summary(writes, **kwargs):
             if any(w[1].startswith("AUTO_REMINDER#") and w[2]["status"] != "running" for w in writes):

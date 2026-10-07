@@ -131,7 +131,7 @@ resource "aws_scheduler_schedule" "automatic_reminders" {
   name                         = "${local.name}-reminders-${each.key}"
   group_name                   = aws_scheduler_schedule_group.automatic_reminders.name
   description                  = "Lembretes da turma ${each.key}; ativação depende de revisão AUTO-4."
-  schedule_expression          = "cron(0 20 ? * TUE,FRI *)"
+  schedule_expression          = "cron(30 23 ? * TUE,FRI *)"
   schedule_expression_timezone = "America/Sao_Paulo"
   state                        = "DISABLED"
   flexible_time_window {

@@ -151,7 +151,7 @@ run "disabled_automatic_reminders" {
   assert {
     condition = toset(keys(aws_scheduler_schedule.automatic_reminders)) == toset(["BRSA0257", "BRSA0267"]) && alltrue([
       for code, schedule in aws_scheduler_schedule.automatic_reminders :
-      schedule.state == "DISABLED" && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
+      schedule.state == "DISABLED" && schedule.schedule_expression == "cron(30 23 ? * TUE,FRI *)"
       && schedule.schedule_expression_timezone == "America/Sao_Paulo" && schedule.flexible_time_window[0].mode == "OFF"
       && schedule.group_name == aws_scheduler_schedule_group.automatic_reminders.name
       && schedule.target[0].arn == aws_lambda_function.automatic_reminders.arn
@@ -167,7 +167,7 @@ run "disabled_automatic_reminders" {
         attemptNumber = "<aws.scheduler.attempt-number>", dryRun = false
       }
     ])
-    error_message = "Dois schedules DISABLED, terça/sexta 20h São Paulo, retry limitado e input exato sem PII."
+    error_message = "Dois schedules DISABLED, terça/sexta 23h30 São Paulo, retry limitado e input exato sem PII."
   }
 
   assert {

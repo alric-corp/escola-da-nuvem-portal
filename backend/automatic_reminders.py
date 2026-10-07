@@ -28,7 +28,7 @@ def occurrence_context(event):
         raise ValueError("Ocorrência automática inválida")
     at = instant(event["scheduledFor"])
     local = at.astimezone(TIMEZONE)
-    if (local.weekday() not in (1, 4) or local.hour != 20 or local.minute or local.second or local.microsecond
+    if (local.weekday() not in (1, 4) or local.hour != 23 or local.minute != 30 or local.second or local.microsecond
             or not isinstance(event["executionId"], str)
             or not re.fullmatch(r"[A-Za-z0-9_:-]{1,256}", event["executionId"])
             or type(event["attemptNumber"]) is not int or event["attemptNumber"] < 1):

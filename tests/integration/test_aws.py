@@ -548,7 +548,7 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
                                        "activeIds": ["001 KC (123)", "002 Lab (456)"]})["draft"]
         self.call("publish", {"draftId": draft["id"]})
         self.pk = "COHORT#BRSA0267"
-        self.at = "2026-10-06T23:00:00Z"
+        self.at = "2026-10-07T02:30:00Z"
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "scheduledFor": self.at,
                       "executionId": "test-execution", "attemptNumber": 1}
         self.sk = "AUTO_REMINDER#" + self.at
@@ -648,7 +648,7 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
         with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
         self.assertEqual(len(self.mailer.sent), 1)
         self.assertEqual(self.repo.get(self.pk, self.sk)["status"], "running")
-        self.at = "2026-10-06T23:02:01Z"
+        self.at = "2026-10-07T02:32:01Z"
         result = self.execute()
         self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 2))
         self.assertEqual(len(self.mailer.sent), 2)

@@ -1,5 +1,85 @@
 # AUTO-2.3 — infraestrutura de lembretes, desabilitada
 
+## Encerramento — 07/10/2026
+
+**AUTO-2.3 concluída em produção, infraestrutura desabilitada.** As partes A,
+B e C foram verificadas. A habilitação operacional permanece na AUTO-4, que
+não foi iniciada. Os horários deste registro usam `America/Sao_Paulo`, salvo
+timestamps com offset explícito.
+
+| Parte | Evidência de conclusão |
+| --- | --- |
+| A — deploy original | Apply do plano aprovado em 05/10, 01h44min25s–01h45min04s: **12 add / 7 change / 0 destroy**, 19 recursos concluídos, state 56 → 58 |
+| B — primeiro Canvas Sync natural | Ocorrência de 05/10 às 06h; Lambda executou das 06h00min46s às 06h01min30s, **1 invocação / 0 erros**, sem sync manual |
+| C — gate LIVE | Após o ajuste autorizado para 23h30, uma invocação direta em 06/10 às 23h40min07s retornou **`infrastructure-disabled`**; **1 invocação / 0 erros / 0 throttles** nesse ajuste |
+| Convergência | Full plan após o ajuste: somente a criação conhecida de ACM; **0 alterações AUTO-2.3**, 35 rotas sem ação; planos consumidos removidos |
+
+### Parte B — publicação e prova
+
+| Turma | SYNC legado | SYNC_RUN | Etapas | Prova |
+| --- | --- | --- | --- | --- |
+| BRSA0257 | `published`, 56 alunos | `succeeded` | Catálogo e matrícula `succeeded`; notas `published` | Publicação existente e correspondente, metadataVersion válido |
+| BRSA0267 | `published`, 59 alunos | `succeeded` | Catálogo e matrícula `succeeded`; notas `published` | Publicação existente e correspondente, metadataVersion válido |
+
+Ambos registraram o slot real `2026-10-05T09:00:00Z`,
+`source=portal.scheduler`, `attemptNumber=1` e executionId válido. O tipo
+`canvas-sync` foi conferido no input do Scheduler; não é um campo persistido
+em SYNC_RUN. Logs técnicos sem PII ou evento bruto. A prova do primeiro sync
+foi observada após o deploy original; o ajuste posterior mudou somente a
+validação de horário em `automatic_reminders.py` entre os 14 módulos do ZIP.
+
+### Travas no encerramento
+
+- BRSA0257 e BRSA0267: schedules `DISABLED`, terça/sexta **23h30**, flexible `OFF`.
+- Worker: `AUTOMATIC_REMINDERS_ENABLED=false`; IAM mínimo e configuração verificados.
+- `AUTO_REMINDER#=0`, nenhum novo `REMINDER#` automático, nenhum envio automático;
+  `REMINDER_SETTINGS` ausente e inalterado nas duas turmas.
+- Canvas Scheduler continua `ENABLED` às 06h/18h, com contexto nativo do Scheduler.
+- Há duas invocações sintéticas autorizadas no histórico: a das 23h00 retornou
+  `window-expired` e não comprovou o gate; a das 23h40 comprovou
+  `infrastructure-disabled`. Nenhuma foi uma execução automática de schedule.
+- Nenhum dry-run real ou tráfego artificial de auth/delivery foi executado.
+- `senderUserId`, settings, quotas/readiness SES, dry-run real e eventual
+  habilitação continuam reservados à AUTO-4, em uma etapa separada.
+
+## Ajuste de horário solicitado em 06/10/2026
+
+Calendário do worker e dos dois schedules alterado para terça/sexta às **23h30**
+em `America/Sao_Paulo`, com janela de 30 minutos, terminando à meia-noite.
+O SYNC_RUN exigido continua sendo o das 18h da mesma data local da ocorrência.
+Schedules permanecem `DISABLED` e `AUTOMATIC_REMINDERS_ENABLED=false`.
+A ordem de validação continua calendário, janela e gate; o smoke LIVE sintético
+na janela retornou `infrastructure-disabled`, sem construir clientes AWS.
+REMINDER_SETTINGS, dry-run real e habilitação continuam fora deste ajuste.
+Os hashes e resultados históricos abaixo pertencem às revisões anteriores.
+
+### Validação em produção desse ajuste
+
+- Apply em 06/10/2026, das 23h12min39s às 23h13min17s, São Paulo:
+  **0 added / 7 changed / 0 destroyed**; cinco ZIPs de Lambda e dois horários.
+- State serial 58 → 60. IAM e demais configurações das Lambdas preservados;
+  todas `Active/Successful`. Canvas Scheduler continua habilitado às 06h/18h.
+- ZIP SHA-256: `aed414b934632fe414a2597572c6500136d8578cf4e72c5e381cb58884fa6800`.
+- Testes locais: backend 290, integração Moto 39 e Terraform 4 passaram.
+  O teste instrumentado do próprio ZIP confirmou zero construções de Repository,
+  SESMailer e clientes AWS no caminho LIVE desabilitado.
+- Uma invocação direta às **23h40min07s**, dentro da janela autorizada, com
+  `scheduledFor=2026-10-07T02:30:00Z` e `dryRun=false`, retornou
+  **`infrastructure-disabled`**, sem erro e com todas as contagens zeradas.
+  Não houve retry. O log contém somente resumo técnico, sem PII ou evento bruto.
+- Leituras posteriores: `AUTO_REMINDER#=0`, `REMINDER#=0` e
+  `REMINDER_SETTINGS` ausente nas duas turmas; dados de lembrete e settings
+  inalterados. Schedules continuam `DISABLED` e gate `false`.
+  A ausência de operações AWS de domínio nesse caminho é comprovada pelo código
+  e hash publicados, resposta e teste instrumentado local; não há contadores
+  por chamada AWS instrumentados em produção.
+- Full plan de auditoria: **1 add / 0 change / 0 destroy**, exclusivamente
+  `aws_acm_certificate.portal`; AUTO-2.3 convergida e 35 rotas sem ação.
+  O plano aplicado foi removido após confirmação de convergência.
+- Nenhum dry-run real, configuração de remetente, habilitação ou início da AUTO-4.
+
+## Registro da revisão original
+
 Implementação **local, sem commit, push, apply ou deploy**. Nenhum e-mail real,
 endpoint de envio ou escrita AWS foi executado. REMINDER_SETTINGS real não foi
 consultado nem alterado. Os dois schedules novos e o gate do adaptador estão fechados.
@@ -129,7 +209,7 @@ uma representação escapada não exemplificada na documentação.
 | Propriedade | Valor |
 | --- | --- |
 | Turmas | BRSA0257 e BRSA0267, variável set `automatic_reminder_cohorts` |
-| Frequência | `cron(0 20 ? * TUE,FRI *)` |
+| Frequência atual | `cron(30 23 ? * TUE,FRI *)` |
 | Timezone | America/Sao_Paulo, sem offset fixo |
 | Flexible window | OFF |
 | Estado novo | **DISABLED**, literal no código, teste e plan |
