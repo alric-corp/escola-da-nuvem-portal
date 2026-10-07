@@ -548,7 +548,7 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
                                        "activeIds": ["001 KC (123)", "002 Lab (456)"]})["draft"]
         self.call("publish", {"draftId": draft["id"]})
         self.pk = "COHORT#BRSA0267"
-        self.at = "2026-10-07T02:30:00Z"
+        self.at = "2026-10-06T23:00:00Z"
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "scheduledFor": self.at,
                       "executionId": "test-execution", "attemptNumber": 1}
         self.sk = "AUTO_REMINDER#" + self.at
@@ -584,6 +584,32 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
             result = self.execute(dry_run=True)
         self.assertEqual(result["counts"]["pending"], 2)
         self.assertIsNone(self.repo.get(self.pk, self.sk))
+        self.assertEqual(self.mailer.sent, [])
+
+    def test_wednesday_diagnostic_reads_real_aws_with_zero_write_calls(self):
+        from unittest.mock import Mock
+        from sync_runs import SyncRun, scheduled_context
+        wednesday, wednesday_sync = "2026-10-07T23:00:00Z", "2026-10-07T21:00:00Z"  # 20h e 18h em São Paulo
+        metadata = self.repo.get(self.pk, "METADATA")
+        proof = SyncRun(self.repo, metadata, scheduled_context(
+            {**self.event, "type": "canvas-sync", "scheduledFor": wednesday_sync}), lambda: "2026-10-07T21:01:00Z")
+        proof.stages.update(catalog="succeeded", roster="succeeded")
+        proof.complete_unchanged(metadata)
+        self.event["scheduledFor"] = self.at = wednesday
+        before = self.repo.table.scan()["Items"]
+        writes = Mock(side_effect=AssertionError("no AWS write"))
+        with patch.object(self.repo.db, "transact_write_items", writes), \
+                patch.object(self.repo.table, "put_item", writes), \
+                patch.object(self.repo.table, "update_item", writes), \
+                patch.object(self.repo.table, "delete_item", writes):
+            diagnostic = self.execute(dry_run=True)
+            live = self.execute()
+        writes.assert_not_called()
+        self.assertEqual((diagnostic["status"], diagnostic["dryRun"], diagnostic["counts"]["pending"]), ("dry-run", True, 2))
+        self.assertEqual((live["status"], live["reason"]), ("skipped", "not-due"))
+        self.assertEqual(self.repo.table.scan()["Items"], before)
+        self.assertEqual(self.repo.keys(self.pk, "AUTO_REMINDER#"), [])
+        self.assertEqual(self.repo.keys(self.pk, "REMINDER#"), [])
         self.assertEqual(self.mailer.sent, [])
 
     def test_concurrent_first_claim_is_rejected_by_real_condition(self):
@@ -648,7 +674,7 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
         with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
         self.assertEqual(len(self.mailer.sent), 1)
         self.assertEqual(self.repo.get(self.pk, self.sk)["status"], "running")
-        self.at = "2026-10-07T02:32:01Z"
+        self.at = "2026-10-06T23:02:01Z"
         result = self.execute()
         self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 2))
         self.assertEqual(len(self.mailer.sent), 2)

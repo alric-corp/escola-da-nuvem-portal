@@ -2,12 +2,21 @@ import copy
 import csv
 import io
 import unittest
+from datetime import datetime
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from portal import Portal, APIError
 from reminders import SendFailure
 from test_portal import MemoryRepository
 from test_grades import canvas_csv
+from automatic_reminders import empty_counts
+from sync_runs import canonical_time
+
+
+def sao_paulo(*parts):
+    """Instante local pelas regras IANA de America/Sao_Paulo, sem offset fixo."""
+    return datetime(*parts, tzinfo=ZoneInfo("America/Sao_Paulo")).isoformat()
 
 
 class Mailer:
@@ -38,7 +47,7 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders", "version": 1,
-                      "cohortCode": "TURMAA", "scheduledFor": "2026-10-07T02:30:00Z",
+                      "cohortCode": "TURMAA", "scheduledFor": "2026-10-06T23:00:00Z",
                       "executionId": "scheduler-1", "attemptNumber": "1", "dryRun": False}
 
     def invoke(self, result):
@@ -67,7 +76,9 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
         import automatic_reminders as automatic
         for change in ({"cohortCode": "UNKNOWN"}, {"version": True}, {"version": 2}, {"dryRun": "false"},
                        {"sender": "private@example.test"}, {"attemptNumber": "0"}, {"attemptNumber": True},
-                       {"attemptNumber": "1.0"}, {"scheduledFor": "2026-10-05T23:00:00Z"}):
+                       {"attemptNumber": "1.0"}, {"scheduledFor": sao_paulo(2026, 10, 6, 20, 1)},
+                       {"scheduledFor": sao_paulo(2026, 10, 7, 19, 59), "dryRun": True},
+                       {"scheduledFor": sao_paulo(2026, 10, 7, 23, 30), "dryRun": True}):
             with self.subTest(change=change), patch.object(automatic, "Repository") as repo, \
                     patch.object(automatic.reminders, "SESMailer") as mailer:
                 with self.assertRaises(ValueError) as error:
@@ -112,14 +123,14 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Retentativa de lembretes automáticos"):
             self.invoke([{"status": "partial", "retryable": True}])
 
-    def test_disabled_live_respects_2330_window_through_midnight_without_aws(self):
+    def test_disabled_live_respects_2000_window_without_aws(self):
         import os
         import automatic_reminders as automatic
         from unittest.mock import Mock
-        for at, reason in (("2026-10-07T02:29:59Z", "not-due"),
-                           ("2026-10-07T02:30:00Z", "infrastructure-disabled"),
-                           ("2026-10-07T02:59:59Z", "infrastructure-disabled"),
-                           ("2026-10-07T03:00:00Z", "window-expired")):
+        for at, reason in ((sao_paulo(2026, 10, 6, 19, 59, 59), "not-due"),
+                           (sao_paulo(2026, 10, 6, 20, 0), "infrastructure-disabled"),
+                           (sao_paulo(2026, 10, 6, 20, 29, 59), "infrastructure-disabled"),
+                           (sao_paulo(2026, 10, 6, 20, 30), "window-expired")):
             with self.subTest(at=at), patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "false"}), \
                     patch.object(automatic, "utc_now", return_value=at), \
                     patch.object(automatic, "Repository") as repo, \
@@ -132,10 +143,30 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
                 for operation in (repo, mailer, client, resource):
                     operation.assert_not_called()
 
+    def test_live_outside_tuesday_friday_is_not_due_before_clients_even_with_gate_open(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        for gate in ("true", "false"):
+            for day in (5, 7, 8, 10, 11):  # segunda, quarta, quinta, sábado e domingo às 20h
+                at = sao_paulo(2026, 10, day, 20, 0)
+                with self.subTest(gate=gate, day=day), patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": gate}), \
+                        patch.object(automatic, "utc_now", return_value=at), \
+                        patch.object(automatic, "Repository") as repo, \
+                        patch.object(automatic.reminders, "SESMailer") as mailer, \
+                        patch("boto3.client") as client, patch("boto3.resource") as resource:
+                    result = automatic.handler({**self.event, "scheduledFor": at}, Mock())[0]
+                    self.assertEqual((result["status"], result["reason"], result["dryRun"]), ("skipped", "not-due", False))
+                    self.assertFalse(result["retryable"])
+                    self.assertEqual(result["counts"], automatic.empty_counts())
+                    for operation in (repo, mailer, client, resource):
+                        operation.assert_not_called()
+
     def test_active_lease_contention_requests_retry_but_business_skips_do_not(self):
         with self.assertRaises(RuntimeError):
             self.invoke([{"status": "skipped", "reason": "lease-active", "retryable": False}])
-        for reason in ("sync-invalid", "window-expired", "sender-not-ready", "already-finished", "infrastructure-disabled"):
+        for reason in ("sync-invalid", "window-expired", "sender-not-ready", "already-finished", "infrastructure-disabled",
+                       "not-due"):
             result = [{"status": "skipped", "reason": reason, "retryable": False}]
             self.assertEqual(self.invoke(result)[0], result)
 
@@ -707,7 +738,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def setUp(self):
         ReminderTests.setUp(self)
-        self.at = "2026-10-07T02:30:00Z"
+        self.at = "2026-10-06T23:00:00Z"
         self.event = {"source": "portal.scheduler", "type": "automatic-reminders",
                       "scheduledFor": self.at, "executionId": "execution-test", "attemptNumber": 1}
         self.events = []
@@ -741,7 +772,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         return self.repo.get("COHORT#" + code, "AUTO_REMINDER#" + canonical_time(self.event["scheduledFor"]))
 
     def test_tuesday_and_friday_use_the_same_occurrence_key_on_retry(self):
-        for scheduled in ("2026-10-06T23:30:00-03:00", "2026-10-10T02:30:00Z"):
+        for scheduled in ("2026-10-06T20:00:00-03:00", "2026-10-09T23:00:00Z"):
             with self.subTest(scheduled=scheduled):
                 self.setUp()
                 self.event["scheduledFor"] = self.at = scheduled
@@ -753,29 +784,155 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.assertEqual(len(self.mailer.sent), 1)
                 self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUTO_REMINDER#")), 1)
 
-    def test_invalid_day_time_or_event_never_sends_or_claims(self):
-        for changes in ({"scheduledFor": "2026-10-07T23:00:00Z"}, {"scheduledFor": "2026-10-06T22:00:00Z"},
-                        {"scheduledFor": "2026-10-06T23:00:00Z"}, {"scheduledFor": "2026-10-07T02:31:00Z"},
-                        {"scheduledFor": "2026-10-07T02:30:01Z"}, {"scheduledFor": "2026-10-08T02:30:00Z"},
+    def test_invalid_time_or_event_never_sends_or_claims_in_any_mode(self):
+        for changes in ({"scheduledFor": sao_paulo(2026, 10, 6, 19, 59)}, {"scheduledFor": sao_paulo(2026, 10, 6, 20, 1)},
+                        {"scheduledFor": sao_paulo(2026, 10, 6, 20, 0, 1)}, {"scheduledFor": sao_paulo(2026, 10, 6, 20, 0, 0, 1000)},
+                        {"scheduledFor": sao_paulo(2026, 10, 6, 23, 30)}, {"scheduledFor": sao_paulo(2026, 10, 7, 19, 59)},
+                        {"scheduledFor": sao_paulo(2026, 10, 7, 20, 1)}, {"scheduledFor": sao_paulo(2026, 10, 7, 18, 0)},
                         {"scheduledFor": "2026-10-06T20:00:00"}, {"source": "manual"},
                         {"attemptNumber": True}, {"sender": "injected@example.test"}):
-            with self.subTest(changes=changes):
-                previous = self.event
-                self.event = {**previous, **changes}
-                with self.assertRaises(ValueError): self.execute()
-                self.event = previous
+            for dry_run in (False, True):
+                with self.subTest(changes=changes, dry_run=dry_run):
+                    previous = self.event
+                    self.event = {**previous, **changes}
+                    with self.assertRaises(ValueError): self.execute(dry_run=dry_run)
+                    self.event = previous
         self.assertEqual(self.mailer.sent, [])
         self.assertIsNone(self.record())
 
+    def diagnostic(self, at=None):
+        """Quarta-feira 20h: dia sem envio LIVE, com prova das 18h, settings e remetente válidos."""
+        self.event["scheduledFor"] = sao_paulo(2026, 10, 7, 20, 0)
+        self.at = at or self.event["scheduledFor"]
+        self.prepare()
+
+    def assert_untouched(self, before):
+        self.assertEqual(self.repo.items, before)
+        self.assertEqual(self.mailer.sent, [])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "AUTO_REMINDER#"), [])
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "REMINDER#"), [])
+
+    def test_live_follows_tuesday_friday_while_dry_run_is_a_daily_diagnostic(self):
+        for day in range(5, 12):  # segunda 05/10 a domingo 11/10
+            live_day = day in (6, 9)
+            with self.subTest(day=day):
+                self.setUp()
+                self.event["scheduledFor"] = self.at = sao_paulo(2026, 10, day, 20, 0)
+                self.prepare()
+                before = copy.deepcopy(self.repo.items)
+                dry = self.execute(dry_run=True, enabled=False)[0]
+                self.assertEqual((dry["status"], dry["reason"], dry["dryRun"]), ("dry-run", None, True))
+                self.assertEqual(dry["counts"]["pending"], 1)
+                self.assert_untouched(before)
+                live = self.execute()[0]
+                if live_day:
+                    self.assertEqual((live["status"], live["counts"]["sent"]), ("completed", 1))
+                else:
+                    self.assertEqual((live["status"], live["reason"], live["dryRun"]), ("skipped", "not-due", False))
+                    self.assertEqual(live["counts"], empty_counts())
+                    self.assert_untouched(before)
+
+    def test_wednesday_live_is_not_due_before_any_read_even_with_both_gates_open(self):
+        self.diagnostic()
+        before = copy.deepcopy(self.repo.items)
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled), \
+                    patch.object(self.repo, "get", side_effect=AssertionError("no read")) as get, \
+                    patch.object(self.repo, "list", side_effect=AssertionError("no read")) as list_, \
+                    patch.object(self.mailer, "readiness", side_effect=AssertionError("no SES")) as readiness:
+                result = self.execute(enabled=enabled)[0]
+                self.assertEqual((result["status"], result["reason"]), ("skipped", "not-due"))
+                for operation in (get, list_, readiness): operation.assert_not_called()
+        self.assert_untouched(before)
+
+    def test_wednesday_dry_run_reads_and_checks_readiness_with_zero_writes_or_send(self):
+        self.diagnostic()
+        before = copy.deepcopy(self.repo.items)
+        with patch.object(self.repo, "put", side_effect=AssertionError("dry run must not write")) as put, \
+                patch.object(self.repo, "transaction", side_effect=AssertionError("dry run must not reserve")) as transaction, \
+                patch.object(self.mailer, "send", side_effect=AssertionError("dry run must not send")) as send, \
+                patch.object(self.repo, "get", wraps=self.repo.get) as get, \
+                patch.object(self.mailer, "readiness", wraps=self.mailer.readiness) as readiness:
+            result = self.execute(dry_run=True, enabled=False)[0]
+        self.assertEqual((result["status"], result["dryRun"]), ("dry-run", True))
+        self.assertEqual(result["publicationId"], self.repo.get("COHORT#BRSA0267", "METADATA")["current"])
+        self.assertEqual(result["counts"]["pending"], 1)
+        self.assertGreater(get.call_count, 0)
+        readiness.assert_called_once()
+        for operation in (put, transaction, send): operation.assert_not_called()
+        self.assert_untouched(before)
+
+    def test_diagnostic_executes_inside_2000_to_2030_and_refuses_before_or_after(self):
+        for at, status, reason in ((sao_paulo(2026, 10, 7, 19, 59, 59), "skipped", "not-due"),
+                                   (sao_paulo(2026, 10, 7, 20, 0), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 15), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 29, 59), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 29, 59, 999999), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 30), "skipped", "window-expired"),
+                                   (sao_paulo(2026, 10, 7, 20, 31), "skipped", "window-expired")):
+            with self.subTest(at=at):
+                self.setUp()
+                self.diagnostic(at)
+                before = copy.deepcopy(self.repo.items)
+                result = self.execute(dry_run=True, enabled=False)[0]
+                self.assertEqual((result["status"], result["reason"]), (status, reason))
+                self.assertEqual(result["scheduledFor"], canonical_time(sao_paulo(2026, 10, 7, 20, 0)))
+                self.assert_untouched(before)
+        self.setUp()
+        self.at = sao_paulo(2026, 10, 6, 20, 15)  # LIVE de terça também aceita execução atrasada na janela
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+
+    def test_diagnostic_requires_same_day_1800_proof_and_current_publication(self):
+        from sync_runs import evening_sync_key
+        self.diagnostic()
+        pk = "COHORT#BRSA0267"
+        key = evening_sync_key(self.event["scheduledFor"])
+        self.assertEqual(key, "SYNC_RUN#" + canonical_time(sao_paulo(2026, 10, 7, 18, 0)))
+        today = self.repo.get(pk, key)
+        yesterday = self.repo.get(pk, evening_sync_key(sao_paulo(2026, 10, 6, 20, 0)))
+        self.assertIsNotNone(yesterday)  # terça anterior válida não serve para quarta
+        valid = copy.deepcopy(self.repo.items)
+        for name, change, reason in (
+                ("J sem SYNC_RUN das 18h de hoje", lambda: self.repo.items.pop((pk, key)), "sync-invalid"),
+                ("K prova de ontem na chave de hoje", lambda: self.repo.put(pk, key, yesterday), "sync-invalid"),
+                ("K sync das 06h de hoje", lambda: self.repo.put(pk, key, {**today, "scheduledFor": canonical_time(
+                    sao_paulo(2026, 10, 7, 6, 0))}), "sync-invalid"),
+                ("terminou depois das 20h", lambda: self.repo.put(pk, key, {**today, "finishedAt": canonical_time(
+                    sao_paulo(2026, 10, 7, 20, 0, 1))}), "sync-invalid"),
+                ("L current diferente da prova", lambda: self.publish(kc="1"), "publication-changed")):
+            with self.subTest(name=name):
+                self.repo.items = copy.deepcopy(valid)
+                change()
+                before = copy.deepcopy(self.repo.items)
+                result = self.execute(dry_run=True, enabled=False)[0]
+                self.assertEqual((result["status"], result["reason"]), ("skipped", reason))
+                self.assert_untouched(before)
+
+    def test_weekday_and_proof_use_the_sao_paulo_date_not_the_offset_date(self):
+        from sync_runs import evening_sync_key
+        # Terça 20h em São Paulo, escrita num offset em que já é quarta: LIVE permitido.
+        self.event["scheduledFor"] = self.at = "2026-10-07T04:00:00+05:00"
+        self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
+        self.assertEqual(self.record()["syncKey"], evening_sync_key(sao_paulo(2026, 10, 6, 20, 0)))
+        # Quarta 20h em São Paulo, escrita num offset em que já é quinta: só diagnóstico.
+        self.setUp()
+        self.event["scheduledFor"] = self.at = "2026-10-08T01:00:00+02:00"
+        self.prepare()
+        self.assertEqual(evening_sync_key(self.event["scheduledFor"]),
+                         "SYNC_RUN#" + canonical_time(sao_paulo(2026, 10, 7, 18, 0)))
+        self.assertEqual(self.execute(dry_run=True)[0]["status"], "dry-run")
+        self.assertEqual(self.execute()[0]["reason"], "not-due")
+        self.assertEqual(self.mailer.sent, [])
+
     def test_window_uses_original_slot_not_invocation_time(self):
-        for at, reason in (("2026-10-07T02:29:59Z", "not-due"), ("2026-10-07T03:00:00Z", "window-expired"),
-                           ("2026-10-10T02:30:00Z", "window-expired")):
+        for at, reason in (("2026-10-06T22:59:59Z", "not-due"), ("2026-10-06T23:30:00Z", "window-expired"),
+                           ("2026-10-09T23:00:00Z", "window-expired")):
             with self.subTest(at=at):
                 self.at = at
                 self.assertEqual(self.execute()[0]["reason"], reason)
         self.assertIsNone(self.record())
         self.assertEqual(self.mailer.sent, [])
-        self.at = "2026-10-07T02:59:59Z"
+        self.at = "2026-10-06T23:29:59Z"
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
         self.assertEqual(self.record()["syncKey"], "SYNC_RUN#2026-10-06T21:00:00Z")
 
@@ -800,13 +957,13 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def test_sync_proof_requires_all_stages_same_day_evening_and_current_metadata(self):
         from sync_runs import evening_sync_key
-        # Uma reentrega às 23h35 não pode adotar sync que só terminou às 23h31.
-        self.at = "2026-10-07T02:35:00Z"
+        # Uma reentrega às 20h05 não pode adotar sync que só terminou às 20h01.
+        self.at = "2026-10-06T23:05:00Z"
         key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
         original = self.repo.get(*key)
         for changes in (None, {"status": "running"}, {"status": "failed"}, {"publicationId": None},
                         {"scheduledFor": "2026-10-05T21:00:00Z"}, {"scheduledFor": "2026-10-06T09:00:00Z"},
-                        {"source": "manual"}, {"metadataVersion": "wrong"}, {"finishedAt": "2026-10-07T02:31:00Z"},
+                        {"source": "manual"}, {"metadataVersion": "wrong"}, {"finishedAt": "2026-10-06T23:01:00Z"},
                         {"stages": {"catalog": "failed", "roster": "succeeded", "grades": "published"}}):
             with self.subTest(changes=changes):
                 if changes is None: self.repo.items.pop(key, None)
@@ -825,11 +982,19 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 key = ("COHORT#BRSA0267", evening_sync_key(self.event["scheduledFor"]))
                 proof = self.repo.get(*key)
                 proof["stages"]["grades"] = state
-                proof["finishedAt"] = self.event["scheduledFor"]  # limite inclusivo: até 23h30
+                proof["finishedAt"] = self.event["scheduledFor"]  # limite inclusivo: até 20h
                 self.repo.put(*key, proof)
                 self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
 
     def test_dry_run_is_read_only_even_with_infrastructure_disabled(self):
+        for name in ("terça", "quarta"):
+            with self.subTest(day=name):
+                self.setUp()
+                if name == "quarta":
+                    self.diagnostic()
+                self.assert_handler_dry_run_is_read_only()
+
+    def assert_handler_dry_run_is_read_only(self):
         import os
         import automatic_reminders as automatic
         from unittest.mock import Mock
@@ -950,7 +1115,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         with patch.object(self.mailer, "send", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
             self.execute()
         self.assertEqual(self.record()["status"], "running")
-        self.at = "2026-10-07T02:32:01Z"
+        self.at = "2026-10-06T23:02:01Z"
         result = self.execute()[0]
         self.assertEqual(result["counts"]["sending"], 1)
         self.assertFalse(result["retryable"])
@@ -966,7 +1131,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
             return result
         with patch.object(self.repo, "put", side_effect=crash), self.assertRaises(KeyboardInterrupt): self.execute()
         self.assertEqual(len(self.mailer.sent), 1)
-        self.at = "2026-10-07T02:32:01Z"
+        self.at = "2026-10-06T23:02:01Z"
         result = self.execute()[0]
         self.assertEqual(result["counts"]["sent"], 2)
         self.assertEqual(len(self.mailer.sent), 2)
@@ -985,7 +1150,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.prepare()
         original = self.mailer.send
         def expire(message):
-            self.at = "2026-10-07T03:00:00Z"
+            self.at = "2026-10-06T23:30:00Z"
             return original(message)
         with patch.object(self.mailer, "send", side_effect=expire): result = self.execute()[0]
         self.assertEqual(result["reason"], "window-expired")
@@ -1026,12 +1191,12 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
 
     def test_new_slot_same_publication_dedupes_but_new_publication_can_send(self):
         self.execute()
-        self.event["scheduledFor"] = self.at = "2026-10-10T02:30:00Z"
+        self.event["scheduledFor"] = self.at = "2026-10-09T23:00:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["skipReasons"], {"already-sent": 1})
         self.assertEqual(len(self.mailer.sent), 1)
         self.publish(kc="1")
-        self.event["scheduledFor"] = self.at = "2026-10-14T02:30:00Z"
+        self.event["scheduledFor"] = self.at = "2026-10-13T23:00:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
         self.assertEqual(len(self.mailer.sent), 2)
@@ -1049,7 +1214,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         import reminders
         original = reminders.message_for
         def slow_message(*args):
-            self.at = "2026-10-07T02:32:01Z"
+            self.at = "2026-10-06T23:02:01Z"
             return original(*args)
         with patch.object(reminders, "message_for", side_effect=slow_message):
             result = self.execute()[0]
@@ -1089,7 +1254,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_readiness_may_not_move_claim_outside_the_window(self):
         original = self.mailer.readiness
         def too_late(sender):
-            self.at = "2026-10-07T03:00:00Z"
+            self.at = "2026-10-06T23:30:00Z"
             return original(sender)
         with patch.object(self.mailer, "readiness", side_effect=too_late): result = self.execute()[0]
         self.assertEqual(result["reason"], "window-expired")
@@ -1136,7 +1301,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.assertEqual(self.mailer.sent, [])
 
     def test_iana_timezone_includes_historical_dst(self):
-        self.at = self.event["scheduledFor"] = "2018-11-07T01:30:00Z"
+        self.at = self.event["scheduledFor"] = "2018-11-06T22:00:00Z"
         self.prepare()
         self.assertEqual(self.execute()[0]["counts"]["sent"], 1)
         self.assertEqual(self.record()["syncKey"], "SYNC_RUN#2018-11-06T20:00:00Z")
@@ -1160,7 +1325,7 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_failed_final_summary_does_not_recommend_retry_after_deadline(self):
         original_send, original_transaction = self.mailer.send, self.repo.transaction
         def finish_late(message):
-            self.at = "2026-10-07T03:00:00Z"
+            self.at = "2026-10-06T23:30:00Z"
             return original_send(message)
         def fail_summary(writes, **kwargs):
             if any(w[1].startswith("AUTO_REMINDER#") and w[2]["status"] != "running" for w in writes):

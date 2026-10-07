@@ -34,11 +34,20 @@ futuro; este worker não consulta ou modifica o estado de um Scheduler.
 
 ## Ocorrência e calendário
 
-Horário ajustado a pedido em 06/10/2026, durante a validação da AUTO-2.3.
+Horário definitivo decidido na AUTO-4 (07/10/2026): 20h. O horário temporário de
+23h30 usado na validação da AUTO-2.3 foi removido.
 
-- Terça e sexta às 23h30 em `America/Sao_Paulo`, usando regras IANA, inclusive DST.
+- Toda ocorrência é exatamente às 20h em `America/Sao_Paulo`, usando regras IANA,
+  inclusive DST. Outro horário, segundo ou fração é evento inválido, sem clientes AWS.
+- LIVE (`dryRun=false`) segue o calendário operacional: somente terça e sexta. Em
+  outro dia o resultado é `not-due`, antes de qualquer leitura ou cliente AWS, mesmo
+  com o gate de infraestrutura aberto.
+- Dry-run (`dryRun=true`) é diagnóstico: qualquer dia às 20h, com as mesmas provas
+  (SYNC_RUN das 18h do mesmo dia, publicação atual, REMINDER_SETTINGS, vínculos e
+  readiness) e zero escrita, reserva, AUTO_REMINDER ou SendEmail. Não há exceção por
+  data; o resultado traz `status=dry-run` e `dryRun=true`, sem estado persistido.
 - A ocorrência é turma + `scheduledFor` original, normalizado em UTC.
-- Janela de autorização: de 23h30 inclusive até 00h do dia seguinte exclusive.
+- Janela de autorização: de 20h inclusive até 20h30 exclusive, para LIVE e dry-run.
 - Retry não troca scheduledFor nem reinicia a janela; executionId/attemptNumber
   são telemetria, inclusive quando uma reentrega mantém o mesmo evento.
 - O relógio é conferido novamente antes de cada reserva. Não inicia novas reservas
@@ -49,7 +58,7 @@ Horário ajustado a pedido em 06/10/2026, durante a validação da AUTO-2.3.
 
 O worker busca deterministicamente o SYNC_RUN das 18h da mesma data local. Exige
 origem agendada, status succeeded, catálogo e matrícula succeeded, notas published
-ou unchanged, horários coerentes e término até as 23h30 da ocorrência original,
+ou unchanged, horários coerentes e término até as 20h da ocorrência original,
 inclusive. Tentativa posterior não amplia esse limite. SYNC legado, slot das 06h,
 prova antiga, falha ou execução incompleta não autorizam envio.
 

@@ -15,6 +15,8 @@ import reminders
 from repository import Conflict, Repository
 from sync_runs import SOURCE, TIMEZONE, canonical_time, evening_sync_key, instant, metadata_version, scheduler_event, utc_now
 
+SLOT = (20, 0)  # horário local (America/Sao_Paulo) de toda ocorrência
+LIVE_WEEKDAYS = (1, 4)  # terça e sexta: calendário operacional do envio
 WINDOW = timedelta(minutes=30)
 LEASE = timedelta(seconds=120)
 SKIP_REASONS = {"withdrawn", "no-email", "no-pending", "already-sent", "not-found"}
@@ -22,18 +24,24 @@ CONFIG_REASONS = {"settings-missing", "settings-invalid", "automatic-disabled", 
 
 
 def occurrence_context(event):
+    """Slot diário exato às 20h locais. O dia de envio LIVE é conferido por live_day."""
     required = {"source", "type", "scheduledFor", "executionId", "attemptNumber"}
     if (not isinstance(event, dict) or set(event) != required or event["source"] != SOURCE
             or event["type"] != "automatic-reminders"):
         raise ValueError("Ocorrência automática inválida")
     at = instant(event["scheduledFor"])
     local = at.astimezone(TIMEZONE)
-    if (local.weekday() not in (1, 4) or local.hour != 23 or local.minute != 30 or local.second or local.microsecond
+    if ((local.hour, local.minute) != SLOT or local.second or local.microsecond
             or not isinstance(event["executionId"], str)
             or not re.fullmatch(r"[A-Za-z0-9_:-]{1,256}", event["executionId"])
             or type(event["attemptNumber"]) is not int or event["attemptNumber"] < 1):
         raise ValueError("Ocorrência automática inválida")
     return {**event, "scheduledFor": canonical_time(event["scheduledFor"])}
+
+
+def live_day(scheduled_for):
+    """LIVE segue terça/sexta; dry-run é diagnóstico em qualquer dia, com as mesmas provas."""
+    return instant(scheduled_for).astimezone(TIMEZONE).weekday() in LIVE_WEEKDAYS
 
 
 def empty_counts():
@@ -72,6 +80,8 @@ class CohortRun:
         return at
 
     def prepare(self):
+        if not self.dry_run and not live_day(self.context["scheduledFor"]):
+            raise Stop("not-due")
         at = self.check_window()
         if not self.dry_run and not self.enabled:
             raise Stop("infrastructure-disabled")
@@ -319,9 +329,10 @@ def handler(event, context):
         raise ValueError("Configuração automática inválida") from None
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-    # O caminho bloqueado reutiliza o guard/resultado do worker, sem construir clientes.
+    # O caminho bloqueado (gate fechado ou LIVE fora de terça/sexta) reutiliza o
+    # guard/resultado do worker, sem construir clientes.
     repo = mailer = None
-    if gate == "true" or event["dryRun"]:
+    if event["dryRun"] or (gate == "true" and live_day(technical["scheduledFor"])):
         repo, mailer = Repository(), reminders.SESMailer()
     results = run(repo, mailer, technical, [event["cohortCode"]], domain,
                   enabled=gate == "true", dry_run=event["dryRun"],

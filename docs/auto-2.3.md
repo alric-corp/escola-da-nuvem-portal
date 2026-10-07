@@ -44,6 +44,9 @@ validação de horário em `automatic_reminders.py` entre os 14 módulos do ZIP.
 
 ## Ajuste de horário solicitado em 06/10/2026
 
+> Substituído na AUTO-4 (07/10/2026): horário definitivo às 20h, LIVE somente
+> terça/sexta e dry-run diagnóstico em qualquer dia. Ver `docs/auto-2.2.md`.
+
 Calendário do worker e dos dois schedules alterado para terça/sexta às **23h30**
 em `America/Sao_Paulo`, com janela de 30 minutos, terminando à meia-noite.
 O SYNC_RUN exigido continua sendo o das 18h da mesma data local da ocorrência.
@@ -209,7 +212,7 @@ uma representação escapada não exemplificada na documentação.
 | Propriedade | Valor |
 | --- | --- |
 | Turmas | BRSA0257 e BRSA0267, variável set `automatic_reminder_cohorts` |
-| Frequência atual | `cron(30 23 ? * TUE,FRI *)` |
+| Frequência atual | `cron(0 20 ? * TUE,FRI *)`, definitiva desde a AUTO-4; dry-run diagnóstico é invocação direta, nunca schedule |
 | Timezone | America/Sao_Paulo, sem offset fixo |
 | Flexible window | OFF |
 | Estado novo | **DISABLED**, literal no código, teste e plan |
