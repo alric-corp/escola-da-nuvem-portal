@@ -1,6 +1,47 @@
 # AUTO-5 — ativação controlada dos lembretes automáticos
 
-**Em andamento. AUTO-5.1 aplicada; piloto BRSA0267 em preparação.**
+**Em andamento. Piloto BRSA0267 habilitado; aguardando primeiro LIVE natural das 20h.**
+
+## Estado atual — 09/10, 19h01
+
+| Controle | Estado real |
+| --- | --- |
+| BRSA0267 schedule | ENABLED |
+| BRSA0257 schedule | DISABLED |
+| Worker gate | true |
+| Worker / outras quatro Lambdas | Active / Successful, mesmo ZIP da AUTO-4 |
+| Cron dos lembretes | terça/sexta, 20h, America/Sao_Paulo, flexible OFF |
+| Canvas | ENABLED, 06h/18h; sync natural das 18h PASS nas duas turmas |
+| Settings / readiness | versão 1, automaticEnabled=true, PASS nas duas |
+| AUTO_REMINDER / REMINDER / EMAIL/DELIVERY | 0 nas duas turmas |
+| Worker Invocations / Errors / Throttles | 0 observados desde a abertura do gate |
+| Alarmes | Errors e Throttles OK |
+| State / full plan | serial 70; somente ACM conhecido, 1/0/0 |
+
+Nenhum LIVE manual foi executado. A ocorrência natural do piloto ainda não
+aconteceu; seu aceite permanece pendente. **BRSA0257 não será habilitada sem
+aprovação explícita posterior. AUTO-5 não está concluída.**
+
+## AUTO-5.2 — piloto BRSA0267 aplicado em 09/10, 18h59
+
+- Commit `f35ed39753bd90010218dea97527e0ee913808d4`;
+  [CI completo SUCCESS](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37996168647).
+  Regressões locais: 300 backend, 40 integração, quatro Terraform; fmt/validate verdes.
+- Plano isolado com refresh **0/1/0**, única ação no schedule BRSA0267 e único
+  campo alterado `state: DISABLED → ENABLED`. Sem mudança de worker, cron,
+  timezone, flexible, target, input, retries ou ACM.
+- SHA-256 do plano consumido:
+  `0520586a6ccbb0f551119801ae4fb61cd652a57bdc487bafb4a6ce2e9ba91d9f`.
+- Apply único do arquivo salvo: **18h59min42s–18h59min47s**, resultado **0/1/0**.
+  State **69 → 70**, com uma hora de margem antes do primeiro LIVE.
+- Pós-apply: IAM/configuração PASS (67 + 160 verificações); BRSA0267 ENABLED,
+  BRSA0257 DISABLED, gate true; readiness/settings/provas de hoje válidos.
+- Full plan sem ação residual AUTO-5: somente ACM conhecido **1/0/0**.
+  Plano consumido removido após convergência. Nenhum código runtime mudou.
+- Baseline de observação às 19h01: 424 registros; zero AUTO_REMINDER/REMINDER/delivery.
+  Snapshot BRSA0267: 59 alunos, 37 ativos, 22 WITHDRAWN; BRSA0257: 56, 41 e 15.
+  Esses números não antecipam elegíveis ou envios do LIVE. O gate e os applies
+  não invocaram a worker. Procedimento de interrupção documentado na seção 6.
 
 ## AUTO-5.1 — gate global aplicado em 09/10, 18h51
 
@@ -162,11 +203,12 @@ logs da worker desde a restauração. Os dois minutos finais foram excluídos da
 consulta de métricas para acomodar atraso de publicação. O dry-run manual da
 AUTO-4 às 00h39 é anterior a esse intervalo.
 
-## 4. Requisito pendente — Canvas natural de hoje às 18h
+## 4. Requisito do Canvas natural das 18h — validado
 
 Não executar sync manual. Para cada turma, consultar a prova da ocorrência
-`2026-10-09T21:00:00Z` (18h locais), quando ela acontecer. Agora esse SYNC_RUN
-ainda não existe, o que é esperado antes do horário.
+`2026-10-09T21:00:00Z` (18h locais). No checkpoint das 01h03 esse SYNC_RUN
+ainda não existia; a ocorrência natural passou e foi validada às 18h44, conforme
+o checkpoint acima. Revalidar a prova antes do envio.
 
 Critérios: source `portal.scheduler`; status `succeeded`; catalog e roster
 (`enrollment`) succeeded; grades (`notes`) published ou unchanged;
@@ -177,7 +219,7 @@ Sem prova válida da BRSA0267, **não ativar nada hoje**. Uma falha exclusiva da
 BRSA0257 mantém essa turma DISABLED e não bloqueia o piloto da BRSA0267.
 Não usar a prova de ontem, nem modificar a janela para antecipar o LIVE.
 
-## 5. Etapas de ativação — ainda não executadas
+## 5. Sequência aprovada de ativação
 
 ### AUTO-5.1 — gate global
 
