@@ -579,6 +579,7 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
         self.assertEqual(self.repo.keys(self.pk, "AUTO_REMINDER#"), [self.sk])
 
     def test_dry_run_does_not_write_to_real_repository(self):
+        self.at = "2026-10-07T00:30:00Z"  # terça 21h30, ocorrência original das 20h
         with patch.object(self.repo.db, "transact_write_items", side_effect=AssertionError("no transaction")), \
              patch.object(self.repo, "put", side_effect=AssertionError("no put")):
             result = self.execute(dry_run=True)
@@ -595,7 +596,8 @@ class AutomaticReminderWorkerPersistenceTests(unittest.TestCase):
             {**self.event, "type": "canvas-sync", "scheduledFor": wednesday_sync}), lambda: "2026-10-07T21:01:00Z")
         proof.stages.update(catalog="succeeded", roster="succeeded")
         proof.complete_unchanged(metadata)
-        self.event["scheduledFor"] = self.at = wednesday
+        self.event["scheduledFor"] = wednesday
+        self.at = "2026-10-08T00:30:00Z"  # quarta 21h30 em São Paulo
         before = self.repo.table.scan()["Items"]
         writes = Mock(side_effect=AssertionError("no AWS write"))
         with patch.object(self.repo.db, "transact_write_items", writes), \

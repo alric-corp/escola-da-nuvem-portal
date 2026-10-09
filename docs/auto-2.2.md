@@ -42,12 +42,18 @@ Horário definitivo decidido na AUTO-4 (07/10/2026): 20h. O horário temporário
 - LIVE (`dryRun=false`) segue o calendário operacional: somente terça e sexta. Em
   outro dia o resultado é `not-due`, antes de qualquer leitura ou cliente AWS, mesmo
   com o gate de infraestrutura aberto.
-- Dry-run (`dryRun=true`) é diagnóstico: qualquer dia às 20h, com as mesmas provas
+- Dry-run (`dryRun=true`) é diagnóstico: qualquer dia entre 21h30 e 22h, mantendo
+  `scheduledFor` às 20h da mesma data local, com as mesmas provas
   (SYNC_RUN das 18h do mesmo dia, publicação atual, REMINDER_SETTINGS, vínculos e
   readiness) e zero escrita, reserva, AUTO_REMINDER ou SendEmail. Não há exceção por
   data; o resultado traz `status=dry-run` e `dryRun=true`, sem estado persistido.
 - A ocorrência é turma + `scheduledFor` original, normalizado em UTC.
-- Janela de autorização: de 20h inclusive até 20h30 exclusive, para LIVE e dry-run.
+- Janela LIVE: de 20h inclusive até 20h30 exclusive. Janela do dry-run: de 21h30
+  inclusive até 22h exclusive, conforme ajuste autorizado na AUTO-4 em 07/10/2026.
+  O diagnóstico não amplia a janela LIVE nem o limite das 20h para a prova do sync.
+  Ajuste temporário autorizado em 09/10: somente BRSA0257 usa 00h30–01h do dia
+  seguinte, preservando a ocorrência das 20h e sua prova das 18h. BRSA0267 permanece
+  com diagnóstico às 21h30–22h até a restauração definitiva após a validação.
 - Retry não troca scheduledFor nem reinicia a janela; executionId/attemptNumber
   são telemetria, inclusive quando uma reentrega mantém o mesmo evento.
 - O relógio é conferido novamente antes de cada reserva. Não inicia novas reservas
