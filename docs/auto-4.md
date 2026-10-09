@@ -1,13 +1,32 @@
 # AUTO-4 — preparação operacional dos lembretes
 
-**AUTO-4 em andamento.** Este documento reúne os checkpoints de produção de
-07 e 08/10/2026. O deploy mais recente é o ajuste diagnóstico da seção 8, aplicado
-sobre o commit `30bffb71b902e4311db1db45ea6e112b31f1270a`. O encerramento em
-[auto-2.3.md](auto-2.3.md) é histórico e foi preservado.
+**AUTO-4 concluída em produção, infraestrutura desabilitada.** Este documento
+reúne os checkpoints de 07 a 09/10/2026. O deploy final é a restauração da seção 13,
+commit `a69e95caf5561d2eb58dc7379dbbc8098b02ea5a`. O encerramento em
+[auto-2.3.md](auto-2.3.md) é histórico e foi preservado sem alteração.
 
 Horários abaixo em `America/Sao_Paulo`, exceto timestamps com offset explícito.
 
-## Estado atual — 09/10, dry-run BRSA0257 PASS; restauração em execução
+## Estado final — 09/10, 00h48
+
+- **BRSA0267 dry-run PASS** em 07/10 às 21h34; **BRSA0257 dry-run PASS** em
+  09/10 às 00h39, com 56 avaliados, 25 elegíveis/pendentes e zero enviados.
+- SES readiness e REMINDER_SETTINGS **PASS nas duas turmas**; settings versão 1,
+  `automaticEnabled=true`, vínculos válidos e configuração preservada.
+- Horário definitivo restaurado: **LIVE terça/sexta às 20h; dry-run qualquer dia
+  às 20h; janela 20h–20h30, fim exclusivo**, sem exceção por turma.
+- Schedules **DISABLED**, `cron(0 20 ? * TUE,FRI *)`, `America/Sao_Paulo`, flexible OFF.
+- Worker gate **false**. Cinco Lambdas Active/Successful com o ZIP definitivo.
+- Zero AUTO_REMINDER, zero REMINDER nas duas turmas e zero envio automático
+  observado. Os 412 registros ficaram inalterados durante o diagnóstico e a restauração.
+- Restauração em commit separado, push e CI completo verde; apply único **0/5/0**.
+  Full plan: apenas ACM conhecido, **1 add / 0 change / 0 destroy**, 35 rotas sem ação.
+- Planos consumidos desta execução removidos. **AUTO-5 não iniciada.**
+
+As seções seguintes preservam a sequência de checkpoints; os estados intermediários
+"em andamento" descrevem os respectivos momentos, anteriores ao encerramento acima.
+
+## Checkpoint — 09/10, dry-run BRSA0257 PASS; restauração em execução
 
 Às **00h39**, o dry-run real da BRSA0257 passou: **56 avaliados, 25 elegíveis com
 pendências, zero enviados**. Ambos os dry-runs operacionais agora têm PASS.
@@ -379,35 +398,6 @@ Evidência sanitizada:
 
 **AUTO-4 em andamento; AUTO-5 não iniciada.**
 
-## 12. Dry-run positivo BRSA0257 — 09/10 às 00h39
-
-- Commit temporário: `97f75edf37e48aae8e167ed2f44fbb8de0562b6b`, enviado para
-  `alric-corp/main`; [CI completo aprovado](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37879999581).
-- Plano isolado revisado: **0 add / 5 change / 0 destroy**, somente o ZIP das
-  cinco Lambdas. ACM no-op; nenhum schedule, IAM ou environment alterado.
-- Apply único: **00h38min21s–00h39min00s**, resultado **0/5/0**, state **64 → 66**.
-- ZIP SHA-256: `e9ae407b4a330cb63ba88772da15c39443670077310c34ec8c0b5ba40ad0965e`.
-- CodeSha256: `6a5Ae0ozDLY7qIdy2hXDlENnAHcxDDTsjAtbpArQll4=`; cinco Lambdas
-  Active/Successful, 67 verificações IAM e 160 de infraestrutura aprovadas.
-- Full plan pós-apply: apenas ACM conhecido, **1 add / 0 change / 0 destroy**;
-  nenhum resíduo AUTO-4. O plano consumido foi removido após convergência.
-- Readiness SES, settings versão 1, vínculos e prova natural das 18h de **08/10**
-  válidos em ambas as turmas. Nenhum settings foi alterado nesta etapa.
-- Uma invocação síncrona da BRSA0257, **00h39min43s–00h39min49s**, `dryRun=true`,
-  sem retry, relógio real, `scheduledFor=2026-10-08T23:00:00Z` (20h de 08/10).
-- Resultado: **dry-run**, 56 avaliados, 25 elegíveis/pendentes, 31 desconsiderados
-  (15 sem pendência, 15 withdrawn, um sem e-mail), **sent=0**. Publicação usada
-  corresponde à prova validada. HTTP 200, sem FunctionError, logs sem PII/evento bruto.
-- AUTO_REMINDER=0 e REMINDER=0 nas duas turmas. Os **412 registros** ficaram
-  idênticos nos snapshots consistentes de **00h39min34s e 00h40min03s**.
-- Métricas às **00h41min47s**: **Invocations=1 / Errors=0 / Throttles=0** desde o
-  apply temporário; a única invocação corresponde à chamada manual autorizada.
-  **AWS/SES Send=0** observado na conta/região. Nenhum envio automático.
-- Como os dois dry-runs passaram, foi iniciada a restauração definitiva autorizada.
-  Nenhum LIVE executado; schedules DISABLED e gate false preservados.
-
-Evidências: `/private/tmp/auto4-midnight-20261009-luhafjbw`.
-
 ## 11. BRSA0257 — revalidação após confirmação SES, 08/10
 
 O usuário informou que a responsável concluiu a confirmação depois do checkpoint
@@ -462,3 +452,99 @@ Evidências sanitizadas:
 `/private/tmp/auto4-brsa0257-revalidation-20261008-lhgtp9z8/prerequisites.json`.
 
 **AUTO-4 em andamento; AUTO-5 não iniciada.**
+
+## 12. Dry-run positivo BRSA0257 — 09/10 às 00h39
+
+- Commit temporário: `97f75edf37e48aae8e167ed2f44fbb8de0562b6b`, enviado para
+  `alric-corp/main`; [CI completo aprovado](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37879999581).
+- Plano isolado revisado: **0 add / 5 change / 0 destroy**, somente o ZIP das
+  cinco Lambdas. ACM no-op; nenhum schedule, IAM ou environment alterado.
+- Apply único: **00h38min21s–00h39min00s**, resultado **0/5/0**, state **64 → 66**.
+- ZIP SHA-256: `e9ae407b4a330cb63ba88772da15c39443670077310c34ec8c0b5ba40ad0965e`.
+- CodeSha256: `6a5Ae0ozDLY7qIdy2hXDlENnAHcxDDTsjAtbpArQll4=`; cinco Lambdas
+  Active/Successful, 67 verificações IAM e 160 de infraestrutura aprovadas.
+- Full plan pós-apply: apenas ACM conhecido, **1 add / 0 change / 0 destroy**;
+  nenhum resíduo AUTO-4. O plano consumido foi removido após convergência.
+- Readiness SES, settings versão 1, vínculos e prova natural das 18h de **08/10**
+  válidos em ambas as turmas. Nenhum settings foi alterado nesta etapa.
+- Uma invocação síncrona da BRSA0257, **00h39min43s–00h39min49s**, `dryRun=true`,
+  sem retry, relógio real, `scheduledFor=2026-10-08T23:00:00Z` (20h de 08/10).
+- Resultado: **dry-run**, 56 avaliados, 25 elegíveis/pendentes, 31 desconsiderados
+  (15 sem pendência, 15 withdrawn, um sem e-mail), **sent=0**. Publicação usada
+  corresponde à prova validada. HTTP 200, sem FunctionError, logs sem PII/evento bruto.
+- AUTO_REMINDER=0 e REMINDER=0 nas duas turmas. Os **412 registros** ficaram
+  idênticos nos snapshots consistentes de **00h39min34s e 00h40min03s**.
+- Métricas às **00h41min47s**: **Invocations=1 / Errors=0 / Throttles=0** desde o
+  apply temporário; a única invocação corresponde à chamada manual autorizada.
+  **AWS/SES Send=0** observado na conta/região. Nenhum envio automático.
+- Como os dois dry-runs passaram, foi iniciada a restauração definitiva autorizada.
+  Nenhum LIVE executado; schedules DISABLED e gate false preservados.
+
+Evidências: `/private/tmp/auto4-midnight-20261009-luhafjbw`.
+
+
+## 13. Restauração definitiva e encerramento — 09/10, 00h48
+
+A restauração foi iniciada somente após o PASS da BRSA0257 e a comprovação de
+zero efeitos do diagnóstico. Os deslocamentos de 21h30 e 00h30 foram removidos.
+A implementação runtime coincide byte a byte com o contrato definitivo das 20h
+anterior às alterações temporárias; readiness, IAM, input Canvas e settings foram preservados.
+
+### Testes, commit, CI e plano
+
+- **300 testes de backend, 40 de integração e quatro testes Terraform** passaram.
+- Cobertura confirmada: terça/sexta 20h LIVE válido; quarta 20h LIVE recusado;
+  quarta 20h dry-run permitido; 19h59 recusado; 20h29min59s permitido; 20h30
+  expirado; prova das 18h da mesma data local; dry-run sem escrita/transação/envio.
+- Regressões adicionais: ambas as turmas aceitam diagnóstico às 20h, ambas
+  recusam as janelas temporárias e o prazo é rechecado depois da readiness.
+- Commit separado: `a69e95caf5561d2eb58dc7379dbbc8098b02ea5a`, enviado a
+  `alric-corp/main`. [CI completo verde](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37880495278),
+  incluindo Backend/Moto, Frontend/Playwright e Terraform/contratos.
+- AWS e state comparados antes da aplicação: 67 verificações IAM e 160 de
+  infraestrutura. O plano isolado, revisado contra state serial 66, continha
+  somente cinco atualizações do ZIP: **0 add / 5 change / 0 destroy**.
+  ACM no-op; nenhum recurso fora do delta aprovado.
+
+### Apply e confirmação em produção
+
+- Apply único do plano salvo: **00h45min49s–00h46min28s**, resultado **0/5/0**, sem
+  falha parcial ou segunda tentativa. State **66 → 68**.
+- identity, canvas_sync, reminder_events, auth_trigger e automatic_reminders
+  atualizadas com sucesso; handler/runtime/architecture/memory/timeout/role/env/layers
+  permanecem equivalentes ao plano. Worker com concorrência reservada 2.
+- ZIP SHA-256: `3a1f3a5b4ff5257905cdd258b6f911a0923a78b1215042f264ff62192dbeef3d`.
+- CodeSha256: `Oh86W0/1JXkFzdJYtvkRoJI6eLEhUELyZP9iGS2+7z0=`.
+- Os 14 módulos do ZIP correspondem ao commit da restauração e os cinco hashes
+  AWS correspondem ao artefato. Todas as Lambdas Active/Successful.
+- Pós-apply: 67 verificações IAM e 160 de infraestrutura passaram novamente.
+  Ambos os schedules continuam DISABLED às 20h terça/sexta, timezone São Paulo,
+  flexible OFF. Nenhum WED foi adicionado. Worker gate false; sem URL/endpoint.
+- Canvas Scheduler preservado ENABLED, 06h/18h; logs/alarmes preservados.
+- Readiness SES e settings/vínculos passaram novamente nas duas turmas às 00h46–00h47.
+  As provas do sync natural de 08/10 seguem coerentes com as publicações atuais.
+- AUTO_REMINDER=0 e REMINDER=0 nas duas turmas. Settings e todos os 412 registros
+  permaneceram iguais entre o pós-diagnóstico e o pós-restauração, às 00h47min15s.
+- Zero invocações da worker e zero SES Send observados no intervalo pós-restauração.
+  A única invocação desde o início deste trabalho foi o dry-run direto autorizado
+  da BRSA0257; logs e métricas o identificam. Nenhuma nova invocação foi feita
+  para testar o código restaurado em produção.
+- Full plan pós-apply, sem arquivo para aplicar: **1 add / 0 change / 0 destroy**,
+  exclusivamente `aws_acm_certificate.portal`. AUTO-4 sem ação residual;
+  **35 rotas no-op**. ACM não foi aplicado.
+- O plano consumido da restauração foi removido depois da convergência, assim
+  como o plano temporário. Nenhuma alteração em frontend/S3/CloudFront/API Gateway.
+
+Evidências do diagnóstico: `/private/tmp/auto4-midnight-20261009-luhafjbw`.
+Evidências da restauração: `/private/tmp/auto4-restore-2000-20261009-d1ixxl2m`,
+com `closure.json`, hashes, revisões, resultados por recurso, CI, planos textuais,
+contagens e comparações sanitizadas. Métricas SES são agregadas por conta/região;
+a comparação de snapshots demonstra ausência de mudanças persistidas, enquanto
+os testes verificam a ausência de chamadas de escrita e envio no dry-run.
+
+**AUTO-4 concluída em produção, infraestrutura desabilitada.**
+
+Todos os critérios acordados foram atendidos: dry-runs PASS nas duas turmas,
+readiness/settings PASS, schedules DISABLED, gate false, horário definitivo 20h
+e zero envio automático observado. Nenhuma habilitação LIVE foi realizada.
+**Trabalho encerrado antes da AUTO-5.**
