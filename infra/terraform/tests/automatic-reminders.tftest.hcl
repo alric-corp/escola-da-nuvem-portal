@@ -78,7 +78,7 @@ override_resource {
   values          = { arn = "arn:aws:scheduler:us-east-1:123456789012:schedule-group/automatic" }
 }
 
-run "disabled_automatic_reminders" {
+run "automatic_reminders_gate_open_schedules_disabled" {
   command = plan
 
   assert {
@@ -89,13 +89,13 @@ run "disabled_automatic_reminders" {
       && aws_lambda_function.automatic_reminders.reserved_concurrent_executions == 2
       && aws_lambda_function.automatic_reminders.runtime == "python3.13"
       && toset(aws_lambda_function.automatic_reminders.architectures) == toset(["arm64"])
-      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "false"
+      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "true"
       && toset(jsondecode(aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDER_COHORTS)) == var.automatic_reminder_cohorts
       && toset(keys(aws_lambda_function.automatic_reminders.environment[0].variables)) == toset([
         "TABLE_NAME", "IMPORTS_BUCKET", "INSTRUCTOR_EMAIL_DOMAIN", "REMINDER_CONFIGURATION_SET", "AUTOMATIC_REMINDER_COHORTS", "AUTOMATIC_REMINDERS_ENABLED"
       ])
     )
-    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate fechado; sem segredo Canvas."
+    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate aberto; schedules continuam desabilitados e sem segredo Canvas."
   }
 
   assert {
