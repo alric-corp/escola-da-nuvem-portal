@@ -1,26 +1,117 @@
 # AUTO-5 — ativação controlada dos lembretes automáticos
 
-**Em andamento. Piloto BRSA0267 habilitado; aguardando primeiro LIVE natural das 20h.**
+**Em andamento, bloqueada após o primeiro LIVE natural. Piloto BRSA0267 não aprovado.**
 
-## Estado atual — 09/10, 19h01
+## Estado atual — 09/10, 20h08
 
 | Controle | Estado real |
 | --- | --- |
-| BRSA0267 schedule | ENABLED |
+| BRSA0267 schedule | DISABLED, kill switch às 20h07 |
 | BRSA0257 schedule | DISABLED |
-| Worker gate | true |
+| Worker gate | false, kill switch às 20h07 |
 | Worker / outras quatro Lambdas | Active / Successful, mesmo ZIP da AUTO-4 |
 | Cron dos lembretes | terça/sexta, 20h, America/Sao_Paulo, flexible OFF |
 | Canvas | ENABLED, 06h/18h; sync natural das 18h PASS nas duas turmas |
 | Settings / readiness | versão 1, automaticEnabled=true, PASS nas duas |
 | AUTO_REMINDER / REMINDER / EMAIL/DELIVERY | 0 nas duas turmas |
-| Worker Invocations / Errors / Throttles | 0 observados desde a abertura do gate |
+| Worker Invocations / Errors / Throttles | 1 / 0 / 0 desde a abertura do gate |
 | Alarmes | Errors e Throttles OK |
-| State / full plan | serial 70; somente ACM conhecido, 1/0/0 |
+| Primeiro LIVE natural BRSA0267 | skipped / claim-conflict, retryable=false |
 
-Nenhum LIVE manual foi executado. A ocorrência natural do piloto ainda não
-aconteceu; seu aceite permanece pendente. **BRSA0257 não será habilitada sem
-aprovação explícita posterior. AUTO-5 não está concluída.**
+Nenhum LIVE manual foi executado. O piloto foi interrompido antes da primeira
+reserva e de qualquer envio. **BRSA0257 não será habilitada sem aprovação
+explícita posterior. AUTO-5 não está concluída.**
+
+## Primeiro LIVE natural — 09/10, 20h00 — BLOCKED
+
+- Scheduler: uma tentativa na ocorrência de sexta-feira, 20h. Lambda START às
+  **20h00min44,820s**, resultado às **20h00min48,776s**, END/REPORT às
+  **20h00min48,816s**; duração **3.995,14 ms**. Nenhuma invocação manual ou retry
+  observado. As primeiras consultas chegaram antes da ingestão completa dos logs;
+  a Lambda já havia terminado, sem timeout.
+- Resultado técnico: `status=skipped`, `reason=claim-conflict`, `retryable=false`,
+  `dryRun=false`, turma BRSA0267, slot `2026-10-09T23:00:00Z`.
+- Contadores emitidos: avaliados, elegíveis, enviados, falhos, pendentes, sending,
+  unknown e skipped **todos zero**, `skipReasons={}`. A avaliação dos alunos não
+  começou; esses zeros não significam ausência de alunos elegíveis.
+- Dados consistentes nas duas turmas: **AUTO_REMINDER=0, REMINDER=0 e
+  EMAIL/DELIVERY=0**. Zero reservas/envios WITHDRAWN e zero duplicatas observadas.
+  Dedupe, seleção e entrega LIVE continuam sem validação operacional, pois o
+  fluxo parou antes deles. Não existe registro AUTO_REMINDER para correlacionar
+  executionId/attemptNumber; o contexto passou pela validação do handler, mas
+  não foi persistido devido ao cancelamento da transação.
+- CloudWatch: **Scheduler InvocationAttemptCount=1; Lambda Invocations=1,
+  Errors=0, Throttles=0**. SES Send/Delivery/Bounce/Complaint/Reject observados
+  zero; Lambda de delivery sem invocações. Alarmes Errors/Throttles **OK**.
+  Logs com um START/END/REPORT e resumo técnico, sem padrões de PII, evento bruto
+  ou erro inesperado. `Errors=0` não é aceite funcional: o bloqueio é tratado
+  pelo handler como resultado normal.
+- A prova do Canvas natural das 18h continua válida nas duas turmas: publicação
+  current, metadataVersion igual e etapas succeeded/published, concluídas antes
+  das 20h. Readiness e settings lógicos continuam PASS, versão 1 e
+  automaticEnabled=true; essa validação não cobre a serialização transacional.
+
+### Causa identificada por leitura
+
+`Repository.transaction` compara o atributo DynamoDB `data` como texto com
+`Repository._encode(expected)`, que usa `json.dumps(..., ensure_ascii=False,
+sort_keys=True)`. O `REMINDER_SETTINGS` existente **nas duas turmas** tem JSON
+semanticamente equivalente, mas os bytes não coincidem com essa representação:
+as chaves persistidas não estão ordenadas. Assim, a condição `#d = :old` desse
+item falha no estado observado.
+
+A auditoria somente leitura comparou as cinco condições da aquisição:
+METADATA, SYNC_RUN e vínculos direto/reverso coincidem; somente REMINDER_SETTINGS
+diverge da serialização exigida. Todos esses registros são idênticos aos da
+baseline anterior ao LIVE, inclusive os settings. O item da ocorrência não
+existe. Isso explica o `claim-conflict` no primeiro `acquire`, antes de qualquer
+escrita confirmada ou chamada de envio. O log não preserva os CancellationReasons
+do DynamoDB, portanto não identifica nominalmente a condição cancelada; a
+incompatibilidade foi demonstrada comparando o estado real com o código publicado.
+
+Os dry-runs passam pelo readiness e pela avaliação, mas não executam a aquisição
+transacional; por isso não exercitaram essa comparação. **Nenhum settings foi
+reescrito, nenhuma regra/runtime foi alterada e nenhum LIVE foi repetido.**
+A correção e uma nova tentativa dependem de revisão separada.
+
+### Participação atualizada pelo portal durante a observação
+
+Entre a baseline das 19h01 e o LIVE, houve três alterações humanas
+ACTIVE → WITHDRAWN na BRSA0267 e uma na BRSA0257. Às 19h59, a baseline foi
+revalidada: BRSA0267 com **59 alunos, 34 ativos e 25 WITHDRAWN**; BRSA0257 com
+**56, 40 e 16**. Após as 20h ocorreu mais uma alteração humana na BRSA0257,
+ficando **56, 39 e 17**.
+
+As alterações foram correlacionadas aos pares PARTICIPATION/AUDIT, com mesmo
+ator não sistêmico, aluno e timestamp, sem imprimir identificadores. Esses
+registros explicam as diferenças da tabela e o alerta inicial conservador do
+observador; não foram escritos pela worker. Publicação, prova e settings
+permaneceram intactos. A interrupção do piloto decorre do `claim-conflict`.
+
+### Interrupção autorizada — 20h07
+
+- Gate false solicitado às **20h07min18,660s**; schedule BRSA0267 DISABLED às
+  **20h07min19,363s**; releitura final às **20h07min22,140s**: worker Active /
+  Successful, gate false e ambos schedules DISABLED.
+- Aplicado o procedimento sistêmico da seção 6, porque a incompatibilidade de
+  settings existe nas duas turmas. A Lambda observada já havia terminado.
+  Não houve cancelamento de execução, rollback de código ou nova invocação.
+- ZIP, configurações restantes, cron terça/sexta 20h, timezone, flexible,
+  target/input/retries e settings preservados. Somente o gate e o estado do
+  schedule piloto foram fechados pela API de configuração.
+- Terraform e seus testes alinhados a gate false / ambos DISABLED, impedindo
+  reativação por um próximo apply. Full plan final, somente leitura e sem `-out`:
+  **1 add / 0 change / 0 destroy**, exclusivamente `aws_acm_certificate.portal`.
+  Nenhuma ação residual AUTO-5. O state persistido continua no serial **70**:
+  o refresh usado pelo plan leu o kill switch real, sem persistir esse refresh.
+  Nenhum plano de reativação foi criado ou aplicado.
+- Regressões da reconciliação: **300 backend, 40 integração, quatro Terraform**,
+  fmt/validate e diff-check PASS. A primeira execução local de integração
+  encontrou a dependência `playwright-core` ausente nesse checkout; após
+  `npm ci --ignore-scripts`, os 40 testes passaram, sem mudança em código ou
+  lockfile. O CI completo do commit de interrupção deve ser conferido no GitHub.
+
+**Parada para revisão. Não habilitar BRSA0257; não declarar AUTO-5 concluída.**
 
 ## AUTO-5.2 — piloto BRSA0267 aplicado em 09/10, 18h59
 
@@ -274,7 +365,12 @@ Registrar horário, motivo e resultado da interrupção. Reconciliar depois o
 Terraform com o estado desabilitado, em mudança revisada, para que outro apply
 não reabilite acidentalmente o piloto. BRSA0257 permanece DISABLED.
 
-## 7. Aceite do primeiro LIVE natural — pendente
+## 7. Critérios de aceite — primeiro LIVE bloqueado
+
+A ocorrência de 09/10 não atendeu ao aceite: `claim-conflict` impediu a aquisição
+e os envios. O resultado e a interrupção estão registrados no início deste
+documento. Os critérios abaixo permanecem necessários para uma futura tentativa
+aprovada; não executar nova tentativa neste checkpoint.
 
 Observar a ocorrência natural das 20h, com Scheduler executionId/attemptNumber
 correlacionados à Lambda e ao registro AUTO_REMINDER. Reportar somente agregados:

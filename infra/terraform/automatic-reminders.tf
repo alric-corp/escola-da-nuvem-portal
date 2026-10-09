@@ -82,7 +82,7 @@ resource "aws_lambda_function" "automatic_reminders" {
       AUTOMATIC_REMINDER_COHORTS = jsonencode(sort(tolist(var.automatic_reminder_cohorts)))
       # Espelho conservador do gate de infraestrutura: bloqueia invocação live
       # acidental também fora do Scheduler. Não impede dry-run explícito.
-      AUTOMATIC_REMINDERS_ENABLED = "true"
+      AUTOMATIC_REMINDERS_ENABLED = "false"
     }
   }
   depends_on = [aws_iam_role_policy.automatic_reminders]
@@ -134,7 +134,7 @@ resource "aws_scheduler_schedule" "automatic_reminders" {
   description                  = "Lembretes da turma ${each.key}; ativação depende de revisão AUTO-4."
   schedule_expression          = "cron(0 20 ? * TUE,FRI *)"
   schedule_expression_timezone = "America/Sao_Paulo"
-  state                        = each.key == "BRSA0267" ? "ENABLED" : "DISABLED"
+  state                        = "DISABLED"
   flexible_time_window {
     mode = "OFF"
   }

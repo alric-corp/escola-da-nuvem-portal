@@ -78,7 +78,7 @@ override_resource {
   values          = { arn = "arn:aws:scheduler:us-east-1:123456789012:schedule-group/automatic" }
 }
 
-run "automatic_reminders_brsa0267_pilot" {
+run "automatic_reminders_kill_switch" {
   command = plan
 
   assert {
@@ -89,13 +89,13 @@ run "automatic_reminders_brsa0267_pilot" {
       && aws_lambda_function.automatic_reminders.reserved_concurrent_executions == 2
       && aws_lambda_function.automatic_reminders.runtime == "python3.13"
       && toset(aws_lambda_function.automatic_reminders.architectures) == toset(["arm64"])
-      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "true"
+      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "false"
       && toset(jsondecode(aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDER_COHORTS)) == var.automatic_reminder_cohorts
       && toset(keys(aws_lambda_function.automatic_reminders.environment[0].variables)) == toset([
         "TABLE_NAME", "IMPORTS_BUCKET", "INSTRUCTOR_EMAIL_DOMAIN", "REMINDER_CONFIGURATION_SET", "AUTOMATIC_REMINDER_COHORTS", "AUTOMATIC_REMINDERS_ENABLED"
       ])
     )
-    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate aberto; sem segredo Canvas."
+    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate fechado; sem segredo Canvas."
   }
 
   assert {
@@ -151,7 +151,7 @@ run "automatic_reminders_brsa0267_pilot" {
   assert {
     condition = toset(keys(aws_scheduler_schedule.automatic_reminders)) == toset(["BRSA0257", "BRSA0267"]) && alltrue([
       for code, schedule in aws_scheduler_schedule.automatic_reminders :
-      schedule.state == (code == "BRSA0267" ? "ENABLED" : "DISABLED") && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
+      schedule.state == "DISABLED" && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
       && schedule.schedule_expression_timezone == "America/Sao_Paulo" && schedule.flexible_time_window[0].mode == "OFF"
       && schedule.group_name == aws_scheduler_schedule_group.automatic_reminders.name
       && schedule.target[0].arn == aws_lambda_function.automatic_reminders.arn
@@ -167,7 +167,7 @@ run "automatic_reminders_brsa0267_pilot" {
         attemptNumber = "<aws.scheduler.attempt-number>", dryRun = false
       }
     ])
-    error_message = "Somente BRSA0267 ENABLED; BRSA0257 DISABLED. Terça/sexta 20h São Paulo, retry limitado e input exato sem PII."
+    error_message = "Ambos schedules DISABLED. Terça/sexta 20h São Paulo, retry limitado e input exato sem PII."
   }
 
   assert {
