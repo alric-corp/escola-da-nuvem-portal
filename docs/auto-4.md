@@ -7,7 +7,20 @@ sobre o commit `30bffb71b902e4311db1db45ea6e112b31f1270a`. O encerramento em
 
 Horários abaixo em `America/Sao_Paulo`, exceto timestamps com offset explícito.
 
-## Ajuste em execução — 09/10, 00h30–01h
+## Estado atual — 09/10, dry-run BRSA0257 PASS; restauração em execução
+
+Às **00h39**, o dry-run real da BRSA0257 passou: **56 avaliados, 25 elegíveis com
+pendências, zero enviados**. Ambos os dry-runs operacionais agora têm PASS.
+Os 412 registros da tabela ficaram inalterados; métricas confirmam uma invocação
+direta, zero Errors/Throttles e zero SES Send no intervalo observado. Readiness,
+settings e provas passaram em ambas as turmas. Schedules DISABLED e gate false.
+
+A restauração definitiva das **20h–20h30 para ambas as turmas** está preparada
+em código, sem os dois deslocamentos temporários. Passaram 300 testes de backend,
+40 de integração e quatro testes Terraform. Commit/CI, plano e apply da restauração
+ainda estão pendentes neste checkpoint. **AUTO-4 em andamento.**
+
+## Checkpoint temporário — 09/10, 00h30–01h
 
 O usuário confirmou a janela temporária **00h30–01h de 09/10** para finalizar o
 dry-run da BRSA0257. Somente essa turma recebe o deslocamento de 4h30 em relação
@@ -22,7 +35,7 @@ Deploy e uma invocação diagnóstica ainda pendentes neste checkpoint. Após o
 resultado positivo, segue a restauração definitiva das 20h já autorizada,
 com commit separado, CI, plano isolado e apply revisado. AUTO-5 permanece fora do escopo.
 
-## Estado atual — 08/10, 00h27; readiness BRSA0257 aprovada
+## Checkpoint — 08/10, 00h27; readiness BRSA0257 aprovada
 
 - Dry-run diagnóstico publicado para **21h30–22h**, qualquer dia, com fim exclusivo.
 - LIVE permanece **terça/sexta, 20h–20h30**, com schedules **DISABLED** e gate **false**.
@@ -365,6 +378,35 @@ Evidência sanitizada:
 `/private/tmp/auto4-brsa0257-readiness-20261007-ed_8ufns/readiness.json`.
 
 **AUTO-4 em andamento; AUTO-5 não iniciada.**
+
+## 12. Dry-run positivo BRSA0257 — 09/10 às 00h39
+
+- Commit temporário: `97f75edf37e48aae8e167ed2f44fbb8de0562b6b`, enviado para
+  `alric-corp/main`; [CI completo aprovado](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37879999581).
+- Plano isolado revisado: **0 add / 5 change / 0 destroy**, somente o ZIP das
+  cinco Lambdas. ACM no-op; nenhum schedule, IAM ou environment alterado.
+- Apply único: **00h38min21s–00h39min00s**, resultado **0/5/0**, state **64 → 66**.
+- ZIP SHA-256: `e9ae407b4a330cb63ba88772da15c39443670077310c34ec8c0b5ba40ad0965e`.
+- CodeSha256: `6a5Ae0ozDLY7qIdy2hXDlENnAHcxDDTsjAtbpArQll4=`; cinco Lambdas
+  Active/Successful, 67 verificações IAM e 160 de infraestrutura aprovadas.
+- Full plan pós-apply: apenas ACM conhecido, **1 add / 0 change / 0 destroy**;
+  nenhum resíduo AUTO-4. O plano consumido foi removido após convergência.
+- Readiness SES, settings versão 1, vínculos e prova natural das 18h de **08/10**
+  válidos em ambas as turmas. Nenhum settings foi alterado nesta etapa.
+- Uma invocação síncrona da BRSA0257, **00h39min43s–00h39min49s**, `dryRun=true`,
+  sem retry, relógio real, `scheduledFor=2026-10-08T23:00:00Z` (20h de 08/10).
+- Resultado: **dry-run**, 56 avaliados, 25 elegíveis/pendentes, 31 desconsiderados
+  (15 sem pendência, 15 withdrawn, um sem e-mail), **sent=0**. Publicação usada
+  corresponde à prova validada. HTTP 200, sem FunctionError, logs sem PII/evento bruto.
+- AUTO_REMINDER=0 e REMINDER=0 nas duas turmas. Os **412 registros** ficaram
+  idênticos nos snapshots consistentes de **00h39min34s e 00h40min03s**.
+- Métricas às **00h41min47s**: **Invocations=1 / Errors=0 / Throttles=0** desde o
+  apply temporário; a única invocação corresponde à chamada manual autorizada.
+  **AWS/SES Send=0** observado na conta/região. Nenhum envio automático.
+- Como os dois dry-runs passaram, foi iniciada a restauração definitiva autorizada.
+  Nenhum LIVE executado; schedules DISABLED e gate false preservados.
+
+Evidências: `/private/tmp/auto4-midnight-20261009-luhafjbw`.
 
 ## 11. BRSA0257 — revalidação após confirmação SES, 08/10
 

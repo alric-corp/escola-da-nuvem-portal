@@ -801,9 +801,9 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.assertIsNone(self.record())
 
     def diagnostic(self, at=None):
-        """Quarta-feira 21h30: diagnóstico da ocorrência das 20h, com prova das 18h."""
+        """Quarta-feira 20h: dia sem envio LIVE, com prova das 18h, settings e remetente válidos."""
         self.event["scheduledFor"] = sao_paulo(2026, 10, 7, 20, 0)
-        self.at = at or sao_paulo(2026, 10, 7, 21, 30)
+        self.at = at or self.event["scheduledFor"]
         self.prepare()
 
     def assert_untouched(self, before):
@@ -820,12 +820,10 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.event["scheduledFor"] = self.at = sao_paulo(2026, 10, day, 20, 0)
                 self.prepare()
                 before = copy.deepcopy(self.repo.items)
-                self.at = sao_paulo(2026, 10, day, 21, 30)
                 dry = self.execute(dry_run=True, enabled=False)[0]
                 self.assertEqual((dry["status"], dry["reason"], dry["dryRun"]), ("dry-run", None, True))
                 self.assertEqual(dry["counts"]["pending"], 1)
                 self.assert_untouched(before)
-                self.at = self.event["scheduledFor"]
                 live = self.execute()[0]
                 if live_day:
                     self.assertEqual((live["status"], live["counts"]["sent"]), ("completed", 1))
@@ -864,15 +862,15 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         for operation in (put, transaction, send): operation.assert_not_called()
         self.assert_untouched(before)
 
-    def test_diagnostic_executes_inside_2130_to_2200_and_refuses_before_or_after(self):
-        for at, status, reason in ((sao_paulo(2026, 10, 7, 20, 0), "skipped", "not-due"),
-                                   (sao_paulo(2026, 10, 7, 21, 29, 59), "skipped", "not-due"),
-                                   (sao_paulo(2026, 10, 7, 21, 30), "dry-run", None),
-                                   (sao_paulo(2026, 10, 7, 21, 45), "dry-run", None),
-                                   (sao_paulo(2026, 10, 7, 21, 59, 59), "dry-run", None),
-                                   (sao_paulo(2026, 10, 7, 21, 59, 59, 999999), "dry-run", None),
-                                   (sao_paulo(2026, 10, 7, 22, 0), "skipped", "window-expired"),
-                                   (sao_paulo(2026, 10, 7, 22, 1), "skipped", "window-expired")):
+    def test_diagnostic_executes_inside_2000_to_2030_and_refuses_before_or_after(self):
+        for at, status, reason in ((sao_paulo(2026, 10, 7, 19, 59), "skipped", "not-due"),
+                                   (sao_paulo(2026, 10, 7, 19, 59, 59), "skipped", "not-due"),
+                                   (sao_paulo(2026, 10, 7, 20, 0), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 15), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 29, 59), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 29, 59, 999999), "dry-run", None),
+                                   (sao_paulo(2026, 10, 7, 20, 30), "skipped", "window-expired"),
+                                   (sao_paulo(2026, 10, 7, 20, 31), "skipped", "window-expired")):
             with self.subTest(at=at):
                 self.setUp()
                 self.diagnostic(at)
@@ -911,74 +909,45 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.assertEqual((result["status"], result["reason"]), ("skipped", reason))
                 self.assert_untouched(before)
 
-    def midnight_diagnostic(self):
-        code = "BRSA0257"
-        self.repo.put("COHORT#" + code, "METADATA", {"code": code, "current": None})
-        draft = self.admin.dispatch("POST", "/cohorts/" + code + "/preview",
-                                    {"csv": canvas_csv(kc="", lab=""), "activeIds": ["001 KC (123)", "002 Lab (456)"]})
-        self.admin.dispatch("POST", "/cohorts/" + code + "/publish", {"draftId": draft["draft"]["id"]})
-        self.event["scheduledFor"] = sao_paulo(2026, 10, 8, 20, 0)
-        self.at = sao_paulo(2026, 10, 9, 0, 30)
-        self.prepare(code=code)
-
-    def test_brsa0257_temporary_midnight_window_is_read_only_and_keeps_original_proof(self):
+    def test_restored_diagnostic_at_20h_is_read_only_for_both_cohorts(self):
         from sync_runs import evening_sync_key
-        for at, status, reason in (
-                (sao_paulo(2026, 10, 9, 0, 29, 59), "skipped", "not-due"),
-                (sao_paulo(2026, 10, 9, 0, 30), "dry-run", None),
-                (sao_paulo(2026, 10, 9, 0, 59, 59, 999999), "dry-run", None),
-                (sao_paulo(2026, 10, 9, 1, 0), "skipped", "window-expired")):
-            with self.subTest(at=at):
+        for code in ("BRSA0257", "BRSA0267"):
+            with self.subTest(code=code):
                 self.setUp()
-                self.midnight_diagnostic()
-                self.at = at
+                if code == "BRSA0257":
+                    self.repo.put("COHORT#" + code, "METADATA", {"code": code, "current": None})
+                    draft = self.admin.dispatch("POST", "/cohorts/" + code + "/preview",
+                                                {"csv": canvas_csv(kc="", lab=""), "activeIds": ["001 KC (123)", "002 Lab (456)"]})
+                    self.admin.dispatch("POST", "/cohorts/" + code + "/publish", {"draftId": draft["draft"]["id"]})
+                self.event["scheduledFor"] = self.at = sao_paulo(2026, 10, 7, 20, 0)
+                self.prepare(code=code)
                 before = copy.deepcopy(self.repo.items)
                 with patch.object(self.repo, "put", side_effect=AssertionError("no write")), \
                         patch.object(self.repo, "transaction", side_effect=AssertionError("no transaction")), \
                         patch.object(self.mailer, "send", side_effect=AssertionError("no send")):
-                    result = self.execute(cohort_codes=["BRSA0257"], dry_run=True, enabled=False)[0]
-                self.assertEqual((result["status"], result["reason"]), (status, reason))
-                self.assertEqual(evening_sync_key(result["scheduledFor"]), "SYNC_RUN#2026-10-08T21:00:00Z")
+                    result = self.execute(cohort_codes=[code], dry_run=True, enabled=False)[0]
+                self.assertEqual((result["status"], result["counts"]["pending"]), ("dry-run", 1))
+                self.assertEqual(evening_sync_key(result["scheduledFor"]), "SYNC_RUN#2026-10-07T21:00:00Z")
                 self.assertEqual(self.repo.items, before)
                 self.assertEqual(self.mailer.sent, [])
 
-    def test_midnight_diagnostic_never_extends_live_or_accepts_late_proof(self):
-        self.midnight_diagnostic()
-        with patch.object(self.repo, "get", side_effect=AssertionError("no LIVE reads")):
-            self.assertEqual(self.execute(cohort_codes=["BRSA0257"])[0]["reason"], "not-due")
-        key = "SYNC_RUN#2026-10-08T21:00:00Z"
-        proof = self.repo.get("COHORT#BRSA0257", key)
-        self.repo.put("COHORT#BRSA0257", key, {**proof, "finishedAt": "2026-10-08T23:00:01Z"})
-        before = copy.deepcopy(self.repo.items)
-        result = self.execute(cohort_codes=["BRSA0257"], dry_run=True, enabled=False)[0]
-        self.assertEqual(result["reason"], "sync-invalid")
-        self.assertEqual(self.repo.items, before)
+    def test_restoration_removes_both_temporary_windows_in_every_mode(self):
+        for code in ("BRSA0257", "BRSA0267"):
+            for dry_run in (True, False):
+                for at in (sao_paulo(2026, 10, 6, 21, 30), sao_paulo(2026, 10, 7, 0, 30)):
+                    with self.subTest(code=code, dry_run=dry_run, at=at):
+                        self.at = at
+                        with patch.object(self.repo, "get", side_effect=AssertionError("expired before read")), \
+                                patch.object(self.mailer, "readiness", side_effect=AssertionError("no SES")):
+                            result = self.execute(cohort_codes=[code], dry_run=dry_run)[0]
+                        self.assertEqual(result["reason"], "window-expired")
 
-    def test_midnight_override_does_not_change_brsa0267(self):
-        self.event["scheduledFor"] = sao_paulo(2026, 10, 8, 20, 0)
-        self.at = sao_paulo(2026, 10, 9, 0, 30)
-        with patch.object(self.repo, "get", side_effect=AssertionError("expired before reads")):
-            self.assertEqual(self.execute(dry_run=True)[0]["reason"], "window-expired")
-
-    def test_diagnostic_window_never_extends_live_authorization(self):
-        for day in (6, 9):
-            with self.subTest(day=day):
-                self.setUp()
-                self.event["scheduledFor"] = sao_paulo(2026, 10, day, 20, 0)
-                self.at = sao_paulo(2026, 10, day, 21, 30)
-                before = copy.deepcopy(self.repo.items)
-                with patch.object(self.repo, "get", side_effect=AssertionError("LIVE expired before reads")), \
-                        patch.object(self.mailer, "readiness", side_effect=AssertionError("no SES")):
-                    result = self.execute(enabled=True)[0]
-                self.assertEqual((result["status"], result["reason"]), ("skipped", "window-expired"))
-                self.assert_untouched(before)
-
-    def test_diagnostic_rechecks_2200_deadline_after_readiness(self):
+    def test_restored_diagnostic_rechecks_2030_deadline_after_readiness(self):
         self.diagnostic()
         before = copy.deepcopy(self.repo.items)
         original = self.mailer.readiness
         def late_readiness(sender):
-            self.at = sao_paulo(2026, 10, 7, 22, 0)
+            self.at = sao_paulo(2026, 10, 7, 20, 30)
             return original(sender)
         with patch.object(self.mailer, "readiness", side_effect=late_readiness):
             result = self.execute(dry_run=True, enabled=False)[0]
@@ -997,7 +966,6 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.prepare()
         self.assertEqual(evening_sync_key(self.event["scheduledFor"]),
                          "SYNC_RUN#" + canonical_time(sao_paulo(2026, 10, 7, 18, 0)))
-        self.at = "2026-10-08T02:30:00+02:00"
         self.assertEqual(self.execute(dry_run=True)[0]["status"], "dry-run")
         self.assertEqual(self.execute()[0]["reason"], "not-due")
         self.assertEqual(self.mailer.sent, [])
@@ -1070,8 +1038,6 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.setUp()
                 if name == "quarta":
                     self.diagnostic()
-                else:
-                    self.at = sao_paulo(2026, 10, 6, 21, 30)
                 self.assert_handler_dry_run_is_read_only()
 
     def assert_handler_dry_run_is_read_only(self):
@@ -1107,7 +1073,6 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_worker_defaults_to_dry_run_and_never_enables_itself(self):
         from automatic_reminders import run
         before = copy.deepcopy(self.repo.items)
-        self.at = sao_paulo(2026, 10, 6, 21, 30)
         run(self.repo, self.mailer, self.event, ["BRSA0267"], "escoladanuvem.org", clock=lambda: self.at)
         self.assertEqual(self.repo.items, before)
         self.assertEqual(self.mailer.sent, [])
@@ -1177,7 +1142,6 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def test_unknown_and_sending_are_never_retried(self):
         from reminders import reminder_key
         pub = self.repo.get("COHORT#BRSA0267", "METADATA")["current"]
-        self.at = sao_paulo(2026, 10, 6, 21, 30)
         for status in ("unknown", "sending", "sent"):
             with self.subTest(status=status):
                 self.repo.put("COHORT#BRSA0267", reminder_key(pub, "101"), {"status": status, "by": "manual"})
@@ -1353,7 +1317,6 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
         self.assertEqual(self.execute()[0]["reason"], "publication-changed")
         self.assertEqual(self.record()["publicationId"], pinned)
         self.assertEqual(self.mailer.sent, [])
-        self.at = sao_paulo(2026, 10, 6, 21, 30)
         self.assertEqual(self.execute(dry_run=True)[0]["reason"], "publication-changed")
 
     def test_ses_accepted_but_status_write_failed_never_reopens_sending(self):

@@ -18,8 +18,6 @@ from sync_runs import SOURCE, TIMEZONE, canonical_time, evening_sync_key, instan
 SLOT = (20, 0)  # horário local (America/Sao_Paulo) de toda ocorrência
 LIVE_WEEKDAYS = (1, 4)  # terça e sexta: calendário operacional do envio
 WINDOW = timedelta(minutes=30)
-DRY_RUN_DELAY = timedelta(minutes=90)  # diagnóstico 21h30–22h; referência/prova continuam às 20h
-DRY_RUN_DELAYS = {"BRSA0257": timedelta(hours=4, minutes=30)}  # temporário: 00h30–01h do dia seguinte
 LEASE = timedelta(seconds=120)
 SKIP_REASONS = {"withdrawn", "no-email", "no-pending", "already-sent", "not-found"}
 CONFIG_REASONS = {"settings-missing", "settings-invalid", "automatic-disabled", "sender-unlinked", "sender-invalid"}
@@ -66,9 +64,7 @@ class CohortRun:
         self.sk = "AUTO_REMINDER#" + context["scheduledFor"]
         self.actor = "system:auto-reminder:" + context["scheduledFor"]
         self.scheduled = instant(context["scheduledFor"])
-        delay = DRY_RUN_DELAYS.get(code, DRY_RUN_DELAY) if dry_run else timedelta()
-        self.window_start = self.scheduled + delay
-        self.deadline = self.window_start + WINDOW
+        self.deadline = self.scheduled + WINDOW
         self.record = self.publication = self.snapshot = self.old = None
         self.counts = empty_counts()
 
@@ -77,7 +73,7 @@ class CohortRun:
 
     def check_window(self):
         at = self.now()
-        if at < self.window_start:
+        if at < self.scheduled:
             raise Stop("not-due")
         if at >= self.deadline:
             raise Stop("window-expired")
