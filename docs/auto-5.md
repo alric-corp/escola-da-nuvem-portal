@@ -1,6 +1,29 @@
 # AUTO-5 — ativação controlada dos lembretes automáticos
 
-**Em andamento. Canvas natural de 09/10 às 18h PASS; AUTO-5.1 em preparação.**
+**Em andamento. AUTO-5.1 aplicada; piloto BRSA0267 em preparação.**
+
+## AUTO-5.1 — gate global aplicado em 09/10, 18h51
+
+- Commit `800167b965cc18666b2a946bcdfe10c0537ffcba`;
+  [CI completo SUCCESS](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/37995410587).
+- Plano isolado com refresh: **0 add / 1 change / 0 destroy**. Única ação:
+  `aws_lambda_function.automatic_reminders`, exclusivamente environment
+  `AUTOMATIC_REMINDERS_ENABLED: false → true`. ZIP e demais campos idênticos.
+  ACM fora das ações; nenhum schedule alterado. Warning de targeting esperado.
+- SHA-256 do plano consumido:
+  `a861bafe8b7159c548295d1b7a2c2cabc07b2d55625fc818fc2c871775d8e247`.
+- Apply único do arquivo salvo: **18h51min18s–18h51min30s**, resultado **0/1/0**.
+  State **68 → 69**. A comparação anterior do state detectou apenas ordenação
+  variável dos mesmos nove `check_results`; conteúdo, recursos e serial iguais.
+- Pós-apply: worker Active/Successful com gate true; **ambos schedules DISABLED**;
+  IAM/configuração real PASS (67 + 160 verificações). Readiness/settings e provas
+  de hoje continuam válidos. Zero START da worker, AUTO_REMINDER, REMINDER e delivery.
+- Full plan somente leitura: **1 add / 0 change / 0 destroy**, exclusivamente ACM;
+  sem ação residual AUTO-5.1. Plano consumido removido após convergência.
+
+AUTO-5.2 preparada com uma única mudança funcional: state do schedule BRSA0267
+DISABLED → ENABLED. BRSA0257 permanece DISABLED; worker gate permanece true.
+Commit/CI, plano isolado, apply e observação do LIVE serão registrados após execução.
 
 ## Checkpoint — 09/10, 18h44
 

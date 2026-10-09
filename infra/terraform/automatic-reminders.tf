@@ -134,7 +134,7 @@ resource "aws_scheduler_schedule" "automatic_reminders" {
   description                  = "Lembretes da turma ${each.key}; ativação depende de revisão AUTO-4."
   schedule_expression          = "cron(0 20 ? * TUE,FRI *)"
   schedule_expression_timezone = "America/Sao_Paulo"
-  state                        = "DISABLED"
+  state                        = each.key == "BRSA0267" ? "ENABLED" : "DISABLED"
   flexible_time_window {
     mode = "OFF"
   }

@@ -78,7 +78,7 @@ override_resource {
   values          = { arn = "arn:aws:scheduler:us-east-1:123456789012:schedule-group/automatic" }
 }
 
-run "automatic_reminders_gate_open_schedules_disabled" {
+run "automatic_reminders_brsa0267_pilot" {
   command = plan
 
   assert {
@@ -95,7 +95,7 @@ run "automatic_reminders_gate_open_schedules_disabled" {
         "TABLE_NAME", "IMPORTS_BUCKET", "INSTRUCTOR_EMAIL_DOMAIN", "REMINDER_CONFIGURATION_SET", "AUTOMATIC_REMINDER_COHORTS", "AUTOMATIC_REMINDERS_ENABLED"
       ])
     )
-    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate aberto; schedules continuam desabilitados e sem segredo Canvas."
+    error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate aberto; sem segredo Canvas."
   }
 
   assert {
@@ -151,7 +151,7 @@ run "automatic_reminders_gate_open_schedules_disabled" {
   assert {
     condition = toset(keys(aws_scheduler_schedule.automatic_reminders)) == toset(["BRSA0257", "BRSA0267"]) && alltrue([
       for code, schedule in aws_scheduler_schedule.automatic_reminders :
-      schedule.state == "DISABLED" && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
+      schedule.state == (code == "BRSA0267" ? "ENABLED" : "DISABLED") && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
       && schedule.schedule_expression_timezone == "America/Sao_Paulo" && schedule.flexible_time_window[0].mode == "OFF"
       && schedule.group_name == aws_scheduler_schedule_group.automatic_reminders.name
       && schedule.target[0].arn == aws_lambda_function.automatic_reminders.arn
@@ -167,7 +167,7 @@ run "automatic_reminders_gate_open_schedules_disabled" {
         attemptNumber = "<aws.scheduler.attempt-number>", dryRun = false
       }
     ])
-    error_message = "Dois schedules DISABLED, somente terça/sexta 20h São Paulo, retry limitado e input exato sem PII."
+    error_message = "Somente BRSA0267 ENABLED; BRSA0257 DISABLED. Terça/sexta 20h São Paulo, retry limitado e input exato sem PII."
   }
 
   assert {
