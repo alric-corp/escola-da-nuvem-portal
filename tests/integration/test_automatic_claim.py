@@ -115,6 +115,25 @@ class AutomaticReminderClaimTests(unittest.TestCase):
                 self.repo.table.delete_item(Key={"PK": self.pk, "SK": self.sk})
         self.assertEqual(self.mailer.sent, [])
 
+    def test_recovery_0035_original_occurrence_acquires_real_v1_claim(self):
+        raw = self.raw_settings()
+        event = {**self.event, "version": 1, "cohortCode": "BRSA0267", "dryRun": False,
+                 "attemptNumber": 2, "executionId": "recovery-20261009-2000-test"}
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "true",
+                                     "AUTOMATIC_REMINDER_COHORTS": '["BRSA0267"]',
+                                     "INSTRUCTOR_EMAIL_DOMAIN": "example.test"}), \
+                patch("automatic_reminders.reminders.SESMailer", return_value=self.mailer), \
+                patch("automatic_reminders.utc_now", lambda: "2026-10-10T03:35:00Z"), \
+                patch("automatic_reminders.time.sleep"):
+            result = handler(event, SimpleNamespace(get_remaining_time_in_millis=lambda: 300000))[0]
+        self.assertEqual((result["status"], result["reason"]), ("completed", None))
+        self.assertEqual(result["counts"]["sent"], 2)
+        record = self.repo.get(self.pk, self.sk)
+        self.assertEqual(record["scheduledFor"], "2026-10-09T23:00:00Z")
+        self.assertEqual(record["syncKey"], "SYNC_RUN#2026-10-09T21:00:00Z")
+        self.assertEqual(record["attemptNumber"], 2)
+        self.assertEqual(self.raw_settings(), raw)
+
     def test_representation_only_change_before_claim_is_not_a_logical_conflict(self):
         worker = self.prepared_claim()
         raw = json.dumps(self.settings, indent=3, sort_keys=True)
