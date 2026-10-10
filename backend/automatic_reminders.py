@@ -65,11 +65,6 @@ class CohortRun:
         self.actor = "system:auto-reminder:" + context["scheduledFor"]
         self.scheduled = instant(context["scheduledFor"])
         self.deadline = self.scheduled + WINDOW
-        # Recovery temporária aprovada: apenas LIVE BRSA0267 de 09/10 às 20h.
-        # Limite exclusivo em 10/10 01h local; não cria ocorrência de sábado.
-        if (not dry_run and code == "BRSA0267"
-                and context["scheduledFor"] == "2026-10-09T23:00:00Z"):
-            self.deadline = self.scheduled + timedelta(minutes=300)
         self.record = self.publication = self.snapshot = self.old = None
         self.counts = empty_counts()
 

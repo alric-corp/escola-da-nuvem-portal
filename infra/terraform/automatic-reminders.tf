@@ -82,7 +82,7 @@ resource "aws_lambda_function" "automatic_reminders" {
       AUTOMATIC_REMINDER_COHORTS = jsonencode(sort(tolist(var.automatic_reminder_cohorts)))
       # Espelho conservador do gate de infraestrutura: bloqueia invocação live
       # acidental também fora do Scheduler. Não impede dry-run explícito.
-      AUTOMATIC_REMINDERS_ENABLED = "true"
+      AUTOMATIC_REMINDERS_ENABLED = "false"
     }
   }
   depends_on = [aws_iam_role_policy.automatic_reminders]
