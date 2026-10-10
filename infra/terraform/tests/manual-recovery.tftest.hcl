@@ -28,7 +28,7 @@ run "manual_disabled_and_iam_isolated" {
     condition = (
       aws_lambda_function.automatic_reminders.publish
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_ENABLED == "false"
-      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "false"
+      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "true"
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_COHORT == "BRSA0267"
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_SCHEDULED_FOR == "2026-10-09T23:00:00Z"
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_ALIAS_ARN == local.manual_recovery_alias_arn
@@ -39,7 +39,7 @@ run "manual_disabled_and_iam_isolated" {
       && aws_lambda_function_event_invoke_config.manual_recovery.qualifier == "manual-recovery"
       && alltrue([for s in aws_scheduler_schedule.automatic_reminders : s.state == "DISABLED"])
     )
-    error_message = "Instalar com ambos gates fechados, schedules desligados, alias versionado sem retry e escopo original exato."
+    error_message = "Gate automático aberto mantém manual fechado, schedules desligados, alias versionado sem retry e escopo original exato."
   }
 
   assert {
@@ -80,10 +80,10 @@ run "manual_authorization_has_absolute_iam_expiry" {
         DateGreaterThanEquals = { "aws:CurrentTime" = var.manual_recovery.not_before }
         DateLessThan          = { "aws:CurrentTime" = var.manual_recovery.expires_at }
       }
-      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "false"
+      && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "true"
       && alltrue([for s in aws_scheduler_schedule.automatic_reminders : s.state == "DISABLED"])
     )
-    error_message = "Ativação manual isolada: mesma expiração no runtime e IAM, sem abrir gate automático ou schedules."
+    error_message = "Autorização manual tem a mesma expiração no runtime e IAM; não altera o gate automático independente nem os schedules desligados."
   }
 }
 
