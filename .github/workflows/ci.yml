@@ -28,6 +28,8 @@ jobs:
         run: python -m unittest discover -s backend
       - name: Testes de integração (Moto, sem AWS real)
         run: python -m unittest discover -s tests/integration
+      - name: Mutações do claim automático (Moto, sem AWS real)
+        run: python tests/contracts/claim_mutations.py
 
   node:
     name: Frontend (Node + Playwright)

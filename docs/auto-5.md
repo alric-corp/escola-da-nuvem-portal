@@ -2,6 +2,9 @@
 
 **Em andamento, bloqueada após o primeiro LIVE natural. Piloto BRSA0267 não aprovado.**
 
+Correção do falso conflito em preparação, **sem deploy ou reativação**:
+[diagnóstico, RED/GREEN, concorrência e plano de revisão](auto-5-claim.md).
+
 ## Estado atual — 09/10, 20h08
 
 | Controle | Estado real |

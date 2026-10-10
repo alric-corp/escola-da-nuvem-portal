@@ -108,6 +108,28 @@ class Repository:
         # com chaves em ordens diferentes.
         return json.dumps(data, ensure_ascii=False, sort_keys=True)
 
+    def _expected_data(self, pk, sk, expected):
+        """Compare o snapshot lógico; condicione a transação aos bytes lidos.
+
+        `data` é uma String DynamoDB, inclusive nos registros legados. Recriar
+        essa string a partir do dict pode mudar só sua representação JSON.
+        A leitura consistente não autoriza a escrita: #d = :old ainda rejeita
+        qualquer mudança entre esta leitura e o commit atômico da transação.
+        A mesma canonicalização dos writers preserva tipos (true != 1), todos
+        os campos e seus valores; nunca substituir o esperado por dados novos.
+        """
+        item = self.table.get_item(Key={"PK": pk, "SK": sk}, ConsistentRead=True).get("Item") or {}
+        raw = item.get("data")
+        if not isinstance(raw, str):
+            raise Conflict()
+        try:
+            current = json.loads(raw)
+        except (ValueError, TypeError):
+            raise Conflict() from None
+        if self._encode(current) != self._encode(expected):
+            raise Conflict()
+        return raw
+
     def transaction(self, writes, counters=(), checks=()):
         """Escritas atômicas. Cada escrita é (pk, sk, dados, esperado[, expiresAt]): dados None
         apaga; esperado None exige item inexistente, senão exige o item igual a `esperado`.
@@ -126,7 +148,7 @@ class Repository:
             if expected is not None and expected.get("_seed"):
                 action["ConditionExpression"] = "attribute_exists(PK) AND attribute_not_exists(#d)"
             elif expected is not None:
-                action["ExpressionAttributeValues"] = {":old": {"S": self._encode(expected)}}
+                action["ExpressionAttributeValues"] = {":old": {"S": self._expected_data(pk, sk, expected)}}
             if data is None:
                 action["Key"] = {"PK": {"S": pk}, "SK": {"S": sk}}
                 del action["Item"]
@@ -143,7 +165,7 @@ class Repository:
                 if expected.get("_seed"):
                     check["ConditionExpression"] = "attribute_exists(PK) AND attribute_not_exists(#d)"
                 else:
-                    check["ExpressionAttributeValues"] = {":old": {"S": self._encode(expected)}}
+                    check["ExpressionAttributeValues"] = {":old": {"S": self._expected_data(pk, sk, expected)}}
             actions.append({"ConditionCheck": check})
         for pk, sk, deltas, limit, expires_at in counters:
             names = {f"#c{i}": name for i, name in enumerate(deltas)}
