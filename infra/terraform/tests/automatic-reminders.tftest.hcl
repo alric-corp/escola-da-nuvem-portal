@@ -6,10 +6,11 @@ mock_provider "aws" {
 mock_provider "archive" {}
 
 variables {
-  aws_account_id             = "123456789012"
-  cognito_sender_email       = "portal@example.test"
-  canvas_sync_enabled        = true
-  automatic_reminder_cohorts = ["BRSA0257", "BRSA0267"]
+  manual_recovery_operator_arn = ""
+  aws_account_id               = "123456789012"
+  cognito_sender_email         = "portal@example.test"
+  canvas_sync_enabled          = true
+  automatic_reminder_cohorts   = ["BRSA0257", "BRSA0267"]
 }
 
 override_resource {

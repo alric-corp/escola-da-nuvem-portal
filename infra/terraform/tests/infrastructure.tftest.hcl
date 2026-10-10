@@ -8,8 +8,9 @@ mock_provider "aws" {
 }
 
 variables {
-  aws_account_id       = "123456789012"
-  cognito_sender_email = "portal@example.test"
+  manual_recovery_operator_arn = ""
+  aws_account_id               = "123456789012"
+  cognito_sender_email         = "portal@example.test"
   # Fixo aqui: o terraform.tfvars local (produção) liga o agendamento e não pode mudar o teste.
   canvas_sync_enabled = false
 }
