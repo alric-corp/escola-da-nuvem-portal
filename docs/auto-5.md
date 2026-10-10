@@ -2,11 +2,13 @@
 
 **Em andamento, bloqueada após o primeiro LIVE natural. Piloto BRSA0267 não aprovado.**
 
-Correção do falso conflito com CI verde e plano salvo **0/6/0 para revisão**,
-**sem deploy ou reativação**:
-[diagnóstico, RED/GREEN, concorrência e plano de revisão](auto-5-claim.md).
+Correção do falso conflito **publicada em produção em 09/10, 22h00**, apply
+**0/6/0**, state 72 e full plan somente ACM **1/0/0**. Cinco Lambdas
+Active/Successful; schedules DISABLED, gate false e contagens de lembretes zero.
+**Sem reativação, migração ou novo LIVE; AUTO-5 continua bloqueada**:
+[diagnóstico, RED/GREEN e evidências do deploy](auto-5-claim.md#7-deploy-aprovado-e-concluído--0910-22h00).
 
-## Estado atual — 09/10, 20h08
+## Estado após o kill switch — checkpoint histórico de 09/10, 20h08
 
 | Controle | Estado real |
 | --- | --- |

@@ -1,9 +1,12 @@
 # AUTO-5 — correção do falso claim-conflict
 
-**AUTO-5 BLOQUEADA. Correção publicada no Git, CI verde e plano salvo para revisão;
-sem deploy, migração ou novo LIVE.**
+**Claim-fix publicado em produção em 09/10/2026, 22h00. Automação permanece
+desabilitada. AUTO-5 BLOQUEADA para novos envios; sem migração ou novo LIVE.**
 
-## Estado protegido
+O deploy aprovado e a verificação atual estão na seção 7. As seções anteriores
+preservam o diagnóstico e os checkpoints anteriores ao deploy.
+
+## Estado protegido — checkpoint anterior ao deploy
 
 Leitura em produção em **09/10/2026, 20h57, America/Sao_Paulo**:
 conta 712107929769, região us-east-1. Worker Active/Successful, gate **false**;
@@ -157,7 +160,7 @@ publicação, WITHDRAWN, dedupe/retry e ausência de PII nos erros. Não se trat
 uma validação LIVE em produção; custo das leituras adicionais deve ser observado
 na futura execução aprovada.
 
-## 5. Deploy e eventual nova tentativa — dependem de aprovação
+## 5. Preparação do deploy — checkpoint anterior à aprovação
 
 Após commit e CI completo verde, preparar ZIP e plano salvo isolado. Como o ZIP
 é compartilhado, a expectativa inicial era **0 add / 5 change / 0 destroy**, apenas código
@@ -181,7 +184,7 @@ Evidências locais sanitizadas/privadas:
 `/private/tmp/auto5-claim-20261009-bir8pxno`.
 Os encerramentos históricos AUTO-2.3 e AUTO-4 permanecem intactos.
 
-## 6. Plano concreto para aprovação — 09/10, 21h17
+## 6. Plano concreto para aprovação — checkpoint de 09/10, 21h17
 
 Correção: commit **`45a649d341f532e4e221eb0db3af58010c1762f0`**,
 [CI completo COMPLETED / SUCCESS](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38007753820).
@@ -240,3 +243,110 @@ O plano 0/6 é uma proposta concreta para revisão, não uma aprovação de depl
 **PARADA antes de qualquer apply ou write de produção.** Nenhum settings foi
 alterado, nenhuma Lambda invocada e nenhum e-mail enviado por esta tarefa.
 AUTO-5 continua bloqueada; não reativar BRSA0267 nem habilitar BRSA0257.
+
+## 7. Deploy aprovado e concluído — 09/10, 22h00
+
+**Claim-fix publicado em produção, automação permanece desabilitada.**
+Esta aprovação instalou somente a correção. AUTO-5 continua bloqueada e o
+piloto BRSA0267 ainda não possui aceite operacional.
+
+### Preflight final
+
+- HEAD `71e2a7e22f657231c543bbada9d693678b28f864`, árvore rastreada limpa,
+  main remoto no mesmo SHA; arquivo não rastreado do usuário preservado.
+- [CI completo COMPLETED / SUCCESS](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38008494413),
+  três jobs verdes. Código da correção no commit `45a649d`.
+- State serial **70**, lineage e conteúdo iguais ao checkpoint aprovado.
+- ZIP e tfplan com os mesmos SHA-256 da seção 6; somente `repository.py`
+  difere do pacote anterior, entre os 14 módulos.
+- Conta **712107929769**, região **us-east-1**: ambos schedules DISABLED,
+  gate false, worker Active/Successful e contagens AUTO_REMINDER/REMINDER zero
+  em ambas as turmas. Nove policies IAM iguais ao state.
+- `terraform show` reconfirmou **0 add / 6 change / 0 destroy**. Cinco ZIPs e
+  reconciliação idempotente do schedule BRSA0267; o gate true do state antigo
+  foi reconciliado para false, que já era o valor real na AWS.
+  Sem ações em ACM, IAM, BRSA0257, settings ou rotas, sem replacement/destroy.
+
+### Apply único
+
+Comando executado exatamente uma vez, sem recalcular o plano:
+
+```sh
+terraform -chdir=infra/terraform apply .build/auto5-claim-fix.tfplan
+```
+
+Início **09/10/2026 21h59min35s**, término **22h00min13s**,
+America/Sao_Paulo; exit code 0.
+**Apply complete! Resources: 0 added, 6 changed, 0 destroyed.**
+
+| Recurso | Resultado do apply | Verificação AWS posterior |
+| --- | --- | --- |
+| auth_trigger | Atualizado, 7 s | Active / Successful, hash aprovado |
+| canvas_sync | Atualizado, 14 s | Active / Successful, hash aprovado |
+| reminder_events | Atualizado, 20 s | Active / Successful, hash aprovado |
+| automatic_reminders | Atualizado, 27 s | Active / Successful, hash aprovado, gate false |
+| identity | Atualizado, 26 s | Active / Successful, hash aprovado |
+| Schedule BRSA0267 | Atualizado, 0 s | DISABLED, igual à AWS antes do apply |
+
+As cinco Lambdas publicaram CodeSha256
+`23yqghzbqtH1e0h1pajG+MTEP9yjnstJ8j9Zz7d4vQ8=`.
+Handler, runtime, arquitetura, memória, timeout, role, environment, layers e
+concurrency foram comparados com a AWS anterior e permanecem iguais.
+Worker: `automatic_reminders.handler`, Python 3.13, arm64, 256 MB, 300 s,
+reserved concurrency 2, gate **false**, sem Function URL.
+
+### Estado real e convergência
+
+| Controle | Resultado |
+| --- | --- |
+| BRSA0257 | DISABLED |
+| BRSA0267 | DISABLED |
+| Ambos os schedules | `cron(0 20 ? * TUE,FRI *)`, America/Sao_Paulo, flexible OFF |
+| Target/input/retry dos schedules | Iguais ao preflight |
+| Canvas Scheduler | ENABLED, 06h/18h, sem alteração funcional |
+| State após apply | Serial **72**; gate false e ambos schedules DISABLED |
+| AUTO_REMINDER / REMINDER | **0 / 0 em cada turma** |
+| REMINDER_SETTINGS | Itens completos idênticos ao preflight, versão 1; sem migração |
+| Worker Invocations / Errors / Throttles novos | **0 / 0 / 0 observados** |
+| Alarmes Errors / Throttles | **OK / OK** |
+| SendEmail automático | **0**, sem nova invocação da worker |
+
+Nenhuma escrita de domínio, invocação manual, dry-run ou envio foi executado
+nesta implantação. A leitura consistente confirmou settings intactos e ausência
+de ocorrências/reservas. Logs da worker sem novos eventos/START durante o deploy;
+métricas regionais SES Send/Bounce/Complaint sem datapontos de envio no período.
+A telemetria tem ingestão assíncrona; a confirmação inclui as travas reais,
+ausência de nova invocação e contagens dos dados, além das métricas.
+A invocação histórica das 20h permanece registrada no relatório do piloto.
+
+Full plan somente leitura, **22h00min52s–22h01min06s**, sem arquivo de saída:
+
+```sh
+terraform -chdir=infra/terraform plan -input=false -no-color -lock=false
+```
+
+**1 add / 0 change / 0 destroy**, exclusivamente
+`aws_acm_certificate.portal` create, pendência conhecida. **Zero ação residual
+da correção**, 35 rotas sem ação, nenhum warning/drift adicional. O state
+continuou serial 72 e idêntico após a auditoria. ACM não foi aplicado.
+
+Após convergência, o tfplan consumido foi apagado do checkout principal e da
+worktree da correção; hashes e evidências textuais foram preservados. Nenhum
+novo plano de deploy foi gerado. AUTO-2.3 e AUTO-4 permanecem intactas.
+
+Evidências privadas desta implantação: caminho registrado em
+`/private/tmp/auto5-claim-deploy-current`.
+
+### Parada e próxima tentativa
+
+**Não reabrir gate, não habilitar schedule, não executar LIVE nesta rodada.**
+BRSA0257 permanece fora do piloto. Uma nova tentativa BRSA0267 exige rodada
+separada e aprovação, Canvas natural das 18h, SYNC_RUN válido/publicação current,
+readiness, settings e quotas/SES. Depois: plano/apply do gate com ambos schedules
+DISABLED; plano/apply apenas de BRSA0267; aguardar terça/sexta às 20h natural.
+Não alterar a janela nem invocar manualmente.
+
+No futuro LIVE, comprovar claim/ocorrência, avaliação, WITHDRAWN, dedupe por
+student/publication, envios coerentes, retry sem duplicação, Errors/Throttles zero
+e logs sem PII. Novo claim-conflict é BLOCKER e exige kill switch/investigação.
+**Este deploy não encerra AUTO-5 nem aprova uma nova tentativa do piloto.**
