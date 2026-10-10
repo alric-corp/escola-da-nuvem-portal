@@ -2,7 +2,17 @@
 
 **Em andamento. LIVE manual BRSA0267 PASS; envio manual normal BRSA0257 PASS, 22 enviados/22 deliveries. Scheduler natural pendente.**
 
-**Estado atual — 10/10 às 17h07:** após aprovação explícita do lote revisado,
+**Estado atual — 10/10 às 18h54:** gate automático aplicado em operação única
+**0/1/0**, state **84**, worker versão **4** Active/Successful com automático
+**true** e manual **false**. Alias manual permanece na versão **3 desabilitada**,
+sem routing weights; IAM temporário revogado. Ambos schedules continuam
+**DISABLED**. Os **49 REMINDER sent / 49 deliveries** anteriores e os settings
+estão preservados, sem nova invocação da worker, envio, Bounce/Complaint ou
+Errors/Throttles observados. Full plan pós-gate **1/0/0 somente ACM**, antes da
+preparação do piloto. O plano para habilitar somente BRSA0267 está em preparação
+e exige aprovação separada; BRSA0257 permanece fora do piloto. Seções 22–23.
+
+**Checkpoint do envio — 10/10 às 17h07:** após aprovação explícita do lote revisado,
 uma única chamada autenticada ao fluxo normal da BRSA0257 retornou HTTP 200:
 **22 sent, zero failed/skips**, com os mesmos 22 destinatários aprovados.
 DynamoDB confirma 22 REMINDER sent e SES confirma 22 deliveries correlacionados,
