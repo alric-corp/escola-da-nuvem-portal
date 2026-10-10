@@ -2,7 +2,18 @@
 
 **Em andamento. LIVE manual BRSA0267 PASS; envio manual normal BRSA0257 PASS, 22 enviados/22 deliveries. Scheduler natural pendente.**
 
-**Estado atual — 10/10 às 18h54:** gate automático aplicado em operação única
+**Estado atual — 10/10 às 19h12:** piloto BRSA0267 aplicado em operação única
+**0/1/0**, state **85**. BRSA0267 **ENABLED**; BRSA0257 **DISABLED**. Worker
+versão **4** Active/Successful, gate automático **true**, recuperação manual
+**false**; alias manual permanece na versão **3 desabilitada**, IAM temporário
+revogado. Cron terça/sexta às 20h America/Sao_Paulo, flexible OFF, target
+não qualificado da worker. Full plan **1/0/0 somente ACM**, sem ação residual
+da AUTO-5; plano consumido removido. Os **49 sent / 49 deliveries** anteriores
+permanecem preservados, sem novo lembrete, envio ou invocação da worker observado.
+Primeira ocorrência natural prevista: **13/10 às 20h**, condicionada à prova
+do Canvas natural das **18h**. Parte B ainda pendente; detalhes na seção 24.
+
+**Checkpoint do gate — 10/10 às 18h54:** gate automático aplicado em operação única
 **0/1/0**, state **84**, worker versão **4** Active/Successful com automático
 **true** e manual **false**. Alias manual permanece na versão **3 desabilitada**,
 sem routing weights; IAM temporário revogado. Ambos schedules continuam
@@ -2213,3 +2224,111 @@ não cancela uma Lambda já iniciada. Não improvisar rollback de código.
 
 **PARADA antes do apply do schedule.** AUTO-5 depende dos dois disparos
 naturais validados; BRSA0257 requer aprovação posterior ao aceite do piloto.
+
+## 24. Piloto BRSA0267 aplicado — Parte A concluída, Parte B pendente
+
+### Aprovação e preflight
+
+HEAD e `alric-corp/main` conferidos:
+`3dc27ab9fb4a419d371abf097d57ec61bbe06fd1`. CI **38089551590 SUCCESS**, três
+jobs concluídos, árvore rastreada limpa. State **84** e AWS × state sem
+divergências funcionais nos recursos conferidos. Worker Active/Successful,
+automático true/manual false, alias 3 desabilitado, sem routing weights,
+IAM temporário revogado e ambos schedules inicialmente DISABLED.
+
+Plano salvo `.build/auto5-brsa0267-enable.tfplan`, SHA-256 aprovado:
+
+```text
+48fa29e6ff5ded8e83b3b0ddc7a21e2e7c6f27e670e2d8d6eb86e661ef070112
+```
+
+O plano foi reaberto e revisado: **0 add / 1 change / 0 destroy**, apenas
+`aws_scheduler_schedule.automatic_reminders["BRSA0267"]`, state DISABLED →
+ENABLED. Cron, timezone, flexible window, target, input, retry e execution
+role idênticos. Sem replacement ou ação em BRSA0257, worker, alias, IAM,
+ACM, settings ou ZIP. Não foi gerado outro plano antes do apply.
+
+### Apply único e resultado
+
+**10/10/2026, 19:11:07–19:11:13 America/Sao_Paulo.**
+**0 added / 1 changed / 0 destroyed.** Uma tentativa; somente o schedule
+BRSA0267 foi atualizado. Nenhum invoke manual ou envio foi realizado.
+
+| Controle pós-apply | Resultado |
+| --- | --- |
+| State serial | **85** |
+| BRSA0267 | **ENABLED** |
+| BRSA0257 | **DISABLED** |
+| Cron | `cron(0 20 ? * TUE,FRI *)` |
+| Timezone / flexible | America/Sao_Paulo / OFF |
+| Target | ARN não qualificado da worker; `$LATEST` com automático true |
+| Worker | versão **4**, Active / Successful, configuração e ZIP preservados |
+| Gate automático / manual | **true / false** |
+| Alias manual | versão **3 desabilitada**, sem routing weights |
+| IAM temporário | revogado; simulações de Invoke negadas |
+| BRSA0267 REMINDER sent / deliveries | **27 / 27**, preservados |
+| BRSA0257 REMINDER sent / deliveries | **22 / 22**, preservados |
+| AUTO_REMINDER | BRSA0267: 1 completed anterior; BRSA0257: 0 |
+| REMINDER_SETTINGS | inalterados; readiness dos dois remetentes PASS |
+| Novos lembretes / envios / invocações da worker observados | **0 / 0 / 0** |
+| Novos Errors / Throttles / Bounce / Complaint observados | **0 / 0 / 0 / 0** |
+
+Full plan somente leitura concluído às **19:12:51**: **1 add / 0 change /
+0 destroy**, exclusivamente `aws_acm_certificate.portal`. Worker, alias,
+IAM e schedules sem ação residual. State permaneceu 85. O tfplan consumido
+foi apagado após a convergência. O ZIP permanece com SHA-256
+`e5084d5657a71161dcb91da283a683746482fa566a0505f45e33eb9c7d9b4308`.
+
+Evidências privadas: `/private/tmp/auto5-pilot-apply-20261010-kqvsc1vo`.
+Resumos agregados: `before-apply-summary.json`, `apply-summary.json`,
+`post-apply-summary.json` e `convergence-summary.json`. Nenhuma PII ou
+credencial foi registrada neste documento. O arquivo não rastreado do
+operador permanece preservado.
+
+### Terça-feira 13/10 — checklist anterior às 20h
+
+**PENDENTE: ocorrência futura.** Retomar o acompanhamento após o Canvas
+natural das 18h, com margem antes das 20h. Esta entrega não cria um agente
+de monitoramento futuro; a verificação operacional requer retomada da sessão.
+
+- [ ] Confirmar BRSA0267 ENABLED, BRSA0257 DISABLED, automático true,
+  manual false, alias 3 desabilitado e IAM temporário revogado.
+- [ ] Observar o Canvas **natural** das 18h; não executar sync manual.
+- [ ] Validar SYNC_RUN BRSA0267 do slot **2026-10-13T21:00:00Z**:
+  source `portal.scheduler`, status succeeded, catalog/enrollment succeeded,
+  notes published ou unchanged; publicationId e metadataVersion/prova válidas.
+- [ ] Confirmar METADATA correspondente, publicação current e `finishedAt`
+  até **2026-10-13T23:00:00Z** (20h local). Sem fallback de publicação.
+- [ ] Revalidar settings/version/automaticEnabled, vínculos e sender readiness.
+- [ ] Calcular elegibilidade atual pelo domínio, somente leitura; não usar 27
+  como público fixo e não invocar worker, LIVE ou dry-run manual.
+- [ ] Revalidar SES HEALTHY, sending enabled, quotas/rate, alarmes e ausência
+  de Bounce/Complaint relevantes. Capturar baseline agregado de dados/métricas.
+- [ ] Se a prova falhar, **desabilitar BRSA0267 antes das 20h** e investigar.
+  Não substituir a ocorrência natural por uma chamada manual.
+
+### Às 20h e após a execução natural
+
+- [ ] Observar o Scheduler do slot **2026-10-13T23:00:00Z**: source/type,
+  cohortCode, scheduledFor, executionId e attemptNumber coerentes; correlacionar
+  internamente sem imprimir evento bruto, IDs de alunos ou destinatários.
+- [ ] Confirmar invocação da worker, claim adquirido e AUTO_REMINDER coerente.
+- [ ] Registrar evaluated, active, withdrawn, eligible, sent, failed, unknown
+  e skips por motivo, incluindo already-sent e publicação alterada, se ocorrerem.
+- [ ] Provar WITHDRAWN sem reserva/envio, dedupe student/publication,
+  REMINDER consistentes e ausência de duplicidade inclusive em retries.
+- [ ] Correlacionar sent com SES Send e deliveries disponíveis; registrar
+  entregas pendentes sem presumir sucesso. Conferir Bounce/Complaint.
+- [ ] Confirmar Errors=0, Throttles=0, alarmes saudáveis e logs sem PII.
+- [ ] Se a publicação for a mesma, impedir reenvio aos 27 já contatados.
+  Publicação nova válida permite reavaliação pelas regras existentes.
+  **sent=0 pode ser PASS**; não exigir envio positivo.
+- [ ] Problema relevante → desabilitar BRSA0267 e investigar, sem retry manual.
+  Problema sistêmico → também fechar o gate automático. Revogação não cancela
+  uma Lambda já iniciada.
+- [ ] PASS → manter BRSA0267 ENABLED e entregar Parte B para revisão.
+  **BRSA0257 permanece DISABLED** até aprovação posterior específica.
+
+**Parte B ainda não executada. AUTO-5 permanece EM ANDAMENTO.** Não iniciar
+a segunda turma nem AUTO-6; preencher os resultados somente quando a
+ocorrência natural acontecer.
