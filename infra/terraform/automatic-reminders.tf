@@ -69,6 +69,8 @@ resource "aws_lambda_function" "automatic_reminders" {
   handler          = "automatic_reminders.handler"
   filename         = data.archive_file.api.output_path
   source_code_hash = data.archive_file.api.output_base64sha256
+  # Alias manual aponta para versão imutável com o gate e a expiração revisados.
+  publish = true
   # Mesmo porte do Canvas; uma turma por invocação, envios sequenciais (250 ms).
   memory_size                    = 256
   timeout                        = 300
@@ -82,7 +84,13 @@ resource "aws_lambda_function" "automatic_reminders" {
       AUTOMATIC_REMINDER_COHORTS = jsonencode(sort(tolist(var.automatic_reminder_cohorts)))
       # Espelho conservador do gate de infraestrutura: bloqueia invocação live
       # acidental também fora do Scheduler. Não impede dry-run explícito.
-      AUTOMATIC_REMINDERS_ENABLED = "false"
+      AUTOMATIC_REMINDERS_ENABLED   = "false"
+      MANUAL_RECOVERY_ENABLED       = tostring(var.manual_recovery.enabled)
+      MANUAL_RECOVERY_COHORT        = var.manual_recovery.cohort
+      MANUAL_RECOVERY_SCHEDULED_FOR = var.manual_recovery.scheduled_for
+      MANUAL_RECOVERY_NOT_BEFORE    = var.manual_recovery.not_before
+      MANUAL_RECOVERY_EXPIRES_AT    = var.manual_recovery.expires_at
+      MANUAL_RECOVERY_ALIAS_ARN     = local.manual_recovery_alias_arn
     }
   }
   depends_on = [aws_iam_role_policy.automatic_reminders]

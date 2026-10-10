@@ -410,3 +410,127 @@ Artefatos fora do Git, diretório privado:
 Contém preflight Git/CI, auditorias IAM/infraestrutura, baseline sanitizada,
 state reservado e saída do full plan somente leitura. Não publicar state ou
 dados internos. Revalidar todas as condições voláteis antes de qualquer ativação.
+
+## 8. Recuperação manual controlada — implementação de 10/10/2026
+
+**Checkpoint: código preparado para revisão de deploy; sem apply ou envio nesta etapa.**
+AUTO-5 continua em andamento e bloqueada para nova ativação automática. Este modo
+não comprova o primeiro LIVE natural do Scheduler nem autoriza BRSA0257.
+O claim-fix já publicado permanece intacto; não há migração de REMINDER_SETTINGS.
+
+### Motivo e limite
+
+A ocorrência original BRSA0267 de sexta 09/10/2026 às 20h São Paulo falhou antes
+do claim. Uma execução tardia precisa de autorização própria: o gate e a janela
+do Scheduler não devem ser ampliados para recuperá-la.
+
+- Ocorrência de negócio: `2026-10-09T23:00:00Z` (sexta 20h).
+- Prova obrigatória: `SYNC_RUN#2026-10-09T21:00:00Z` (sexta 18h natural).
+- Calendário automático continua terça/sexta 20h–20h30; dry-run continua no
+  horário definitivo. Nenhuma nova ocorrência de sábado é criada.
+- `Repository`, seleção, claim, dedupe, reserva, participação, prova,
+  readiness, pacing e mensagem usam o mesmo caminho de domínio existente.
+
+### Autorização IAM e servidor
+
+O alias `manual-recovery` da própria worker aponta para uma versão publicada.
+Uma role dedicada confia em um único principal IAM operador, explicitado no
+plano. Sua única ação é `lambda:InvokeFunction` no ARN exato do alias, com
+`aws:CurrentTime` entre início e expiração absolutos. Não recebe acesso direto
+a DynamoDB, SES, S3, Scheduler ou configuração da Lambda.
+
+A role atual do Scheduler conserva somente o ARN **não qualificado**. A AWS
+avalia separadamente esses ARNs na autorização
+([documentação IAM/Lambda](https://docs.aws.amazon.com/lambda/latest/dg/lambda-api-permissions-ref.html)).
+O handler exige também o alias exato em `context.invoked_function_arn`, fornecido
+pelo runtime ([contexto Lambda](https://docs.aws.amazon.com/lambda/latest/dg/python-context.html)).
+`source`, `ClientContext` e campos enviados pelo cliente não autenticam.
+Invocar pelo ARN sem alias, `$LATEST`, versão numérica ou outro alias não abre
+o modo manual. Permissões administrativas da conta continuam sendo administrativas;
+a execução operacional deverá usar a role dedicada.
+
+Configuração independente, entregue fechada:
+
+| Campo | Valor no deploy de código |
+| --- | --- |
+| `AUTOMATIC_REMINDERS_ENABLED` | `false` |
+| `MANUAL_RECOVERY_ENABLED` | `false` |
+| Turma manual | BRSA0267 |
+| `scheduledFor` autorizado | `2026-10-09T23:00:00Z` |
+| Início/expiração | Datas no passado; nenhuma autorização ativa |
+| Schedules BRSA0257 / BRSA0267 | DISABLED / DISABLED |
+
+Ativação futura exige plano separado com início e expiração absolutos, intervalo
+positivo de no máximo 30 minutos. A expiração é exclusiva e conferida antes de
+criar clientes, antes do claim, ao renovar lease, antes de cada reserva e antes
+de iniciar SES. Se uma reserva atravessar a expiração, permanece conservadoramente
+`sending`, sem iniciar envio; não é liberada automaticamente para repetição.
+Requisição SES já iniciada e Lambda em execução não são canceladas pela troca
+de configuração. O lease continua limitado à expiração.
+
+O alias tem retry assíncrono zero como defesa adicional. A execução aprovada
+deve usar `InvocationType=RequestResponse`, cliente sem retries e uma única
+chamada. Timeout não autoriza repetição: a Lambda pode continuar processando.
+
+### Contrato manual
+
+```json
+{
+  "source": "portal.operator",
+  "type": "automatic-reminders",
+  "mode": "manual-recovery",
+  "version": 1,
+  "cohortCode": "BRSA0267",
+  "scheduledFor": "2026-10-09T23:00:00Z",
+  "executionId": "recovery-brsa0267-original-friday",
+  "attemptNumber": 2,
+  "dryRun": false
+}
+```
+
+O evento não admite campos adicionais, remetentes, destinatários, alunos ou
+publicação. `executionId` é telemetria: a chave AUTO_REMINDER e o ator continuam
+baseados na ocorrência original. SYNC_RUN precisa estar succeeded, com etapas
+válidas, concluído até sexta 20h e com publicação/METADATA ainda correspondentes.
+Não há fallback de publicação.
+
+### Evidências e testes
+
+Preflight somente leitura: conta `712107929769`, região `us-east-1`, state serial
+`79`, cinco Lambdas com o ZIP definitivo do claim-fix, worker Active/Successful,
+gate automático false, dois schedules DISABLED e zero AUTO_REMINDER/REMINDER
+em ambas as turmas. Readiness BRSA0267 PASS, settings v1/automaticEnabled true,
+prova original válida; SES HEALTHY, production/sending enabled, quota 50.000/dia,
+14/s e SentLast24Hours zero; alarmes Errors/Throttles OK. Revalidar antes do LIVE.
+
+Os testes Moto usam o writer AUTO-4 v1 e o caminho LIVE real do handler até
+claim, reserva e envio SES mockado. O cenário autorizado ficou RED no código
+anterior e GREEN com a implementação. Cobertura inclui acesso pelo alias,
+flag, expiração, escopo, publicação, sync, settings, WITHDRAWN, concorrência,
+retry/dedupe e expiração durante reserva/envio. Dry-run continua zero-write.
+Regressão local: 300 backend, 82 integração/Moto, 177 Node, 19 arquivos browser,
+9 cenários Terraform; fmt/validate/build verdes e 11 cenários de mutação OpenAPI
+aprovados. Mutations: 12/12 do claim e 11/11 da autorização manual eliminadas,
+zero sobreviventes. O CI completo do commit também deve estar verde antes do apply.
+Evidências sanitizadas e logs locais: `/private/tmp/auto5-manual-20261010-ed_sdipt`.
+
+### Próximos checkpoints — ainda não executados
+
+1. Aprovar o plano isolado de código/IAM/alias, sem ACM, gates false e schedules
+   DISABLED. Aplicar somente o plano salvo e confirmar hashes/configurações.
+2. Revalidar somente leitura prova, publicação current, settings, vínculos,
+   readiness, quotas, claim original ausente, dedupe e **população atual**.
+   Apresentar o número real de destinatários, sem reutilizar estimativa anterior.
+3. Aprovar plano separado de autorização manual BRSA0267/ocorrência original,
+   com validade curta. Gate automático e schedules continuam fechados.
+4. Obter aprovação explícita dos destinatários e da execução real; assumir a
+   role dedicada e realizar uma única invocação síncrona pelo alias.
+5. Registrar claim, agregados, dedupe, WITHDRAWN, SES/delivery/bounce/complaint,
+   Errors/Throttles e logs sanitizados. Sem retry manual em falha/timeout.
+6. Encerrar autorização: `manual_recovery.enabled=false`, revogar a janela IAM,
+   publicar versão com flag false e **reapontar o alias**. Alterar apenas `$LATEST`
+   não fecha um alias que ainda aponta para uma versão habilitada. Confirmar
+   configuração da versão efetivamente apontada pelo alias e negação IAM.
+   A expiração absoluta permanece como proteção mesmo antes dessa reconciliação.
+
+Depois parar para revisão. Não habilitar BRSA0257 nem declarar AUTO-5 concluída.

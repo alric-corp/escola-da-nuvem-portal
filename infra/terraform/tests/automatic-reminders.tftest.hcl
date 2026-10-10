@@ -92,7 +92,8 @@ run "automatic_reminders_kill_switch" {
       && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "false"
       && toset(jsondecode(aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDER_COHORTS)) == var.automatic_reminder_cohorts
       && toset(keys(aws_lambda_function.automatic_reminders.environment[0].variables)) == toset([
-        "TABLE_NAME", "IMPORTS_BUCKET", "INSTRUCTOR_EMAIL_DOMAIN", "REMINDER_CONFIGURATION_SET", "AUTOMATIC_REMINDER_COHORTS", "AUTOMATIC_REMINDERS_ENABLED"
+        "TABLE_NAME", "IMPORTS_BUCKET", "INSTRUCTOR_EMAIL_DOMAIN", "REMINDER_CONFIGURATION_SET", "AUTOMATIC_REMINDER_COHORTS", "AUTOMATIC_REMINDERS_ENABLED",
+        "MANUAL_RECOVERY_ENABLED", "MANUAL_RECOVERY_COHORT", "MANUAL_RECOVERY_SCHEDULED_FOR", "MANUAL_RECOVERY_NOT_BEFORE", "MANUAL_RECOVERY_EXPIRES_AT", "MANUAL_RECOVERY_ALIAS_ARN"
       ])
     )
     error_message = "Worker dedicado: pacote/handler esperado, orçamento limitado e gate fechado; sem segredo Canvas."

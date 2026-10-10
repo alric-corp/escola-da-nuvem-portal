@@ -9,7 +9,8 @@ import os
 import re
 import time
 import uuid
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 import reminders
 from repository import Conflict, Repository
@@ -21,6 +22,9 @@ WINDOW = timedelta(minutes=30)
 LEASE = timedelta(seconds=120)
 SKIP_REASONS = {"withdrawn", "no-email", "no-pending", "already-sent", "not-found"}
 CONFIG_REASONS = {"settings-missing", "settings-invalid", "automatic-disabled", "sender-unlinked", "sender-invalid"}
+MANUAL_SOURCE = "portal.operator"
+MANUAL_ALIAS = "manual-recovery"
+MANUAL_MAX_DURATION = timedelta(minutes=30)
 
 
 def occurrence_context(event):
@@ -44,6 +48,59 @@ def live_day(scheduled_for):
     return instant(scheduled_for).astimezone(TIMEZONE).weekday() in LIVE_WEEKDAYS
 
 
+@dataclass(frozen=True)
+class ManualAuthorization:
+    """Autorização criada pelo adaptador após validar alias IAM e configuração do servidor."""
+    cohort: str
+    scheduled_for: str
+    not_before: datetime
+    expires_at: datetime
+
+    def check(self, code, scheduled_for, at):
+        if code != self.cohort or scheduled_for != self.scheduled_for:
+            raise Stop("manual-scope-mismatch")
+        if at < self.not_before:
+            raise Stop("manual-authorization-not-active")
+        if at >= self.expires_at:
+            raise Stop("manual-authorization-expired")
+
+
+def manual_authorization(event, context):
+    """Payload não autentica. IAM autoriza o alias exato, informado pelo runtime AWS.
+
+    A role do Scheduler só pode invocar o ARN não qualificado. Invocações manuais
+    pelo ARN não qualificado, versão numérica ou outro alias são rejeitadas aqui.
+    ClientContext e campos do evento nunca fornecem o ARN de autenticação.
+    """
+    try:
+        fields = {"source", "type", "mode", "version", "cohortCode", "scheduledFor", "executionId", "attemptNumber", "dryRun"}
+        alias = os.environ["MANUAL_RECOVERY_ALIAS_ARN"]
+        if (not isinstance(event, dict) or set(event) != fields
+                or event["source"] != MANUAL_SOURCE or event["mode"] != MANUAL_ALIAS
+                or type(event["version"]) is not int or event["version"] != 1 or event["dryRun"] is not False
+                or not re.fullmatch(r"arn:aws:lambda:[a-z0-9-]+:\d{12}:function:[A-Za-z0-9_-]+:manual-recovery", alias)
+                or getattr(context, "invoked_function_arn", None) != alias
+                or os.environ.get("MANUAL_RECOVERY_ENABLED", "false") != "true"):
+            raise ValueError()
+        # Converte apenas o envelope autenticado; a identidade de negócio é a
+        # ocorrência original e a prova continua sendo o SYNC_RUN natural das 18h.
+        technical = occurrence_context({
+            key: SOURCE if key == "source" else event[key]
+            for key in ("source", "type", "scheduledFor", "executionId", "attemptNumber")})
+        configured_slot = occurrence_context({**technical, "scheduledFor": os.environ["MANUAL_RECOVERY_SCHEDULED_FOR"]})
+        authorization = ManualAuthorization(
+            os.environ["MANUAL_RECOVERY_COHORT"], configured_slot["scheduledFor"],
+            instant(os.environ["MANUAL_RECOVERY_NOT_BEFORE"]), instant(os.environ["MANUAL_RECOVERY_EXPIRES_AT"]))
+        if (not live_day(technical["scheduledFor"])
+                or not timedelta(0) < authorization.expires_at - authorization.not_before <= MANUAL_MAX_DURATION):
+            raise ValueError()
+        authorization.check(event["cohortCode"], technical["scheduledFor"], instant(utc_now()))
+        return technical, authorization
+    except (KeyError, TypeError, ValueError, Stop):
+        # Sem payload, principal, e-mail ou exceção AWS nos logs.
+        raise ValueError("Recuperação manual não autorizada") from None
+
+
 def empty_counts():
     return {"total": 0, "eligible": 0, "pending": 0, "sent": 0, "failed": 0,
             "unknown": 0, "sending": 0, "skipped": 0, "skipReasons": {}}
@@ -56,7 +113,7 @@ class Stop(Exception):
 
 class CohortRun:
     def __init__(self, repo, mailer, context, code, domain, *, enabled, dry_run, clock,
-                 sleep, delay_seconds, remaining_ms, emit):
+                 sleep, delay_seconds, remaining_ms, emit, authorization=None):
         self.repo, self.mailer, self.context, self.code, self.domain = repo, mailer, context, code, domain
         self.enabled, self.dry_run, self.clock = enabled, dry_run, clock
         self.sleep, self.delay_seconds, self.remaining_ms, self.emit = sleep, delay_seconds, remaining_ms, emit
@@ -64,7 +121,8 @@ class CohortRun:
         self.sk = "AUTO_REMINDER#" + context["scheduledFor"]
         self.actor = "system:auto-reminder:" + context["scheduledFor"]
         self.scheduled = instant(context["scheduledFor"])
-        self.deadline = self.scheduled + WINDOW
+        self.authorization = authorization
+        self.deadline = authorization.expires_at if authorization else self.scheduled + WINDOW
         self.record = self.publication = self.snapshot = self.old = None
         self.counts = empty_counts()
 
@@ -73,6 +131,8 @@ class CohortRun:
 
     def check_window(self):
         at = self.now()
+        if self.authorization:
+            self.authorization.check(self.code, self.context["scheduledFor"], at)
         if at < self.scheduled:
             raise Stop("not-due")
         if at >= self.deadline:
@@ -83,7 +143,7 @@ class CohortRun:
         if not self.dry_run and not live_day(self.context["scheduledFor"]):
             raise Stop("not-due")
         at = self.check_window()
-        if not self.dry_run and not self.enabled:
+        if not self.dry_run and not self.enabled and not self.authorization:
             raise Stop("infrastructure-disabled")
         self.cohort = self.repo.get(self.pk, "METADATA")
         if not self.cohort or self.cohort.get("code") != self.code:
@@ -266,6 +326,10 @@ class CohortRun:
                     # Reserva manual concorrente ou mudança ACTIVE→ACTIVE: não repetir este send.
                     continue
                 try:
+                    if self.authorization:
+                        # A transação pode atravessar a expiração. Não iniciar SES
+                        # nesse caso; reserva sending permanece conservadora.
+                        self.check_window()
                     reminders.send_reserved_reminder(self.repo, self.code, record, message, self.mailer)
                 except reminders.SendFailure:
                     pass  # failed pode retomar; unknown nunca reabre. Ambos entram no resumo.
@@ -278,7 +342,7 @@ class CohortRun:
 
 
 def run(repo, mailer, event, cohort_codes, domain, *, enabled=False, dry_run=True, clock=None,
-        sleep=None, delay_seconds=0.25, remaining_ms=None, emit=None):
+        sleep=None, delay_seconds=0.25, remaining_ms=None, emit=None, authorization=None):
     """Uma passagem por turma. O chamador controla invocação/retry; nenhum polling ou envio recursivo."""
     context = occurrence_context(event)
     if not isinstance(cohort_codes, (list, tuple)):
@@ -293,7 +357,7 @@ def run(repo, mailer, event, cohort_codes, domain, *, enabled=False, dry_run=Tru
     for code in codes:
         worker = CohortRun(repo, mailer, context, code, domain, enabled=enabled, dry_run=dry_run,
                            clock=clock or utc_now, sleep=sleep or time.sleep, delay_seconds=delay_seconds,
-                           remaining_ms=remaining_ms, emit=emit)
+                           remaining_ms=remaining_ms, emit=emit, authorization=authorization)
         try:
             result = worker.execute()
         except Exception:
@@ -311,12 +375,20 @@ def run(repo, mailer, event, cohort_codes, domain, *, enabled=False, dry_run=Tru
 
 def handler(event, context):
     """Contrato técnico do Scheduler; nenhuma identidade/destinatário vem do payload."""
-    event = scheduler_event(event)
+    invoked_arn = getattr(context, "invoked_function_arn", "") or ""
+    manual = (isinstance(invoked_arn, str) and invoked_arn.endswith(":" + MANUAL_ALIAS)
+              or isinstance(event, dict) and (event.get("source") == MANUAL_SOURCE or "mode" in event))
+    authorization = None
+    if manual:
+        technical, authorization = manual_authorization(event, context)
+    else:
+        event = scheduler_event(event)
     fields = {"source", "type", "version", "cohortCode", "scheduledFor", "executionId", "attemptNumber", "dryRun"}
-    if (not isinstance(event, dict) or set(event) != fields or type(event["version"]) is not int
-            or event["version"] != 1 or type(event["dryRun"]) is not bool):
-        raise ValueError("Evento automático inválido")
-    technical = occurrence_context({key: event[key] for key in fields - {"version", "cohortCode", "dryRun"}})
+    if not manual:
+        if (not isinstance(event, dict) or set(event) != fields or type(event["version"]) is not int
+                or event["version"] != 1 or type(event["dryRun"]) is not bool):
+            raise ValueError("Evento automático inválido")
+        technical = occurrence_context({key: event[key] for key in fields - {"version", "cohortCode", "dryRun"}})
     try:
         codes = json.loads(os.environ.get("AUTOMATIC_REMINDER_COHORTS", "[]"))
         gate = os.environ.get("AUTOMATIC_REMINDERS_ENABLED", "false")
@@ -332,15 +404,16 @@ def handler(event, context):
     # O caminho bloqueado (gate fechado ou LIVE fora de terça/sexta) reutiliza o
     # guard/resultado do worker, sem construir clientes.
     repo = mailer = None
-    if event["dryRun"] or (gate == "true" and live_day(technical["scheduledFor"])):
+    if authorization or event["dryRun"] or (gate == "true" and live_day(technical["scheduledFor"])):
         repo, mailer = Repository(), reminders.SESMailer()
     results = run(repo, mailer, technical, [event["cohortCode"]], domain,
                   enabled=gate == "true", dry_run=event["dryRun"],
+                  authorization=authorization,
                   remaining_ms=context.get_remaining_time_in_millis,
                   emit=lambda result: logger.info(json.dumps({"automaticReminder": result}, sort_keys=True)))
     # Scheduler confirma a entrega assíncrona, não o resultado do domínio. Erro técnico
     # solicita retry limitado pela configuração Lambda e pela janela original do worker.
     # Lease ativo também precisa de retry: pode pertencer a uma tentativa interrompida.
-    if not event["dryRun"] and any(result["retryable"] or result.get("reason") == "lease-active" for result in results):
+    if not manual and not event["dryRun"] and any(result["retryable"] or result.get("reason") == "lease-active" for result in results):
         raise RuntimeError("Retentativa de lembretes automáticos necessária")
     return results
