@@ -1,12 +1,22 @@
-# AUTO-2.3: infraestrutura preparada, com gates fechados. AUTO-4 revisará ativação.
+# AUTO-5: gate automático aberto; ativação dos schedules revisada por turma.
 # Remetente e automaticEnabled pertencem ao REMINDER_SETTINGS, nunca ao Terraform.
 variable "automatic_reminder_cohorts" {
-  description = "Turmas com schedules preparados (desabilitados); sem remetentes ou alunos."
+  description = "Turmas com schedules preparados; ativação explícita por automatic_reminder_enabled_cohorts, sem remetentes ou alunos."
   type        = set(string)
   default     = ["BRSA0257", "BRSA0267"]
   validation {
     condition     = alltrue([for code in var.automatic_reminder_cohorts : can(regex("^[A-Z0-9-]{3,32}$", code))])
     error_message = "Use códigos de turma com 3 a 32 letras maiúsculas, números ou hífens."
+  }
+}
+
+variable "automatic_reminder_enabled_cohorts" {
+  description = "Schedules selecionados para ativação mediante plano aprovado. Piloto inicial somente BRSA0267; conjunto vazio desliga todos."
+  type        = set(string)
+  default     = ["BRSA0267"]
+  validation {
+    condition     = try(length(setsubtract(var.automatic_reminder_enabled_cohorts, var.automatic_reminder_cohorts)) == 0, false)
+    error_message = "Somente turmas com schedules preparados podem ser habilitadas; null não é permitido."
   }
 }
 
@@ -142,7 +152,7 @@ resource "aws_scheduler_schedule" "automatic_reminders" {
   description                  = "Lembretes da turma ${each.key}; ativação depende de revisão AUTO-4."
   schedule_expression          = "cron(0 20 ? * TUE,FRI *)"
   schedule_expression_timezone = "America/Sao_Paulo"
-  state                        = "DISABLED"
+  state                        = contains(var.automatic_reminder_enabled_cohorts, each.key) ? "ENABLED" : "DISABLED"
   flexible_time_window {
     mode = "OFF"
   }

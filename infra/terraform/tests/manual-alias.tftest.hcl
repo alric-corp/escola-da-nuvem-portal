@@ -6,9 +6,10 @@ mock_provider "aws" {
 mock_provider "archive" {}
 
 variables {
-  aws_account_id               = "123456789012"
-  cognito_sender_email         = "portal@example.test"
-  manual_recovery_operator_arn = ""
+  aws_account_id                     = "123456789012"
+  cognito_sender_email               = "portal@example.test"
+  manual_recovery_operator_arn       = ""
+  automatic_reminder_enabled_cohorts = []
 }
 
 # A publicação automática avançou; a versão manual desabilitada continua 3.

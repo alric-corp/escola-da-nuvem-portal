@@ -2109,3 +2109,97 @@ resultados finais de CI/plan ficam nas evidências sanitizadas da entrega.
 **PARADA obrigatória antes do apply.** Ambos schedules permanecem desligados;
 nenhuma execução LIVE foi autorizada nesta etapa. A validação natural da
 BRSA0267 e, após seu aceite, da BRSA0257 continua pendente.
+
+## 22. Gate automático aplicado — schedules ainda desligados
+
+**Estado atual em 10/10/2026: AUTO-5 EM ANDAMENTO.** Este checkpoint sucede
+a preparação descrita acima; a abertura do gate foi aprovada separadamente.
+
+Preflight: HEAD `e9247d23eb1d540b02bf2643ca3d55fbfd3872ab`, árvore rastreada
+limpa, CI **38088144215 SUCCESS**, state serial **83**, AWS × state conferidos.
+O arquivo não rastreado do operador foi preservado. Alias manual na versão 3
+desabilitada, gates inicialmente false, IAM temporário revogado e ambos
+schedules DISABLED. Os 49 REMINDER e deliveries anteriores foram confirmados.
+
+Plano autorizado `.build/auto5-gate-decoupled.tfplan`, SHA-256
+`34c660aaa7192416ee1d9992914add04fa365ee339ca5bcae6a5d76342d86cd8`.
+Reaberto e revisado: somente environment da worker, automático false → true;
+sem mudança de ZIP, alias, IAM, schedules, settings ou outras Lambdas.
+
+**Apply único: 18:47:08–18:47:26 America/Sao_Paulo.**
+**0 added / 1 changed / 0 destroyed.** Somente
+`aws_lambda_function.automatic_reminders` foi alterada, com atualização
+concluída pelo provider em 13 segundos. Nenhum retry ou invoke.
+
+| Controle pós-apply | Estado confirmado |
+| --- | --- |
+| State serial | **84** |
+| Worker publicada | versão **4**, Active / Successful |
+| AUTOMATIC_REMINDERS_ENABLED em `$LATEST` e versão 4 | **true** |
+| MANUAL_RECOVERY_ENABLED em `$LATEST` e versão 4 | **false** |
+| Alias manual | versão **3**, sem routing weights adicionais |
+| Versão 3 | recuperação manual e automático **false** |
+| IAM temporário | revogado; simulações de Invoke negadas |
+| BRSA0267 / BRSA0257 | **DISABLED / DISABLED** |
+| Cron / timezone / flexible | terça e sexta 20h / America/Sao_Paulo / OFF |
+| Target dos schedules | ARN não qualificado da worker (`$LATEST`) |
+| REMINDER sent / deliveries BRSA0267 | **27 / 27**, preservados |
+| REMINDER sent / deliveries BRSA0257 | **22 / 22**, preservados |
+| Novos REMINDER / Send / invocações da worker observados | **0 / 0 / 0** |
+| Novos Errors / Throttles / Bounce / Complaint observados | **0 / 0 / 0 / 0** |
+| REMINDER_SETTINGS | inalterados; readiness de ambos remetentes PASS |
+
+CodeSha256 e ZIP permanecem iguais aos hashes da seção 21. Handler, runtime,
+arm64, 256 MB, timeout 300 s, role, concurrency 2, layers e demais environment
+da worker foram preservados. As cinco Lambdas permanecem Active/Successful.
+AUTO_REMINDER permanece 0 na BRSA0257 e 1 completed na BRSA0267, proveniente
+do LIVE manual já registrado. Nenhum envio novo foi executado nesta etapa.
+
+Full plan somente leitura concluído às **18:48:47**: **1 add / 0 change /
+0 destroy**, exclusivamente `aws_acm_certificate.portal`. Worker, alias e
+schedules NO-OP; state permaneceu 84. O tfplan consumido foi removido após
+a convergência. Evidências agregadas em `apply-summary.json`,
+`post-apply-summary.json` e `convergence-summary.json`, no diretório privado
+`/private/tmp/auto5-gate-apply-20261010-xob80sn2`.
+
+## 23. Piloto BRSA0267 — preparação, sem apply do schedule
+
+A configuração declarativa `automatic_reminder_enabled_cohorts` seleciona
+somente **BRSA0267** para o próximo plano. BRSA0257 continua excluída.
+Um conjunto vazio permite preparar a desativação de ambos os schedules.
+A validação recusa turmas sem schedule preparado e valores null.
+
+Validação local desta preparação: Terraform **24/24**, backend **300/300**,
+Moto **82/82**, Node/OpenAPI **177/177**, navegador **19/19**, build,
+fmt/validate e diff-check aprovados. Mutações: claim **12/12**, autorização
+manual **11/11**, alias **5/5** detectadas; duas transições do gate e 11
+cenários OpenAPI/HCL aprovados. Os testes anteriores de isolamento continuam
+exercitando ambos schedules desligados; novos testes cobrem o piloto exclusivo
+e a desativação por seleção vazia. Revisão local: 0 BLOCKER / 0 IMPORTANT.
+
+**Na AWS, ambos schedules continuam DISABLED até aprovação e apply separados.**
+O plano isolado previsto `.build/auto5-brsa0267-enable.tfplan` deve conter
+somente `aws_scheduler_schedule.automatic_reminders["BRSA0267"]`, state
+DISABLED → ENABLED: **0 add / 1 change / 0 destroy**. Gate true já aplicado,
+alias 3, manual false, ZIP, IAM, cron, input, retry e BRSA0257 sem alteração.
+ACM fica fora das ações do plano isolado.
+
+Após revisão/aprovação do plano, a primeira ocorrência natural pretendida
+é **terça-feira 13/10/2026 às 20h**. Às 18h, conferir SYNC_RUN natural real:
+succeeded, catálogo/matrícula succeeded, notas published ou unchanged,
+publicationId/metadataVersion/prova válidas, publicação current e término
+até 20h. Se a prova falhar, desabilitar o piloto antes das 20h.
+
+Não substituir o Scheduler por invoke manual. Observar ocorrência, claim,
+participação, dedupe, REMINDER, SES, deliveries, Errors/Throttles e logs sem
+PII. Se a publicação continuar sendo a dos 27 contatos anteriores,
+already-sent deve impedir reenvio; zero novos envios pode ser correto.
+Depois da ocorrência natural, parar para revisão antes da BRSA0257.
+
+Kill switch: incidente restrito ao piloto → desabilitar BRSA0267; incidente
+sistêmico → também fechar o gate automático. Preservar as demais propriedades
+do schedule e reconciliar Terraform/state. Isso impede novas execuções;
+não cancela uma Lambda já iniciada. Não improvisar rollback de código.
+
+**PARADA antes do apply do schedule.** AUTO-5 depende dos dois disparos
+naturais validados; BRSA0257 requer aprovação posterior ao aceite do piloto.

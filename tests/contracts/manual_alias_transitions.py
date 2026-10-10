@@ -54,7 +54,7 @@ def main():
          replace_once(manual, 'can(regex("^[1-9][0-9]*$", var.manual_recovery_target_version))',
                       "var.manual_recovery_target_version != null"),
          native, "Missing expected failure"),
-        ("reject_enabled_schedule", replace_once(worker, 'state                        = "DISABLED"',
+        ("reject_enabled_schedule", replace_once(worker, 'state                        = contains(var.automatic_reminder_enabled_cohorts, each.key) ? "ENABLED" : "DISABLED"',
                                                   'state                        = "ENABLED"'),
          manual, native, "Test assertion failed"),
         ("reject_open_manual_gate", replace_once(worker,

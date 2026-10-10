@@ -6,9 +6,10 @@ mock_provider "aws" {
 mock_provider "archive" {}
 
 variables {
-  aws_account_id               = "123456789012"
-  cognito_sender_email         = "portal@example.test"
-  manual_recovery_operator_arn = "arn:aws:iam::123456789012:user/recovery-operator"
+  aws_account_id                     = "123456789012"
+  cognito_sender_email               = "portal@example.test"
+  manual_recovery_operator_arn       = "arn:aws:iam::123456789012:user/recovery-operator"
+  automatic_reminder_enabled_cohorts = []
 }
 
 override_resource {
