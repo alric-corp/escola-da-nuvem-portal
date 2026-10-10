@@ -6,6 +6,10 @@ desabilitada. AUTO-5 BLOQUEADA para novos envios; sem migração ou novo LIVE.**
 O deploy aprovado e a verificação atual estão na seção 7. As seções anteriores
 preservam o diagnóstico e os checkpoints anteriores ao deploy.
 
+Atualização de 10/10: a preparação de recovery foi encerrada **sem LIVE**;
+janela definitiva restaurada às 01h04, gate false e schedules DISABLED.
+O registro completo está na seção 8.
+
 ## Estado protegido — checkpoint anterior ao deploy
 
 Leitura em produção em **09/10/2026, 20h57, America/Sao_Paulo**:
@@ -350,3 +354,101 @@ No futuro LIVE, comprovar claim/ocorrência, avaliação, WITHDRAWN, dedupe por
 student/publication, envios coerentes, retry sem duplicação, Errors/Throttles zero
 e logs sem PII. Novo claim-conflict é BLOCKER e exige kill switch/investigação.
 **Este deploy não encerra AUTO-5 nem aprova uma nova tentativa do piloto.**
+
+
+## 8. Preparação de recovery de 10/10 — encerrada sem LIVE
+
+**A segunda tentativa LIVE não foi executada. AUTO-5 continua BLOQUEADA.**
+A janela definitiva foi restaurada em produção às **01h04 de 10/10/2026**;
+gate permaneceu false e ambos os schedules permaneceram DISABLED durante toda
+esta rodada. BRSA0257 não entrou no piloto.
+
+### Ocorrência e preflight somente leitura
+
+- Ocorrência pretendida: **09/10 às 20h local**, `2026-10-09T23:00:00Z`.
+  Nenhuma ocorrência de sábado foi criada.
+- Prova: Canvas natural **09/10 às 18h**, `SYNC_RUN#2026-10-09T21:00:00Z`.
+  Source portal.scheduler, succeeded, catalog/roster succeeded e grades
+  published/unchanged; publicação ainda current e metadataVersion coerente.
+  A publicação coincide com a do primeiro LIVE; término do sync anterior às 20h.
+- BRSA0267: settings v1, automaticEnabled=true, vínculos e readiness PASS.
+  SES ProductionAccessEnabled/SendingEnabled=true, HEALTHY; quota 50.000/24h,
+  14/s e SentLast24Hours=0 nas leituras realizadas.
+- População calculada somente por leitura: **59 avaliados, 34 ativos,
+  25 WITHDRAWN, 27 elegíveis**; skips 25 withdrawn e 7 no-pending.
+  Publicação e participação coincidem com a baseline final do primeiro LIVE.
+  Esses números são uma previsão por leitura, não resultado de uma worker LIVE.
+- AUTO_REMINDER e REMINDER zero nas duas turmas; gate false e schedules DISABLED.
+
+### Alteração temporária e por que não houve envio
+
+A janela não tinha configuração pronta. Foram adicionadas cinco linhas que
+estendiam somente o LIVE de BRSA0267 da ocorrência original até **01h exclusiva**
+(300 minutos). Nenhuma mudança de dias LIVE, slot, proof, claim, dedupe, sender,
+participation, mensagem ou dry-run. Testes provaram recovery às 00h35, expiração
+às 01h, recusa de sábado como nova ocorrência, proof de sexta às 18h e manutenção
+da janela de 30 minutos para dry-run, outra turma e outras datas.
+
+- Commits temporários `e2d6d55` e `6935120`: **305 backend, 62 integração/Moto,
+  12/12 mutações eliminadas**, CI completo verde. Integração Moto exercitou o
+  handler LIVE às 00h35 com settings v1 e a transação real; nenhum AWS real no teste.
+- Deploy temporário **00h41min35s–00h42min14s**, **0/5/0**, com gate false.
+- O commit separado do gate `d742cb6` falhou no CI porque o teste Terraform ainda
+  exigia gate false. A expectativa temporária foi corrigida em `a34f135`, mantendo
+  ambos schedules DISABLED; CI completo passou. **Nenhum apply do gate ocorreu.**
+- Na revisão do plano do gate foi detectado um delta adicional de ZIP: os 14
+  módulos tinham conteúdo idêntico, mas a worktree privada havia produzido modos
+  0600 em vez dos 0644 originais. O plano foi rejeitado e apagado sem apply.
+  O pacote foi normalizado para 0644 e publicado em **00h48min23s–00h49min02s**,
+  outro **0/5/0**, ainda com gate false. Apenas automatic_reminders.py diferia em
+  conteúdo do pacote definitivo; repository.py/claim-fix continuou idêntico.
+- O horário autorizado foi ajustado de 00h35 para **00h45**, mas os checkpoints
+  não estavam concluídos a tempo. Foi solicitada autorização para 00h50, sem
+  resposta antes de esse horário passar. **Nenhuma invocação foi feita fora do
+  horário autorizado. Não houve segunda/terceira chamada ou retry manual.**
+
+### Restauração definitiva e convergência
+
+Revert explícito **`9299067afbff9386f349f2c416587bfbae67430d`**. A árvore de código,
+configuração e testes voltou exatamente ao estado `ee18dbf`, preservando o claim-fix.
+**300 backend, 61 integração/Moto, 12/12 mutações e quatro testes Terraform PASS**;
+[CI completo de restauração verde](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38022208859).
+
+Plano revisado salvo: **0 add / 5 change / 0 destroy**, somente códigos das cinco
+Lambdas, sem gate/schedules/ACM/IAM/dados. Apply único da restauração:
+**01h01min05s–01h04min04s**, **0 added / 5 changed / 0 destroyed**.
+A leitura do backend/state e algumas atualizações AWS tiveram latência maior;
+não houve falha parcial nem repetição de apply.
+
+| Item | Estado final conferido |
+| --- | --- |
+| identity / canvas_sync / reminder_events / auth_trigger / worker | Active / Successful |
+| ZIP SHA-256 | `db7caa821cdbaad1f57b4875a5a8c6f8c4c43fdca39ecb49f23f59cfb778bd0f` |
+| CodeSha256 das cinco Lambdas | `23yqghzbqtH1e0h1pajG+MTEP9yjnstJ8j9Zz7d4vQ8=` |
+| Worker gate | false; nunca aberto nesta rodada |
+| BRSA0257 / BRSA0267 | DISABLED / DISABLED |
+| Cron / timezone / flexible | Terça/sexta 20h / America/Sao_Paulo / OFF |
+| LIVE / dry-run | LIVE terça/sexta 20h–20h30; dry-run qualquer dia 20h–20h30 |
+| Exceção de recovery | Removida do código publicado |
+| State | Serial **79**, reconciliado |
+| Full plan sem salvar | **1/0/0**, somente ACM conhecido; 35 rotas sem ação |
+| Ações residuais de recovery | Zero |
+| AUTO_REMINDER / REMINDER | 0 / 0 nas duas turmas |
+| REMINDER_SETTINGS | Itens completos intactos, sem migração |
+| Novas invocações worker / envios automáticos | 0 / 0 |
+| Errors / Throttles worker; alarmes | 0 / 0; OK |
+
+Configurações das cinco Lambdas, concurrency e schedules foram comparadas com a
+baseline anterior; sem alteração funcional remanescente. Canvas continua ENABLED
+às 06h/18h. No período observado, todas as cinco Lambdas tiveram Errors/Throttles
+zero, inclusive uso natural de identity/auth_trigger. Logs da worker sem novos
+START/eventos e métricas SES Send/Bounce/Complaint sem atividade de envio observada.
+Não foi gerado tráfego artificial para outras funções.
+
+Os três planos consumidos foram apagados após convergência. Evidências privadas:
+`/private/tmp/auto5-recovery-20261010-rwba0s8l`. AUTO-2.3 e AUTO-4 permanecem intactas.
+
+**Claim, envio LIVE, dedupe e retry não foram exercitados em produção nesta
+rodada.** Não há resultado PASS da segunda tentativa. O gate nunca precisou ser
+fechado, pois nunca foi aberto. Nenhum sender, settings ou identidade SES foi
+alterado. **Parado para revisão; nenhuma reativação ou nova tentativa autorizada.**

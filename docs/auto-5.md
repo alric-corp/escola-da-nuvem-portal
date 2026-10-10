@@ -8,6 +8,11 @@ Active/Successful; schedules DISABLED, gate false e contagens de lembretes zero.
 **Sem reativação, migração ou novo LIVE; AUTO-5 continua bloqueada**:
 [diagnóstico, RED/GREEN e evidências do deploy](auto-5-claim.md#7-deploy-aprovado-e-concluído--0910-22h00).
 
+A preparação de recovery de **10/10 foi encerrada sem LIVE**: horário de 00h45
+perdido durante os checkpoints, sem autorização posterior recebida a tempo.
+Janela definitiva restaurada às 01h04, state 79, gate false e ambos schedules
+DISABLED. [Registro da preparação e restauração](auto-5-claim.md#8-preparação-de-recovery-de-1010--encerrada-sem-live).
+
 ## Estado após o kill switch — checkpoint histórico de 09/10, 20h08
 
 | Controle | Estado real |
