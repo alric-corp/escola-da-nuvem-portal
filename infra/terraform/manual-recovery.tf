@@ -40,6 +40,16 @@ variable "manual_recovery" {
   }
 }
 
+variable "manual_recovery_target_version" {
+  description = "Versão publicada imutável selecionada explicitamente para o alias manual; revisar gates e validade antes de alterar. A versão 3 foi verificada desabilitada em produção."
+  type        = string
+  default     = "3"
+  validation {
+    condition     = can(regex("^[1-9][0-9]*$", var.manual_recovery_target_version))
+    error_message = "Selecione explicitamente uma versão numérica publicada; $LATEST, aliases e valores vazios são proibidos."
+  }
+}
+
 locals {
   # Não referenciar o recurso Lambda no próprio environment (criaria ciclo).
   manual_recovery_alias_arn = "arn:${data.aws_partition.current.partition}:lambda:${var.aws_region}:${var.aws_account_id}:function:${local.name}-automatic-reminders:manual-recovery"
@@ -49,7 +59,7 @@ resource "aws_lambda_alias" "manual_recovery" {
   name             = "manual-recovery"
   description      = "Recuperação direta autorizada; calendário automático permanece intacto."
   function_name    = aws_lambda_function.automatic_reminders.function_name
-  function_version = aws_lambda_function.automatic_reminders.version
+  function_version = var.manual_recovery_target_version
 }
 
 # A operação é síncrona. Defesa adicional: nunca repetir erros automaticamente

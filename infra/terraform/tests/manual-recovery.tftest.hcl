@@ -33,7 +33,7 @@ run "manual_disabled_and_iam_isolated" {
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_SCHEDULED_FOR == "2026-10-09T23:00:00Z"
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_ALIAS_ARN == local.manual_recovery_alias_arn
       && aws_lambda_alias.manual_recovery.name == "manual-recovery"
-      && aws_lambda_alias.manual_recovery.function_version == "1"
+      && aws_lambda_alias.manual_recovery.function_version == "3"
       && aws_lambda_function_event_invoke_config.manual_recovery.maximum_retry_attempts == 0
       && aws_lambda_function_event_invoke_config.manual_recovery.maximum_event_age_in_seconds == 60
       && aws_lambda_function_event_invoke_config.manual_recovery.qualifier == "manual-recovery"

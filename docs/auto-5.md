@@ -2017,3 +2017,95 @@ manifesto e logs permanecem privados. Marcador da operação única preservado.
 
 **AUTO-5 permanece aberta; a validação dos schedules naturais continua
 pendente. PARADA após este envio, sem iniciar ativação automática.**
+
+## 21. Desacoplamento do alias manual — preparação do gate automático
+
+Checkpoint de 10/10/2026, após os dois envios manuais. **AUTO-5 EM ANDAMENTO.**
+O gate automático está preparado no código, mas permanece **false na AWS**.
+Nenhum apply ou envio faz parte desta correção.
+
+### Causa e configuração explícita
+
+A worker usa `publish=true`. O alias `aws_lambda_alias.manual_recovery`
+referenciava `aws_lambda_function.automatic_reminders.version`; portanto,
+alterar o gate ou o ZIP publicava uma versão e também movia o alias manual.
+O plano isolado da worker não mostrava esse efeito residual do full plan.
+
+O alias agora referencia `var.manual_recovery_target_version`, com valor
+declarativo padrão `"3"`. A validação aceita somente versões publicadas
+numéricas positivas, sem `$LATEST`, nome de alias, valor vazio, null ou zeros
+à esquerda. `publish=true` permanece na worker; não há `ignore_changes`.
+O valor precisa identificar uma versão existente e previamente verificada
+na conta/região de destino; a validação sintática não atesta seu conteúdo.
+
+O preflight de produção confirmou state serial **83**, alias na versão **3**,
+sem routing weights adicionais. A versão 3 está Active/Successful,
+`MANUAL_RECOVERY_ENABLED=false` e `AUTOMATIC_REMINDERS_ENABLED=false`,
+com autorização expirada. Handler `automatic_reminders.handler`, Python
+3.13, arm64, 256 MB, timeout 300 s; configuração comparada à worker atual.
+
+Hash do pacote aprovado, inalterado:
+
+```text
+SHA-256: e5084d5657a71161dcb91da283a683746482fa566a0505f45e33eb9c7d9b4308
+CodeSha256: 5QhNVlenEWHcuR2ig6aDdGSC+lZqBQX0XjPrnH2bQwg=
+```
+
+IAM temporário permanece revogado por condição temporal expirada; simulações
+negam invocação do alias, da função não qualificada e da versão 3. Policies
+não foram alteradas. Schedules BRSA0257/BRSA0267 continuam DISABLED, terça e
+sexta às 20h, America/Sao_Paulo, flexible OFF. O target do Scheduler é o ARN
+**não qualificado da worker**, executando `$LATEST`, e não o alias manual.
+Assim, o futuro gate automático atualizado será o efetivamente utilizado
+pelo Scheduler, enquanto o alias continuará na versão explicitamente fixada.
+
+Os 49 REMINDER sent e 49 deliveries anteriores foram reconferidos; sem
+novos lembretes ou eventos correlacionados de Bounce/Complaint observados.
+Settings intactos, ambos remetentes ready e alarmes Errors/Throttles OK.
+
+### Procedimento obrigatório para recuperação manual futura
+
+1. Obter aprovação separada para turma, ocorrência, população, operador e
+   validade curta. Revalidar domínio, publicação e readiness.
+2. Preparar e revisar a configuração da versão autorizada; publicar essa
+   versão em etapa controlada. Publicar **não move mais o alias**.
+3. Conferir o número e o conteúdo da versão efetivamente publicada. Selecionar
+   esse número em `manual_recovery_target_version` e revisar um plano explícito
+   do alias e da autorização IAM. A configuração de `$LATEST` não modifica
+   retroativamente o environment de uma versão imutável.
+4. Somente após as aprovações e verificações previstas, realizar a operação
+   única pelo alias. Timeout ou resultado desconhecido não autoriza retry.
+5. Encerrar a autorização IAM, desabilitar manual em `$LATEST` e retornar o
+   alias explicitamente à versão desabilitada verificada (atualmente 3, ou
+   outra versão desabilitada aprovada). Reconciliar configuração/state e
+   conferir full plan. Revogação não cancela execução já iniciada.
+
+Atualizações automáticas de gate ou ZIP não constituem autorização para
+mover o alias. Nenhum código Python, regra de domínio ou policy IAM foi
+modificado nesta correção.
+
+### Regressão e novos planos
+
+O teste RED reproduziu o acoplamento: worker simulada na versão 4 fazia o
+alias deixar a versão 3. O teste passa com a referência explícita. Testes
+nativos Terraform cobrem publicação, ZIP, seleção deliberada de outra versão,
+rejeição de valores inválidos, schedules desligados e manual false. A suíte
+de transições executa o HCL real em cópias descartáveis com gate false e true,
+usando providers mockados, e rejeita regressões deliberadas do isolamento.
+
+Validação local: backend 300/300, integração Moto 82/82, Node/OpenAPI
+177/177, navegador 19/19, build, fmt/validate e Terraform 20/20. Transições
+do alias: duas suítes aprovadas e cinco mutações rejeitadas. Mutações do
+claim: 12/12 detectadas; autorização manual: 11/11 detectadas; OpenAPI/HCL:
+11 cenários aprovados. Revisão adversarial local: 0 BLOCKER / 0 IMPORTANT.
+
+O plano `auto5-gate-enable.tfplan` foi **invalidado e removido**, sem apply.
+O novo artefato previsto é `.build/auto5-gate-decoupled.tfplan`, somente após
+CI verde e novo AWS × state: esperado 0 add / 1 change / 0 destroy, apenas
+gate automático false → true. Full plan de auditoria esperado: 1 add / 1
+change / 0 destroy, ACM conhecido + gate, **alias NO-OP**. Os hashes e os
+resultados finais de CI/plan ficam nas evidências sanitizadas da entrega.
+
+**PARADA obrigatória antes do apply.** Ambos schedules permanecem desligados;
+nenhuma execução LIVE foi autorizada nesta etapa. A validação natural da
+BRSA0267 e, após seu aceite, da BRSA0257 continua pendente.

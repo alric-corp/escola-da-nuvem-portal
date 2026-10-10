@@ -72,6 +72,8 @@ jobs:
         run: terraform test
       - name: Mutações OpenAPI avaliadas pelo Terraform (mocks, sem AWS real)
         run: python3 ../../tests/contracts/terraform_mutations.py
+      - name: Transições e mutações do alias manual (mocks, sem AWS real)
+        run: python3 ../../tests/contracts/manual_alias_transitions.py
       - name: Pacote das Lambdas sem o cache do pytest
         run: |
           pacote=$(unzip -Z1 .build/identity.zip)
