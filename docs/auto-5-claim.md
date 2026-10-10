@@ -1,6 +1,7 @@
 # AUTO-5 — correção do falso claim-conflict
 
-**AUTO-5 BLOQUEADA. Correção local preparada; sem deploy, migração ou novo LIVE.**
+**AUTO-5 BLOQUEADA. Correção publicada no Git, CI verde e plano salvo para revisão;
+sem deploy, migração ou novo LIVE.**
 
 ## Estado protegido
 
@@ -159,10 +160,11 @@ na futura execução aprovada.
 ## 5. Deploy e eventual nova tentativa — dependem de aprovação
 
 Após commit e CI completo verde, preparar ZIP e plano salvo isolado. Como o ZIP
-é compartilhado, a expectativa é **0 add / 5 change / 0 destroy**, apenas código
+é compartilhado, a expectativa inicial era **0 add / 5 change / 0 destroy**, apenas código
 de identity, canvas_sync, reminder_events, auth_trigger e automatic_reminders.
 Comparar os 14 módulos: somente repository.py deve diferir do ZIP publicado.
-Nenhuma ação em ACM, IAM, schedule, environment, frontend ou API Gateway.
+ACM, IAM, frontend e API Gateway ficam fora das ações. O plano efetivo e os
+campos adicionais que reconciliam o kill switch estão detalhados na seção 6.
 Gate false e ambos schedules DISABLED são precondições e devem permanecer assim.
 
 **Parar antes do apply.** Publicar a evidência concreta do ZIP/plano para revisão.
@@ -178,3 +180,63 @@ nem alterar a janela. BRSA0257 permanece DISABLED e depende de aprovação próp
 Evidências locais sanitizadas/privadas:
 `/private/tmp/auto5-claim-20261009-bir8pxno`.
 Os encerramentos históricos AUTO-2.3 e AUTO-4 permanecem intactos.
+
+## 6. Plano concreto para aprovação — 09/10, 21h17
+
+Correção: commit **`45a649d341f532e4e221eb0db3af58010c1762f0`**,
+[CI completo COMPLETED / SUCCESS](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38007753820).
+Pacote gerado novamente após esse CI pelo provider archive: 14 módulos iguais
+ao commit, **somente repository.py diferente do ZIP publicado**.
+
+| Artefato | Valor |
+| --- | --- |
+| ZIP SHA-256 | `db7caa821cdbaad1f57b4875a5a8c6f8c4c43fdca39ecb49f23f59cfb778bd0f` |
+| Novo CodeSha256 | `23yqghzbqtH1e0h1pajG+MTEP9yjnstJ8j9Zz7d4vQ8=` |
+| Plano salvo | `infra/terraform/.build/auto5-claim-fix.tfplan` |
+| Plano SHA-256 | `630968086b6e359512a4d65ec1347ba22aa142c14deb8f73837dc27d217ee2c9` |
+| State usado | serial **70**, lineage conferida, sem alteração persistida |
+| Resultado isolado | **0 add / 6 change / 0 destroy**, sem replacement |
+| ACM / IAM / dados | **Sem ações / sem ações / sem migração** |
+
+### Por que seis alterações, e não cinco
+
+A auditoria AWS × state confirmou o kill switch real, mas o state serial 70 ainda
+guarda o gate como true e BRSA0267 como ENABLED. Ambas as diferenças são do
+kill switch autorizado das 20h07. As demais configurações das cinco Lambdas,
+as nove policies IAM, cron/timezone/input/targets e os settings foram conferidos.
+
+O primeiro plano, com refresh, incluiu ACM create por dependência transitiva
+via Cognito/CloudFront. Foi **rejeitado e removido, sem apply**. O full plan
+somente leitura confirmou **1 add / 5 change / 0 destroy**: cinco códigos e
+exclusivamente ACM conhecido; as 35 rotas não têm ação.
+
+O plano isolado final usa o padrão de isolamento da AUTO-4: **`-refresh=false`**,
+depois da auditoria real e da comparação com o plano refreshed. Também usa
+`-lock=false` para não escrever lock remoto. O state foi relido antes e depois
+e permaneceu idêntico no serial 70. Esse plano não deve ser aplicado futuramente
+sem revalidar state, hashes e AWS; ele não incorpora mudanças posteriores.
+
+| Recurso | Delta no plano | Delta efetivo esperado na AWS |
+| --- | --- | --- |
+| identity | source_code_hash + last_modified calculado | Novo ZIP |
+| canvas_sync | source_code_hash + last_modified calculado | Novo ZIP |
+| reminder_events | source_code_hash + last_modified calculado | Novo ZIP |
+| auth_trigger | source_code_hash + last_modified calculado | Novo ZIP |
+| automatic_reminders | ZIP + gate true → false no state antigo | Novo ZIP; gate real já false |
+| Schedule BRSA0267 | ENABLED → DISABLED no state antigo | Atualização idempotente; real já DISABLED |
+| Schedule BRSA0257 | no-op, DISABLED | Nenhuma alteração |
+| ACM | no-op no plano isolado | Nenhuma ação; pendência conhecida preservada |
+
+Os valores finais completos das cinco Lambdas e do schedule BRSA0267 coincidem
+com os valores finais do plano que fez refresh real. A diferença adicional é a
+reconciliação explícita do kill switch no state antigo, sem reabrir qualquer gate.
+Nenhum environment adicional, role, handler, runtime, arquitetura, memória,
+timeout, concurrency, layer, cron, timezone, input ou retry será alterado.
+
+Um plano estritamente 0/5 exigiria primeiro uma atualização persistida do state
+para registrar o kill switch e uma nova preparação. **Essa escrita não foi feita**.
+O plano 0/6 é uma proposta concreta para revisão, não uma aprovação de deploy.
+
+**PARADA antes de qualquer apply ou write de produção.** Nenhum settings foi
+alterado, nenhuma Lambda invocada e nenhum e-mail enviado por esta tarefa.
+AUTO-5 continua bloqueada; não reativar BRSA0267 nem habilitar BRSA0257.
