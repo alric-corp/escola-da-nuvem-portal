@@ -1,7 +1,9 @@
 import json
+import os
+import time
 import unittest
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from changes import snapshot_changes
@@ -13,18 +15,11 @@ import test_portal
 import test_reminders
 
 
-# Fixa os dois relógios do portal no mesmo instante do cenário: now() (datas gravadas) e datetime.now
-# (idade da prévia em _publish). Sem o segundo, a idade sai do relógio real e o teste expira com o calendário.
+# Fixa o relógio do portal no instante do cenário. portal.now() grava as datas e também mede a idade da prévia
+# em _publish, então um único patch basta (antes era preciso trocar também portal.datetime).
 @contextmanager
 def frozen_clock(instant):
-    frozen = datetime.fromisoformat(instant)
-
-    class Clock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return frozen.astimezone(tz) if tz else frozen.replace(tzinfo=None)
-
-    with patch("portal.now", return_value=instant), patch("portal.datetime", Clock):
+    with patch("portal.now", return_value=instant):
         yield
 
 
@@ -97,6 +92,65 @@ class JourneyTests(unittest.TestCase):
         self.assertEqual(c["gradesChanged"], 2)
         self.assertEqual(c["activitiesReleased"][0]["id"], "002 Lab (456)")
         self.assertEqual(c["activitiesPaused"][0]["id"], "001 KC (123)")
+
+    # Idade da prévia (portal._publish): publica até 29 dias completos depois de criada (DRAFT_TTL_DAYS - 1). Só
+    # portal.now() é fixado: é o mesmo relógio que grava createdAt e que mede a idade.
+    def publish_draft_at(self, created, published):
+        with patch("portal.now", return_value=created.isoformat()):
+            draft = self.call(self.admin, "preview", {"csv": canvas_csv()})["draft"]
+        self.assertEqual(draft["createdAt"], created.isoformat())
+        with patch("portal.now", return_value=published.isoformat()):
+            return self.call(self.admin, "publish", {"draftId": draft["id"]})["publication"]
+
+    def assert_draft_expired(self, created, published):
+        with self.assertRaises(APIError) as err:
+            self.publish_draft_at(created, published)
+        self.assertEqual(err.exception.status, 409)
+        self.assertIn("expirou", str(err.exception))
+
+    def test_draft_age_before_the_limit_publishes(self):
+        created = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        for age in (timedelta(0), timedelta(days=1), timedelta(days=28, hours=23, minutes=59, seconds=59)):
+            self.setUp()
+            self.assertEqual(self.publish_draft_at(created, created + age)["publishedAt"], (created + age).isoformat())
+
+    def test_draft_age_exactly_at_the_limit_and_after_is_expired(self):
+        created = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        for age in (timedelta(days=29), timedelta(days=29, seconds=1), timedelta(days=30), timedelta(days=60)):
+            self.setUp()
+            self.assert_draft_expired(created, created + age)
+
+    def test_draft_age_is_elapsed_time_not_calendar_days(self):
+        late = datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc)
+        self.assertEqual(self.publish_draft_at(late, late + timedelta(minutes=2))["publishedAt"], "2026-09-02T00:01:00+00:00")
+        self.setUp()
+        early = datetime(2026, 9, 1, 0, 1, tzinfo=timezone.utc)
+        self.assertEqual(self.publish_draft_at(early, early + timedelta(days=28, hours=23, minutes=58))["publishedAt"][:10], "2026-09-29")
+        self.setUp()
+        self.assert_draft_expired(early, early + timedelta(days=29))
+
+    def test_draft_age_does_not_depend_on_the_process_timezone(self):
+        created = datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        original = os.environ.get("TZ")
+        try:
+            for zone in ("UTC", "America/Sao_Paulo", "Pacific/Kiritimati"):
+                os.environ["TZ"] = zone
+                time.tzset()
+                self.setUp()
+                self.assertEqual(self.publish_draft_at(created, created + timedelta(days=28, hours=23))["publishedAt"][-6:], "+00:00")
+                self.setUp()
+                self.assert_draft_expired(created, created + timedelta(days=29))
+        finally:
+            if original is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original
+            time.tzset()
+
+    def test_publish_does_not_read_the_real_clock(self):
+        """Com portal.now fixado em 2020, uma prévia criada em 2020 publica mesmo hoje, anos depois."""
+        created = datetime(2020, 1, 1, 12, 0, tzinfo=timezone.utc)
+        self.assertEqual(self.publish_draft_at(created, created + timedelta(days=1))["publishedAt"], "2020-01-02T12:00:00+00:00")
 
     def test_restore_has_its_own_date_and_current_history_marker(self):
         with frozen_clock("2026-09-01T12:00:00+00:00"):
