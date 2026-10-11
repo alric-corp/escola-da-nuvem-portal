@@ -23,6 +23,13 @@ Tarefas parciais e pendentes ficam em [todo/](todo/README.md).
 Os históricos concluídos e o mapa de implementação estão em
 [todo/concluido/](todo/concluido/README.md).
 
+## Operação e histórico
+
+| Documento | Conteúdo |
+| --- | --- |
+| [auto-5.md](auto-5.md) | AUTO-5, em andamento: ativação controlada dos lembretes automáticos |
+| [auto-2.1.md](auto-2.1.md), [auto-2.2.md](auto-2.2.md), [auto-2.3.md](auto-2.3.md), [auto-4.md](auto-4.md), [auto-5-claim.md](auto-5-claim.md) | Registros de entrega da automação de lembretes, concluídos; permanecem aqui por ora |
+| [historico/api-1.md](historico/api-1.md), [historico/api-2.md](historico/api-2.md) | API-1 (caracterização OpenAPI) e API-2 (OpenAPI como fonte das rotas Terraform), concluídas |
+
 Relatos antigos de sessão e deploy removidos desta árvore permanecem no
-histórico Git. Os documentos da API-1/API-2 são mantidos durante o fechamento
-da entrega OpenAPI.
+histórico Git.
