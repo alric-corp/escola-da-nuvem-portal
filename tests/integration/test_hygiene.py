@@ -4,27 +4,55 @@ Nenhum aviso é desligado globalmente: o teste de compilação os trata como err
 """
 import pathlib
 import sys
+import tempfile
 import unittest
 import warnings
 
-BACKEND = pathlib.Path(__file__).resolve().parents[2] / "backend"
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 import feedback
 
+COMPILED_DIRS = ("backend", "tests")  # só fontes do projeto; compila, não importa nem executa
+SKIPPED_PARTS = {"node_modules", ".terraform", "__pycache__", ".pytest_cache", ".build", ".venv", "venv", "env", ".git"}
+
+
+def python_sources():
+    for directory in COMPILED_DIRS:
+        for path in sorted((ROOT / directory).rglob("*.py")):
+            if not SKIPPED_PARTS.intersection(path.relative_to(ROOT).parts):
+                yield path
+
+
+def compile_problems(paths):
+    problems = []
+    for path in paths:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", SyntaxWarning)
+            warnings.simplefilter("error", DeprecationWarning)
+            try:
+                compile(path.read_text(encoding="utf-8"), str(path), "exec")
+            except (SyntaxError, SyntaxWarning, DeprecationWarning) as err:
+                problems.append(f"{path.name}: {err}")
+    return problems
+
 
 class CompilationWarningTests(unittest.TestCase):
-    def test_backend_modules_compile_without_syntax_or_deprecation_warnings(self):
-        """Escape inválido (ex.: '\;') vira SyntaxWarning no Python 3.12+ (runtime das Lambdas: 3.13)."""
-        problems = []
-        for path in sorted(BACKEND.glob("*.py")):
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", SyntaxWarning)
-                warnings.simplefilter("error", DeprecationWarning)
-                try:
-                    compile(path.read_text(encoding="utf-8"), str(path), "exec")
-                except (SyntaxError, SyntaxWarning, DeprecationWarning) as err:
-                    problems.append(f"{path.name}: {err}")
-        self.assertEqual(problems, [])
+    r"""Escape inválido (ex.: '\;') vira SyntaxWarning no Python 3.12+ (runtime das Lambdas: 3.13)."""
+
+    def test_backend_and_tests_compile_without_syntax_or_deprecation_warnings(self):
+        paths = list(python_sources())
+        self.assertTrue(any(p.name == "feedback.py" for p in paths))
+        self.assertTrue(any(p.name == "test_hygiene.py" for p in paths))
+        self.assertEqual(compile_problems(paths), [])
+
+    def test_detector_flags_an_invalid_escape(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bad, ok = pathlib.Path(directory, "bad.py"), pathlib.Path(directory, "ok.py")
+            bad.write_text("x = '\\;'\n", encoding="utf-8")  # fonte com barra + ponto e vírgula soltos
+            ok.write_text("x = '\\\\;'\n", encoding="utf-8")  # fonte com a barra escapada
+            self.assertEqual(len(compile_problems([bad])), 1)
+            self.assertEqual(compile_problems([ok]), [])
 
 
 class ContentDispositionTests(unittest.TestCase):
@@ -43,7 +71,7 @@ class ContentDispositionTests(unittest.TestCase):
         self.assertEqual(self.ascii_part('a"b'), "a_b")
         self.assertEqual(self.ascii_part("a\\b"), "a_b")
         self.assertEqual(self.ascii_part("a;b"), "a_b")
-        self.assertEqual(self.ascii_part('x"\;y'), "x___y")
+        self.assertEqual(self.ascii_part('x"\\;y'), "x___y")
 
     def test_accents_and_non_ascii_are_replaced_in_ascii_but_encoded_in_the_real_name(self):
         header = feedback.content_disposition("relatório é.png")
