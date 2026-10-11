@@ -57,7 +57,7 @@ false, IAM temporário revogado e ambos schedules DISABLED. As datas são metas
 condicionais à conclusão aprovada do manual BRSA0257 e às revisões dos planos.
 Nenhum schedule foi habilitado nesta rodada. **AUTO-5 aberta; não iniciar AUTO-6.**
 
-API-1 já foi concluída e commitada. A [API-2](../api-2.md) é uma entrega
+API-1 já foi concluída e commitada. A [API-2](../historico/api-2.md) é uma entrega
 separada, implementada localmente e aguardando aprovação; o TODO 22 guarda
 uma evolução futura e não reabre API-1/API-2.
 

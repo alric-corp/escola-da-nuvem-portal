@@ -39,7 +39,7 @@ Python do CI já declara 3.12. API-1 não mudou dependências nem CI.
 
 ## Contrato e decisões
 
-- Arquivo: [openapi/portal.yaml](../openapi/portal.yaml), OpenAPI **3.0.3**,
+- Arquivo: [openapi/portal.yaml](../../openapi/portal.yaml), OpenAPI **3.0.3**,
   título **Escola da Nuvem Portal API**, versão **1.0.0**.
 - São **35 operações**, todas da API do portal: 1 recurso Terraform `me`
   e 34 instâncias do recurso `portal`. Não há rota HTTP especial excluída.
@@ -72,11 +72,11 @@ Python do CI já declara 3.12. API-1 não mudou dependências nem CI.
 
 ## Inventário anterior ao contrato
 
-Fontes: [api.tf](../infra/terraform/api.tf),
-[api.js](../frontend/api.js),
-[Portal.dispatch e subdispatchers](../backend/portal.py),
-[testes frontend existentes](../tests/api.mjs) e
-[contrato backend existente](../tests/integration/test_api_routes.py).
+Fontes: [api.tf](../../infra/terraform/api.tf),
+[api.js](../../frontend/api.js),
+[Portal.dispatch e subdispatchers](../../backend/portal.py),
+[testes frontend existentes](../../tests/api.mjs) e
+[contrato backend existente](../../tests/integration/test_api_routes.py).
 
 **Segurança em todas as linhas:** `JWT` + `portal/access`, derivada de ambos
 os recursos `aws_apigatewayv2_route` atuais, não presumida por convenção.

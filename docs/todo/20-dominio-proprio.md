@@ -8,7 +8,7 @@ Domínio desejado: `students.escoladanuvem.org`. O certificado anterior entrou
 em `VALIDATION_TIMED_OUT / FAILED`; `portal_domain_ready` permanece `false`.
 O ACM pertence a esta trilha de domínio, fora da C7.2 e do trabalho OpenAPI.
 
-O [full plan somente leitura da API-2](../api-2.md#prova-por-planos)
+O [full plan somente leitura da API-2](../historico/api-2.md#prova-por-planos)
 registrou o certificado ausente no refresh e propôs sua criação. Isso não
 autoriza recriá-lo nesta rodada. Nenhuma nova consulta AWS/DNS foi realizada.
 
