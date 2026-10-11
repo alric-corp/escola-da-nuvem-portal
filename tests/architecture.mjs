@@ -269,6 +269,18 @@ test("handlers/admin-feedback.js não conhece feedback próprio, attachments nem
     assert.doesNotMatch(source, pattern);
 });
 
+// C7.5: o estado do Feedback é por usuário. O boot reinicia quando o /me muda e o logout reinicia sempre; o handler do
+// admin guarda só a sua fila e expõe o reinício.
+test("boot e logout reiniciam o estado do Feedback por usuário", () => {
+  const app = read("frontend/app.js");
+  const boot = blockAfter(app, /async function boot\(\)/).replace(/\s+/g, "");
+  assert.match(boot, /importHandlers\.resetDraftsForUser\(state\.me\.email\);feedbackHandlers\.resetForUser\(state\.me\.email\);adminFeedbackHandlers\.resetForUser\(state\.me\.email\);/);
+  const signOut = blockAfter(app, /function signOut\(\)/).replace(/\s+/g, "");
+  assert.match(signOut, /importHandlers\.discardDrafts\(\);feedbackHandlers\.resetForUser\(""\);adminFeedbackHandlers\.resetForUser\(""\);/);
+  assert.ok(Object.keys(adminFeedbackHandlers).includes("resetForUser"));
+  assert.ok(Object.keys(feedbackHandlers).includes("resetForUser"));
+});
+
 // Corpo do bloco { … } que começa depois do primeiro trecho que casa com o padrão (ignora chaves em strings).
 function blockAfter(source, pattern) {
   const found = source.match(pattern);
@@ -331,7 +343,7 @@ test("handlers/feedback.js importa só api, state e ui, não registra listeners 
 
 test("handlers/feedback.js expõe só a API do domínio; validação, envio e prévias continuam internos", () => {
   assert.deepEqual(Object.keys(feedbackHandlers).sort(), ["ATTACHMENT_MAX_BYTES", "ATTACHMENT_SLOTS", "ATTACHMENT_TYPES", "addPickedImages",
-    "closeAttachments", "configure", "discardUploads", "invalidateReads", "loadAttachments", "loadMine", "removeFile", "retryUploads", "submit"]);
+    "closeAttachments", "configure", "discardUploads", "invalidateReads", "loadAttachments", "loadMine", "removeFile", "resetForUser", "retryUploads", "submit"]);
   const source = codeOf("handlers/feedback.js");
   for (const pattern of [/adminFeedback/, /enterStudentView|exitStudentView|viewAsFromFeedback|studentView/, /\bboot\b/, /\bbusy\s*\(/, /toggleAttachments/])
     assert.doesNotMatch(source, pattern);
@@ -378,7 +390,8 @@ test("app.js não guarda mais o feedback próprio nem os anexos, mas mantém o s
   // Fechar a galeria continua fora do busy; só abrir (carregar) passa por ele. Sem espaços, a checagem aceita
   // qualquer quebra de linha e chaves opcionais nos dois ramos.
   const toggle = blockAfter(app, /if\s*\(\s*button\.dataset\.fbToggleAttachments\s*\)/).replace(/\s+/g, "");
-  assert.match(toggle, /if\(state\.feedbackAttachments\[id\]\?\.open\)\{?feedbackHandlers\.closeAttachments\(id\);?\}?else\{?busy\(button,\(\)=>feedbackHandlers\.loadAttachments\(id\)\);?\}?/);
+  // C7.5: depois de fechar ou abrir, o foco volta ao botão de anexos se o render o tirou do lugar.
+  assert.match(toggle, /if\(state\.feedbackAttachments\[id\]\?\.open\)\{feedbackHandlers\.closeAttachments\(id\);restoreFocus\(toggle\);\}elsebusy\(button,\(\)=>feedbackHandlers\.loadAttachments\(id\)\)\.then\(\(\)=>restoreFocus\(toggle\)\);/);
   assert.doesNotMatch(toggle, /busy\([^;]*closeAttachments/);
   assert.equal((toggle.match(/closeAttachments\(/g) || []).length, 1);
   assert.equal((app.match(/imagePicker\.addEventListener\(/g) || []).length, 1);

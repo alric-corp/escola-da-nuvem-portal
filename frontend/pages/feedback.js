@@ -61,7 +61,7 @@ export function statusBadge(status) {
 
 function myFeedbackList() {
   const list = state.myFeedback;
-  if (list.error)
+  if (list.error && !list.items.length)
     return `<div class="empty compact" role="alert"><p>${e(list.error)}</p><button class="button secondary" data-action="feedback-retry">Tentar novamente</button></div>`;
   if (!list.items.length)
     return list.loading ? '<p class="small" role="status">Carregando seus feedbacks…</p>' : '<p class="empty compact">Você ainda não enviou feedbacks.</p>';
@@ -73,7 +73,8 @@ function myFeedbackList() {
     return `<li class="feedback-card"><div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div><strong class="fb-title">${e(f.title)}</strong><small>${e(shortDate(f.createdAt))}${count ? ` · ${plural(count, "anexo", "anexos")}` : ""}</small>
     ${count || canAdd ? `<div class="fb-card-actions">${count ? `<button type="button" class="text-link" data-fb-toggle-attachments="${e(f.id)}" aria-expanded="${open}">${open ? "Ocultar anexos" : "Ver anexos"}</button>` : ""}${canAdd ? `<button type="button" class="text-link fb-card-add" data-fb-pick="${e(f.id)}" ${progress?.busy ? "disabled" : ""}>Adicionar imagem</button>` : ""}</div>` : ""}
     ${progress?.message ? `<p class="small fb-card-progress" role="status">${e(progress.message)}</p>` : ""}${open ? attachmentGallery(f.id) : ""}</li>`;
-  }).join("")}</ul>${list.nextCursor ? `<button class="button secondary fb-more" data-action="feedback-more" ${list.loading ? "disabled" : ""}>${list.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
+  }).join("")}</ul>${list.error ? `<div class="empty compact" role="alert"><p>${e(list.error)}</p><button class="button secondary fb-more" data-action="feedback-more">Tentar novamente</button></div>`
+    : list.nextCursor ? `<button class="button secondary fb-more" data-action="feedback-more" ${list.loading ? "disabled" : ""}>${list.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
 }
 
 export function feedbackPage() {
