@@ -48,6 +48,9 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Constrói o frontend e roda os testes de navegador
         run: npm run test:browser
+      # Reutiliza npm ci e o Chromium acima; muta só cópias temporárias, sem AWS. Mutação sobrevivente sai com código != 0.
+      - name: Mutações das leituras assíncronas obsoletas (C7.4, sem AWS real)
+        run: python3 tests/contracts/stale_mutations.py
 
   terraform:
     name: Terraform (fmt, validate, test)

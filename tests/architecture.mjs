@@ -103,9 +103,9 @@ test("build publica state.js e todo módulo alcançável a partir de app.js, sem
   assert.deepEqual(importsOf("ui.js"), ["state.js"]);
 });
 
-// Injeção nos handlers: configure recebe um objeto e só guarda render. Tolerante a espaços, tabs, quebras de
+// Injeção nos handlers: configure guarda render; C7.4 recebe também syncContext na composição. Tolerante a espaços, tabs, quebras de
 // linha, ponto e vírgula e vírgula final; qualquer outra dependência configurável falha.
-test("cada um dos 6 handlers expõe configure que só guarda render", async () => {
+test("cada um dos 6 handlers expõe configure que guarda os callbacks aprovados", async () => {
   for (const file of HANDLERS) {
     const module = await import(`../frontend/${file}`), code = codeOf(file);
     // Sanidade do código sem comentários: nenhum export some ao tirar os comentários.
@@ -114,13 +114,14 @@ test("cada um dos 6 handlers expõe configure que só guarda render", async () =
     const signature = code.match(/export\s+function\s+configure\s*\(\s*(\w+)\s*,?\s*\)\s*\{/);
     assert.ok(signature, `${file}: export function configure(options) não encontrado`);
     const body = blockAfter(code, /export\s+function\s+configure\s*\(/).replace(/\s+/g, "").replace(/;$/, "");
-    assert.equal(body, `render=${signature[1]}.render`, `${file}: configure deve só guardar render`);
+    const contextAware = ["handlers/feedback.js", "handlers/reminders.js"].includes(file);
+    assert.equal(body, `render=${signature[1]}.render` + (contextAware ? `;syncContext=${signature[1]}.syncContext||(()=>{})` : ""), `${file}: configure só guarda callbacks da composição`);
     assert.match(code, /\blet\s+render\b/, `${file}: render do módulo`);
     assert.equal((code.match(/\bconfigure\b/g) || []).length, 1, `${file}: configure definido uma vez e não chamado internamente`);
   }
 });
 
-test("app.js configura cada um dos 6 handlers exatamente uma vez, só com { render }", () => {
+test("app.js configura cada um dos 6 handlers exatamente uma vez com os callbacks aprovados", () => {
   const app = read("frontend/app.js");
   const namespaces = new Map([...app.matchAll(/^import\s+\*\s+as\s+(\w+)\s+from\s+["']\.\/handlers\/([\w-]+)\.js["']/gm)].map(([, ns, name]) => [name, ns]));
   assert.deepEqual([...namespaces.keys()].sort(), [...HANDLER_NAMES].sort());
@@ -128,7 +129,7 @@ test("app.js configura cada um dos 6 handlers exatamente uma vez, só com { rend
   for (const ns of namespaces.values()) {
     const own = calls.filter((call) => call.ns === ns);
     assert.equal(own.length, 1, `${ns}.configure deve aparecer exatamente uma vez`);
-    assert.equal(own[0].args, "{render}", `${ns}.configure deve receber só { render }`);
+    assert.equal(own[0].args, ["feedbackHandlers", "remindersHandlers"].includes(ns) ? "{render,syncContext:syncReadContext}" : "{render}", `${ns}.configure deve receber só { render }`);
   }
   assert.equal(calls.filter((call) => [...namespaces.values()].includes(call.ns)).length, HANDLER_NAMES.length);
   // Nenhum handler pendente de ligação: todo arquivo de handlers/ está na lista acima.
@@ -330,7 +331,7 @@ test("handlers/feedback.js importa só api, state e ui, não registra listeners 
 
 test("handlers/feedback.js expõe só a API do domínio; validação, envio e prévias continuam internos", () => {
   assert.deepEqual(Object.keys(feedbackHandlers).sort(), ["ATTACHMENT_MAX_BYTES", "ATTACHMENT_SLOTS", "ATTACHMENT_TYPES", "addPickedImages",
-    "closeAttachments", "configure", "discardUploads", "loadAttachments", "loadMine", "removeFile", "retryUploads", "submit"]);
+    "closeAttachments", "configure", "discardUploads", "invalidateReads", "loadAttachments", "loadMine", "removeFile", "retryUploads", "submit"]);
   const source = codeOf("handlers/feedback.js");
   for (const pattern of [/adminFeedback/, /enterStudentView|exitStudentView|viewAsFromFeedback|studentView/, /\bboot\b/, /\bbusy\s*\(/, /toggleAttachments/])
     assert.doesNotMatch(source, pattern);
@@ -397,7 +398,7 @@ test("handlers/reminders.js importa só api, state e ui, não registra listeners
 });
 
 test("handlers/reminders.js expõe só as operações do domínio e não conhece busy, boot, navegação global, sessão nem student-view", () => {
-  assert.deepEqual(Object.keys(remindersHandlers).sort(), ["configure", "copyReminder", "loadBatchPreview", "loadPending", "loadSender",
+  assert.deepEqual(Object.keys(remindersHandlers).sort(), ["configure", "copyReminder", "invalidateReads", "loadBatchPreview", "loadPending", "loadSender",
     "openBatch", "sendBatch", "sendReminder", "verifySender"]);
   const source = codeOf("handlers/reminders.js");
   for (const pattern of [/\bbusy\b/, /\bboot\b/, /\bstart\s*\(/, /studentView|allowedWhileViewing/, /\blocation\b|\bhistory\b|localStorage|sessionStorage/,
@@ -431,7 +432,7 @@ test("app.js não implementa mais Lembretes: as actions, o clique, a navegação
   assert.match(app, /if\s*\(\s*button\.dataset\.studentPending\s*\)\s*return\s+busy\(\s*button\s*,\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*button\.dataset\.studentPending\s*\)\s*\);/);
   assert.match(app, /else\s+if\s*\(\s*state\.view\s*===\s*"reminders"\s*\)\s*busy\(\s*button\s*,\s*remindersHandlers\.loadSender\s*\);/);
   assert.match(app, /if\s*\(\s*state\.view\s*===\s*"reminders"\s*&&\s*teacher\(\)\s*\)\s*await\s+remindersHandlers\.loadSender\(\s*\);/);
-  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 5);
+  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 8);
   assert.match(app, /await\s+remindersHandlers\.loadPending\(\s*studentId\s*\)/);
   // Continuam em app.js: actions, listeners, busy, boot, roteamento e a navegação global com teacherFilters.
   for (const kept of ["const actions = {", "async function busy(", "async function boot()", "function allowedWhileViewing(",

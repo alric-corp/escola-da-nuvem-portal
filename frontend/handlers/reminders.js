@@ -7,41 +7,52 @@ import { state } from "../state.js";
 import { notice, plural } from "../ui.js";
 
 let render = null;
+let syncContext = () => {};
 
 export function configure(options) {
   render = options.render;
+  syncContext = options.syncContext || (() => {});
 }
 
 let batchPreviewRequest = 0;
+let senderRequest = 0;
+let pendingRequest = 0;
+
+// A composição invalida leituras ao sair do contexto, mesmo sem iniciar outra chamada.
+export function invalidateReads() {
+  senderRequest++;
+  pendingRequest++;
+  state.sender = null;
+  state.senderError = "";
+  state.senderLoading = false;
+  state.pendingPreview = null;
+  state.pendingError = "";
+}
 
 export async function loadPending(studentId) {
   const code = state.code;
   if (!["student-pending", "reminders-batch"].includes(state.view)) state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
-  state.pendingError = "";
   state.view = "student-pending";
   state.pendingStudentId = studentId;
+  syncContext();
+  const request = ++pendingRequest, owner = state.me;
+  const current = () => request === pendingRequest && state.me === owner && state.code === code &&
+    state.view === "student-pending" && state.pendingStudentId === studentId;
+  state.pendingError = "";
   state.pendingPreview = null;
   render();
   try {
     const preview = await api.reminders.pendingPreview(code, { studentId });
-    if (
-      state.code === code &&
-      state.view === "student-pending" &&
-      state.pendingStudentId === studentId
-    ) {
+    if (current()) {
       state.pendingPreview = preview;
       render();
     }
   } catch (err) {
-    if (
-      state.code === code &&
-      state.view === "student-pending" &&
-      state.pendingStudentId === studentId
-    ) {
+    if (current()) {
       state.pendingError = err.message;
       render();
+      throw err;
     }
-    throw err;
   }
 }
 
@@ -67,17 +78,20 @@ export async function loadBatchPreview() {
 }
 
 export async function loadSender() {
-  const code = state.code;
+  syncContext();
+  const code = state.code, owner = state.me, request = ++senderRequest;
+  const current = () => request === senderRequest && state.me === owner && state.code === code && state.view === "reminders";
+  state.sender = null;
   state.senderError = "";
   state.senderLoading = true;
   render();
   try {
     const sender = await api.reminders.senderSettings(code);
-    if (state.code === code) state.sender = sender;
+    if (current()) state.sender = sender;
   } catch (err) {
-    if (state.code === code) state.senderError = err.message;
+    if (current()) state.senderError = err.message;
   } finally {
-    if (state.code === code) { state.senderLoading = false; render(); }
+    if (current()) { state.senderLoading = false; render(); }
   }
 }
 
@@ -123,20 +137,41 @@ export async function copyReminder() {
 }
 
 export async function verifySender() {
-  const code = state.code;
-  const sender = await api.reminders.verifySender(code);
-  if (code === state.code) { state.sender = sender; render(); }
-  notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
+  syncContext();
+  const code = state.code, owner = state.me, request = ++senderRequest;
+  const current = () => request === senderRequest && state.me === owner && state.code === code && state.view === "reminders";
+  try {
+    const sender = await api.reminders.verifySender(code);
+    if (!current()) return;
+    state.sender = sender;
+    state.senderLoading = false;
+    render();
+    notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
+  } catch (err) {
+    if (current()) throw err;
+  } finally {
+    if (current() && state.senderLoading) { state.senderLoading = false; render(); }
+  }
 }
 
 export async function sendReminder() {
   const code = state.code, p = state.pendingPreview;
+  const owner = state.me;
+  let request = pendingRequest;
+  const current = () => request === pendingRequest && state.me === owner && state.code === code &&
+    state.pendingStudentId === p?.student.id && state.view === "student-pending";
   if (!p?.message || !confirm(`Enviar este lembrete para ${p.message.to}, usando ${p.message.from}?`)) return;
+  let failure;
   try {
     await api.reminders.send(code, {
       studentId: p.student.id, publicationId: p.publicationId, previewHash: p.previewHash });
-    notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
-  } finally {
-    if (state.code === code && state.pendingStudentId === p.student.id && state.view === "student-pending") await loadPending(p.student.id);
+  } catch (err) {
+    failure = err;
   }
+  if (!current()) return;
+  if (!failure) notice("Mensagem aceita pelo serviço de envio. Consulte o status da entrega.");
+  const refresh = loadPending(p.student.id);
+  request = pendingRequest;
+  await refresh;
+  if (failure && current()) throw failure;
 }

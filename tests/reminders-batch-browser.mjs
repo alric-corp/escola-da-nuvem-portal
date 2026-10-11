@@ -240,7 +240,7 @@ try {
     await context.close();
   }
 
-  // Prévia individual: um erro atrasado de outro aluno não altera a prévia atual, mas o aviso de erro aparece.
+  // C7.4: erro atrasado de outro aluno não altera a prévia atual nem produz toast.
   {
     const { context, tab, log } = await open();
     const gate = deferred(), arrived = deferred();
@@ -254,12 +254,14 @@ try {
     await button(tab, "Voltar ao painel").click();
     await button(tab, "Ver pendências de Bruna Teste").click();
     await heading(tab, "Pendências de Bruna Teste").waitFor();
+    const late = tab.waitForResponse((r) => r.url().endsWith("/pending-preview") && r.request().postDataJSON()?.studentId === "1");
     gate.resolve();
-    await tab.locator("#notices .notice.error").waitFor();
+    await late;
+    await flushNetwork(tab);
     const s = await snapshot(tab, "pendingStudentId", "pendingError", "pendingPreview");
     assert.deepEqual([s.pendingStudentId, s.pendingError, s.pendingPreview.student.id], ["2", "", "2"]);
     assert.equal(await tab.getByRole("alert").filter({ hasText: "Não foi possível carregar" }).count(), 0);
-    assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Falha atrasada da prévia de Ana." }]);
+    assert.deepEqual(await noticeTexts(tab), []);
     assert.deepEqual([log.errors, log.dialogs], [[], []]);
     await context.close();
   }

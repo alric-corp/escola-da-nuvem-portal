@@ -6,9 +6,18 @@ import { state } from "../state.js";
 import { notice } from "../ui.js";
 
 let render = null;
+let syncContext = () => {};
+let mineRequest = 0;
 
 export function configure(options) {
   render = options.render;
+  syncContext = options.syncContext || (() => {});
+}
+
+export function invalidateReads() {
+  mineRequest++;
+  // Trocar a referência impede também callbacks antigos de preencher a lista do novo contexto.
+  state.myFeedback = { items: [], nextCursor: null, loading: false, error: "" };
 }
 
 // Anexos (backend/feedback.py): só PNG, JPEG e WebP, até 5 MiB cada, no máximo 3 por feedback.
@@ -17,18 +26,22 @@ export const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 export const ATTACHMENT_SLOTS = 3;
 
 export async function loadMine(more = false) {
+  syncContext();
+  if (state.view !== "feedback") return;
   const list = state.myFeedback;
+  const request = ++mineRequest, owner = state.me, code = state.code;
+  const current = () => request === mineRequest && state.me === owner && state.code === code &&
+    state.view === "feedback" && state.myFeedback === list;
   const cursor = more ? list.nextCursor : null;
   Object.assign(list, { loading: true, error: "" }, more ? {} : { items: [], nextCursor: null });
   render();
   try {
     const page = await api.feedback.listMine(cursor);
-    Object.assign(list, { items: more ? [...list.items, ...page.items] : page.items, nextCursor: page.nextCursor });
+    if (current()) Object.assign(list, { items: more ? [...list.items, ...page.items] : page.items, nextCursor: page.nextCursor });
   } catch (err) {
-    list.error = err.message || "Não foi possível carregar seus feedbacks.";
+    if (current()) list.error = err.message || "Não foi possível carregar seus feedbacks.";
   } finally {
-    list.loading = false;
-    if (state.view === "feedback") render();
+    if (current()) { list.loading = false; render(); }
   }
 }
 

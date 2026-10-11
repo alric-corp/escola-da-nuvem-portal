@@ -25,13 +25,24 @@ import { adminFeedbackPage } from "./pages/admin-feedback.js";
 accessHandlers.configure({ render });
 importHandlers.configure({ render });
 adminFeedbackHandlers.configure({ render });
-feedbackHandlers.configure({ render });
-remindersHandlers.configure({ render });
+feedbackHandlers.configure({ render, syncContext: syncReadContext });
+remindersHandlers.configure({ render, syncContext: syncReadContext });
 signupConfirmationHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
+let readContext = [];
+
+// Ownership das três leituras C7.4. Invalidar antes de desenhar evita exibir dados do
+// contexto anterior e impede A → B → A de ressuscitar respostas ainda em trânsito.
+function syncReadContext() {
+  const next = [state.me, state.code, state.view, state.studentView, state.pendingStudentId];
+  if (next.every((value, index) => value === readContext[index])) return;
+  readContext = next;
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
+}
 let renderedView = "";
 let lastFocusSelector = "";
 // Confirmação de cadastro: a etapa desenhada por último (o foco vai ao título só quando ela muda) e o timer que
@@ -129,6 +140,7 @@ async function loadClassReport(value) {
 }
 
 function render() {
+  syncReadContext();
   if (!state.me) return publicPage();
   if (state.classReport) return renderClassReport();
   const focused = document.activeElement;
@@ -175,6 +187,7 @@ function render() {
 // "Primeiro acesso?" (só com região e cliente do Cognito na configuração); aberta, a etapa ocupa a coluna de texto, e
 // cabeçalho, arte e rodapé continuam os da landing.
 function publicPage() {
+  syncReadContext();
   const s = state.signupConfirmation;
   const focused = document.activeElement, focusId = focused?.id;
   const oldCodeField = $("#signup-code"), typed = oldCodeField?.value, caret = oldCodeField?.selectionStart;
@@ -314,6 +327,9 @@ async function viewAsFromFeedback(id) {
 }
 
 async function boot() {
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
+  render();
   state.bootError = "";
   try {
     const wasSignedIn = !!state.me;
@@ -451,6 +467,8 @@ function expireSession() {
 
 function signOut() {
   if (importHandlers.hasUnpublishedCsv() && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
   importHandlers.discardDrafts();
   forgetStudentView();
   localStorage.removeItem("avanca.context");
