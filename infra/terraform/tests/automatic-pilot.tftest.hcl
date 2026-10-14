@@ -21,25 +21,26 @@ override_resource {
   }
 }
 
-run "pilot_selects_only_brsa0267" {
+run "brsa0257_one_time_pilot_preserves_brsa0267_recurrence" {
   command = plan
   assert {
     condition = (
-      var.automatic_reminder_enabled_cohorts == toset(["BRSA0267"])
+      var.automatic_reminder_enabled_cohorts == toset(["BRSA0257", "BRSA0267"])
       && aws_scheduler_schedule.automatic_reminders["BRSA0267"].state == "ENABLED"
-      && aws_scheduler_schedule.automatic_reminders["BRSA0257"].state == "DISABLED"
+      && aws_scheduler_schedule.automatic_reminders["BRSA0257"].state == "ENABLED"
+      && aws_scheduler_schedule.automatic_reminders["BRSA0257"].schedule_expression == "at(2026-10-14T20:00:00)"
+      && aws_scheduler_schedule.automatic_reminders["BRSA0267"].schedule_expression == "cron(0 20 ? * TUE,FRI *)"
       && length(aws_scheduler_schedule.automatic_reminders) == 2
       && aws_lambda_function.automatic_reminders.environment[0].variables.AUTOMATIC_REMINDERS_ENABLED == "true"
       && aws_lambda_function.automatic_reminders.environment[0].variables.MANUAL_RECOVERY_ENABLED == "false"
       && aws_lambda_alias.manual_recovery.function_version == "3"
       && length(aws_lambda_alias.manual_recovery.routing_config) == 0
     )
-    error_message = "Only BRSA0267 is selected for the pilot; BRSA0257/manual stay disabled and alias stays at version 3."
+    error_message = "BRSA0257 must run once on October 14 at 20h; BRSA0267 keeps its recurrence and manual/alias stay closed."
   }
   assert {
     condition = alltrue([for code, schedule in aws_scheduler_schedule.automatic_reminders :
-      schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
-      && schedule.schedule_expression_timezone == "America/Sao_Paulo"
+      schedule.schedule_expression_timezone == "America/Sao_Paulo"
       && schedule.flexible_time_window[0].mode == "OFF"
       && schedule.target[0].arn == aws_lambda_function.automatic_reminders.arn
       && schedule.target[0].arn != local.manual_recovery_alias_arn
@@ -49,7 +50,7 @@ run "pilot_selects_only_brsa0267" {
         attemptNumber = "<aws.scheduler.attempt-number>", dryRun = false
       }
     ])
-    error_message = "Natural TUE/FRI 20h schedule and exact input must target the unqualified automatic worker."
+    error_message = "Both natural schedules must keep Sao Paulo timezone, OFF window, exact Scheduler input and the unqualified automatic worker."
   }
 }
 

@@ -11,9 +11,9 @@ variable "automatic_reminder_cohorts" {
 }
 
 variable "automatic_reminder_enabled_cohorts" {
-  description = "Schedules selecionados para ativação mediante plano aprovado. Piloto inicial somente BRSA0267; conjunto vazio desliga todos."
+  description = "Schedules selecionados: BRSA0267 recorrente e piloto pontual BRSA0257 em 14/10/2026. Conjunto vazio desliga todos."
   type        = set(string)
-  default     = ["BRSA0267"]
+  default     = ["BRSA0257", "BRSA0267"]
   validation {
     condition     = try(length(setsubtract(var.automatic_reminder_enabled_cohorts, var.automatic_reminder_cohorts)) == 0, false)
     error_message = "Somente turmas com schedules preparados podem ser habilitadas; null não é permitido."
@@ -144,13 +144,15 @@ resource "aws_iam_role_policy" "automatic_reminders_scheduler" {
 
 # A execution role acima autoriza InvokeFunction na mesma conta. Não adicionar
 # aws_lambda_permission público/genérico: Scheduler não usa o modelo de Rule/SNS.
-# Schedules só para LIVE (terça/sexta 20h); dry-run diagnóstico é invocação direta.
+# BRSA0257: ocorrência única antecipada para 14/10/2026, quarta às 20h.
+# Após seu aceite, restaurar a recorrência terça/sexta em plano separado.
+# A worker limita a exceção ao mesmo par turma/slot; não há invoke manual.
 resource "aws_scheduler_schedule" "automatic_reminders" {
   for_each                     = var.automatic_reminder_cohorts
   name                         = "${local.name}-reminders-${each.key}"
   group_name                   = aws_scheduler_schedule_group.automatic_reminders.name
   description                  = "Lembretes da turma ${each.key}; ativação depende de revisão AUTO-4."
-  schedule_expression          = "cron(0 20 ? * TUE,FRI *)"
+  schedule_expression          = each.key == "BRSA0257" ? "at(2026-10-14T20:00:00)" : "cron(0 20 ? * TUE,FRI *)"
   schedule_expression_timezone = "America/Sao_Paulo"
   state                        = contains(var.automatic_reminder_enabled_cohorts, each.key) ? "ENABLED" : "DISABLED"
   flexible_time_window {

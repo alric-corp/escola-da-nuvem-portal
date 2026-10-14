@@ -162,6 +162,28 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
                     for operation in (repo, mailer, client, resource):
                         operation.assert_not_called()
 
+    def test_oct14_pilot_adapter_opens_clients_only_for_brsa0257_exact_slot(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        self.event.update(cohortCode="BRSA0257", scheduledFor="2026-10-14T23:00:00Z")
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDER_COHORTS": '["BRSA0257","BRSA0267"]'}):
+            _, call, repo, mailer, _ = self.invoke([{"status": "completed", "retryable": False}])
+            repo.assert_called_once()
+            mailer.assert_called_once()
+            self.assertEqual(call.args[3], ["BRSA0257"])
+            for code, slot in (("BRSA0267", "2026-10-14T23:00:00Z"),
+                               ("BRSA0257", "2026-10-21T23:00:00Z")):
+                event = {**self.event, "cohortCode": code, "scheduledFor": slot}
+                with self.subTest(code=code, slot=slot), \
+                        patch.object(automatic, "utc_now", return_value=slot), \
+                        patch.object(automatic, "Repository") as repository, \
+                        patch.object(automatic.reminders, "SESMailer") as ses_mailer:
+                    result = automatic.handler(event, Mock())[0]
+                    self.assertEqual(result["reason"], "not-due")
+                    repository.assert_not_called()
+                    ses_mailer.assert_not_called()
+
     def test_active_lease_contention_requests_retry_but_business_skips_do_not(self):
         with self.assertRaises(RuntimeError):
             self.invoke([{"status": "skipped", "reason": "lease-active", "retryable": False}])
@@ -770,6 +792,77 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
     def record(self, code="BRSA0267"):
         from sync_runs import canonical_time
         return self.repo.get("COHORT#" + code, "AUTO_REMINDER#" + canonical_time(self.event["scheduledFor"]))
+
+    def oct14_pilot(self):
+        code = "BRSA0257"
+        self.repo.put("COHORT#" + code, "METADATA", {"code": code, "current": None})
+        draft = self.admin.dispatch("POST", "/cohorts/" + code + "/preview",
+                                    {"csv": canvas_csv(kc="", lab=""), "activeIds": ["001 KC (123)", "002 Lab (456)"]})
+        self.admin.dispatch("POST", "/cohorts/" + code + "/publish", {"draftId": draft["draft"]["id"]})
+        self.event["scheduledFor"] = self.at = "2026-10-14T23:00:00Z"
+        self.prepare(code=code)
+
+    def test_oct14_pilot_sends_once_and_deduplicates_retry(self):
+        from automatic_reminders import live_day
+        self.oct14_pilot()
+        self.assertFalse(live_day(self.event["scheduledFor"]))  # manual continua restrito a terça/sexta
+        result = self.execute(cohort_codes=["BRSA0257"])[0]
+        self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 1))
+        self.assertEqual(self.record("BRSA0257")["syncKey"], "SYNC_RUN#2026-10-14T21:00:00Z")
+        self.event.update(executionId="retry", attemptNumber=2)
+        self.assertEqual(self.execute(cohort_codes=["BRSA0257"])[0]["reason"], "already-finished")
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "AUTO_REMINDER#"), [])
+
+    def test_oct14_pilot_keeps_window_and_infrastructure_gate_before_reads(self):
+        for at, enabled, reason in (("2026-10-14T22:59:59Z", True, "not-due"),
+                                    ("2026-10-14T23:30:00Z", True, "window-expired"),
+                                    ("2026-10-14T23:00:00Z", False, "infrastructure-disabled")):
+            with self.subTest(at=at, enabled=enabled):
+                self.setUp()
+                self.oct14_pilot()
+                self.at = at
+                before = copy.deepcopy(self.repo.items)
+                with patch.object(self.repo, "get", side_effect=AssertionError("no read")):
+                    result = self.execute(cohort_codes=["BRSA0257"], enabled=enabled)[0]
+                self.assertEqual(result["reason"], reason)
+                self.assertEqual((self.repo.items, self.mailer.sent), (before, []))
+
+    def test_oct14_pilot_requires_natural_same_day_proof_and_matching_publication(self):
+        for change, reason in (("missing", "sync-invalid"), ("manual", "sync-invalid"),
+                               ("yesterday", "sync-invalid"), ("publication", "publication-changed"),
+                               ("settings", "automatic-disabled")):
+            with self.subTest(change=change):
+                self.setUp()
+                self.oct14_pilot()
+                pk, key = "COHORT#BRSA0257", "SYNC_RUN#2026-10-14T21:00:00Z"
+                proof = self.repo.get(pk, key)
+                if change == "missing": self.repo.items.pop((pk, key))
+                elif change == "manual": self.repo.put(pk, key, {**proof, "source": "portal.operator"})
+                elif change == "yesterday": self.repo.put(pk, key, {**proof, "scheduledFor": "2026-10-13T21:00:00Z"})
+                elif change == "publication": self.repo.put(pk, "METADATA", {**self.repo.get(pk, "METADATA"), "current": "changed"})
+                else: self.repo.put(pk, "REMINDER_SETTINGS", {**self.repo.get(pk, "REMINDER_SETTINGS"), "automaticEnabled": False})
+                before = copy.deepcopy(self.repo.items)
+                result = self.execute(cohort_codes=["BRSA0257"])[0]
+                self.assertEqual(result["reason"], reason)
+                self.assertEqual((self.repo.items, self.mailer.sent), (before, []))
+
+    def test_oct14_pilot_skips_withdrawn_and_existing_manual_send(self):
+        from reminders import reminder_key
+        for withdrawn in (True, False):
+            with self.subTest(withdrawn=withdrawn):
+                self.setUp()
+                self.oct14_pilot()
+                pk = "COHORT#BRSA0257"
+                if withdrawn:
+                    self.repo.put(pk, "PARTICIPATION#101", {"canvasId": "101", "status": "WITHDRAWN"})
+                else:
+                    self.repo.put(pk, reminder_key(self.repo.get(pk, "METADATA")["current"], "101"),
+                                  {"studentId": "101", "status": "sent", "by": "teacher"})
+                result = self.execute(cohort_codes=["BRSA0257"])[0]
+                self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 0))
+                self.assertEqual(result["counts"]["skipReasons"], {"withdrawn" if withdrawn else "already-sent": 1})
+                self.assertEqual(self.mailer.sent, [])
 
     def test_tuesday_and_friday_use_the_same_occurrence_key_on_retry(self):
         for scheduled in ("2026-10-06T20:00:00-03:00", "2026-10-09T23:00:00Z"):

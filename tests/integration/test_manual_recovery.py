@@ -104,6 +104,13 @@ class ManualRecoveryTests(unittest.TestCase):
                 self.assert_rejected(event={**self.manual, "scheduledFor": slot},
                                      config={"MANUAL_RECOVERY_SCHEDULED_FOR": slot})
 
+    def test_oct14_automatic_exception_does_not_authorize_manual_recovery(self):
+        slot = "2026-10-14T23:00:00Z"
+        self.at = "2026-10-14T23:05:00Z"
+        self.assert_rejected(event={**self.manual, "cohortCode": "BRSA0257", "scheduledFor": slot}, config={
+            "MANUAL_RECOVERY_COHORT": "BRSA0257", "MANUAL_RECOVERY_SCHEDULED_FOR": slot,
+            "MANUAL_RECOVERY_NOT_BEFORE": slot, "MANUAL_RECOVERY_EXPIRES_AT": "2026-10-14T23:30:00Z"})
+
     def test_unqualified_version_and_other_alias_cannot_authorize_payload(self):
         for arn in [None, ALIAS.rsplit(":", 1)[0], ALIAS.rsplit(":", 1)[0] + ":1", ALIAS + "-other"]:
             with self.subTest(arn=arn):

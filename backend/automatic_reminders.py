@@ -18,6 +18,8 @@ from sync_runs import SOURCE, TIMEZONE, canonical_time, evening_sync_key, instan
 
 SLOT = (20, 0)  # horário local (America/Sao_Paulo) de toda ocorrência
 LIVE_WEEKDAYS = (1, 4)  # terça e sexta: calendário operacional do envio
+# Antecipação pontual da AUTO-5. Não libera outra turma ou outra quarta-feira.
+PILOT_OCCURRENCE = ("BRSA0257", "2026-10-14T23:00:00Z")
 WINDOW = timedelta(minutes=30)
 LEASE = timedelta(seconds=120)
 SKIP_REASONS = {"withdrawn", "no-email", "no-pending", "already-sent", "not-found"}
@@ -46,6 +48,11 @@ def occurrence_context(event):
 def live_day(scheduled_for):
     """LIVE segue terça/sexta; dry-run é diagnóstico em qualquer dia, com as mesmas provas."""
     return instant(scheduled_for).astimezone(TIMEZONE).weekday() in LIVE_WEEKDAYS
+
+
+def automatic_live_day(code, scheduled_for):
+    """Calendário automático mais o único piloto aprovado; manual mantém live_day."""
+    return live_day(scheduled_for) or (code, canonical_time(scheduled_for)) == PILOT_OCCURRENCE
 
 
 @dataclass(frozen=True)
@@ -140,7 +147,7 @@ class CohortRun:
         return at
 
     def prepare(self):
-        if not self.dry_run and not live_day(self.context["scheduledFor"]):
+        if not self.dry_run and not automatic_live_day(self.code, self.context["scheduledFor"]):
             raise Stop("not-due")
         at = self.check_window()
         if not self.dry_run and not self.enabled and not self.authorization:
@@ -401,10 +408,10 @@ def handler(event, context):
         raise ValueError("Configuração automática inválida") from None
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
-    # O caminho bloqueado (gate fechado ou LIVE fora de terça/sexta) reutiliza o
+    # O caminho bloqueado (gate fechado ou LIVE fora do calendário autorizado) reutiliza o
     # guard/resultado do worker, sem construir clientes.
     repo = mailer = None
-    if authorization or event["dryRun"] or (gate == "true" and live_day(technical["scheduledFor"])):
+    if authorization or event["dryRun"] or (gate == "true" and automatic_live_day(event["cohortCode"], technical["scheduledFor"])):
         repo, mailer = Repository(), reminders.SESMailer()
     results = run(repo, mailer, technical, [event["cohortCode"]], domain,
                   enabled=gate == "true", dry_run=event["dryRun"],
