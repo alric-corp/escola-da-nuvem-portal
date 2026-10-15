@@ -75,7 +75,7 @@ para mudar os limites acadêmicos da turma.
 ## Base de validação
 
 Esta organização documental reutiliza os resultados já concluídos da
-[API-2](../../api-2.md), sem apresentar testes antigos como uma nova execução:
+[API-2](../../historico/api-2.md), sem apresentar testes antigos como uma nova execução:
 
 | Verificação anterior sobre o mesmo código | Resultado |
 | --- | ---: |

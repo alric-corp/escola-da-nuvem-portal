@@ -34,8 +34,11 @@ export function saveDraft() {
     ["csv", "filename", "preview", "dirty", "acknowledgeRemoved"].map((k) => [k, state[k]])));
 }
 
+// O state passa a ser a fonte da turma aberta: a cópia do Map sai, para não ficar desatualizada (e contar como
+// arquivo não publicado) depois que o state mudar. O saveDraft grava de novo ao sair da turma.
 export function restoreDraft() {
   Object.assign(state, { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: false, importLoading: false }, drafts.get(state.code));
+  drafts.delete(state.code);
 }
 
 export function hasUnpublishedCsv() {

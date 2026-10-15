@@ -85,8 +85,8 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 da API HTTP do portal em OpenAPI **3.0.3**. É a fonte das rotas Terraform:
 `yamldecode(file("${path.module}/../../openapi/portal.yaml"))` deriva método,
 path, tipo de autorização e scopes, sem copiar o YAML para a infraestrutura.
-O [inventário API-1](api-1.md) registra o mapeamento completo, limites dos schemas,
-mutações de teste e a etapa anterior à migração. O [relatório API-2](api-2.md)
+O [inventário API-1](historico/api-1.md) registra o mapeamento completo, limites dos schemas,
+mutações de teste e a etapa anterior à migração. O [relatório API-2](historico/api-2.md)
 registra os testes e os planos somente leitura da migração.
 
 - **API-1:** caracterização concluída em `c64921b`, com CI verde.

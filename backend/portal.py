@@ -929,7 +929,8 @@ class Portal:
         require(draft["status"] == "draft" and draft["base"] == cohort.get("current"), 409,
                 "A turma foi atualizada ou esta prévia já foi publicada. Gere uma nova prévia.")
         # Um dia de folga antes da expiração no S3, para nunca publicar lendo arquivo já apagado.
-        age = datetime.now(timezone.utc) - datetime.fromisoformat(draft["createdAt"])
+        # Mesmo relógio que gravou createdAt (now(), UTC com offset): o teste fixa um só.
+        age = datetime.fromisoformat(now()) - datetime.fromisoformat(draft["createdAt"])
         require(age.days < DRAFT_TTL_DAYS - 1, 409, "Esta prévia expirou. Confira o arquivo de novo para gerar outra.")
         snap = self.snapshot(draft)
         before = self.snapshot(self.publication(cohort["code"], cohort["current"])) if cohort.get("current") else None

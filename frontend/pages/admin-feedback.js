@@ -22,10 +22,11 @@ function filters() {
 
 function listItems() {
   const a = state.adminFeedback;
-  if (a.error)
+  if (a.error && !a.items.length)
     return `<div class="empty compact" role="alert"><p>${e(a.error)}</p><button class="button secondary" data-action="admin-feedback-retry">Tentar novamente</button></div>`;
   if (!a.items.length) return a.loading ? '<p class="small" role="status">Carregando feedbacks…</p>' : '<p class="empty compact">Nenhum feedback neste filtro.</p>';
-  return `<ul class="feedback-list">${a.items.map((f) => `<li><button type="button" class="feedback-card fb-open" data-fb-open="${e(f.id)}"><div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div><strong class="fb-title">${e(f.title)}</strong><small>${e(f.cohort || "Sem turma")} · ${e(author(f))} · ${e(shortDate(f.createdAt))}${f.attachments ? ` · ${plural(f.attachments, "anexo", "anexos")}` : ""}</small></button></li>`).join("")}</ul>${a.nextCursor ? `<button class="button secondary fb-more" data-action="admin-feedback-more" ${a.loading ? "disabled" : ""}>${a.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
+  return `<ul class="feedback-list">${a.items.map((f) => `<li><button type="button" class="feedback-card fb-open" data-fb-open="${e(f.id)}"><div class="feedback-meta"><span class="fb-type">${e(feedbackTypes[f.type] || f.type)}</span>${statusBadge(f.status)}</div><strong class="fb-title">${e(f.title)}</strong><small>${e(f.cohort || "Sem turma")} · ${e(author(f))} · ${e(shortDate(f.createdAt))}${f.attachments ? ` · ${plural(f.attachments, "anexo", "anexos")}` : ""}</small></button></li>`).join("")}</ul>${a.error ? `<div class="empty compact" role="alert"><p>${e(a.error)}</p><button class="button secondary fb-more" data-action="admin-feedback-more">Tentar novamente</button></div>`
+    : a.nextCursor ? `<button class="button secondary fb-more" data-action="admin-feedback-more" ${a.loading ? "disabled" : ""}>${a.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
 }
 
 function detail(f) {

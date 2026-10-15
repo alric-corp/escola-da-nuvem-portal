@@ -25,13 +25,24 @@ import { adminFeedbackPage } from "./pages/admin-feedback.js";
 accessHandlers.configure({ render });
 importHandlers.configure({ render });
 adminFeedbackHandlers.configure({ render });
-feedbackHandlers.configure({ render });
-remindersHandlers.configure({ render });
+feedbackHandlers.configure({ render, syncContext: syncReadContext });
+remindersHandlers.configure({ render, syncContext: syncReadContext });
 signupConfirmationHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
+let readContext = [];
+
+// Ownership das três leituras C7.4. Invalidar antes de desenhar evita exibir dados do
+// contexto anterior e impede A → B → A de ressuscitar respostas ainda em trânsito.
+function syncReadContext() {
+  const next = [state.me, state.code, state.view, state.studentView, state.pendingStudentId];
+  if (next.every((value, index) => value === readContext[index])) return;
+  readContext = next;
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
+}
 let renderedView = "";
 let lastFocusSelector = "";
 // Confirmação de cadastro: a etapa desenhada por último (o foco vai ao título só quando ela muda) e o timer que
@@ -129,6 +140,7 @@ async function loadClassReport(value) {
 }
 
 function render() {
+  syncReadContext();
   if (!state.me) return publicPage();
   if (state.classReport) return renderClassReport();
   const focused = document.activeElement;
@@ -175,6 +187,7 @@ function render() {
 // "Primeiro acesso?" (só com região e cliente do Cognito na configuração); aberta, a etapa ocupa a coluna de texto, e
 // cabeçalho, arte e rodapé continuam os da landing.
 function publicPage() {
+  syncReadContext();
   const s = state.signupConfirmation;
   const focused = document.activeElement, focusId = focused?.id;
   const oldCodeField = $("#signup-code"), typed = oldCodeField?.value, caret = oldCodeField?.selectionStart;
@@ -314,11 +327,16 @@ async function viewAsFromFeedback(id) {
 }
 
 async function boot() {
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
+  render();
   state.bootError = "";
   try {
     const wasSignedIn = !!state.me;
     state.me = await api.me.get();
     importHandlers.resetDraftsForUser(state.me.email);
+    feedbackHandlers.resetForUser(state.me.email);
+    adminFeedbackHandlers.resetForUser(state.me.email);
     if (!wasSignedIn && !demo) {
       try {
         const context = JSON.parse(localStorage.getItem("avanca.context") || "null");
@@ -350,6 +368,16 @@ async function boot() {
   } catch (err) {
     state.bootError = err.message || "Não foi possível consultar sua conta.";
     render();
+  }
+}
+// Um render que recria o botão acionado deixa o foco no BODY: devolve-o ao controle equivalente, só se o foco
+// realmente se perdeu (se a pessoa já foi para outro controle, ele fica onde está).
+function restoreFocus(...selectors) {
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected) return;
+  for (const selector of selectors) {
+    const target = $(selector);
+    if (target) return target.focus({ preventScroll: true });
   }
 }
 async function busy(element, fn) {
@@ -451,7 +479,11 @@ function expireSession() {
 
 function signOut() {
   if (importHandlers.hasUnpublishedCsv() && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
+  remindersHandlers.invalidateReads();
+  feedbackHandlers.invalidateReads();
   importHandlers.discardDrafts();
+  feedbackHandlers.resetForUser("");
+  adminFeedbackHandlers.resetForUser("");
   forgetStudentView();
   localStorage.removeItem("avanca.context");
   if (demo) location.assign("./");
@@ -483,12 +515,17 @@ document.addEventListener("click", (event) => {
   }
   if (button.dataset.fbToggleAttachments) {
     const id = button.dataset.fbToggleAttachments;
-    if (state.feedbackAttachments[id]?.open) feedbackHandlers.closeAttachments(id);
-    else busy(button, () => feedbackHandlers.loadAttachments(id));
+    const toggle = `[data-fb-toggle-attachments="${CSS.escape(id)}"]`;
+    if (state.feedbackAttachments[id]?.open) {
+      feedbackHandlers.closeAttachments(id);
+      restoreFocus(toggle);
+    } else busy(button, () => feedbackHandlers.loadAttachments(id)).then(() => restoreFocus(toggle));
     return;
   }
   if (button.hasAttribute("data-fb-back")) {
+    const opened = state.adminFeedback.selectedId;
     adminFeedbackHandlers.back();
+    restoreFocus(`[data-fb-open="${CSS.escape(opened)}"]`, ".fb-open");
     return;
   }
   if (button.dataset.fbStatus !== undefined && state.view === "admin-feedback") {
@@ -498,7 +535,7 @@ document.addEventListener("click", (event) => {
     return busy(button, () => {
       const status = $("#fb-status-select").value;
       return adminFeedbackHandlers.saveStatus(button.dataset.fbSave, status);
-    });
+    }).then(() => restoreFocus("#fb-status-select", ".fb-open"));
   if (button.dataset.fbViewAs) return busy(button, () => viewAsFromFeedback(button.dataset.fbViewAs));
   if (button.dataset.studentPending)
     return busy(button, () => remindersHandlers.loadPending(button.dataset.studentPending));

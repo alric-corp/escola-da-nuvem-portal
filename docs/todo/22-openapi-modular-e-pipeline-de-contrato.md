@@ -7,8 +7,9 @@ Guardado / evolução futura. Backlog de arquitetura, sem implementação nesta 
 ## Contexto
 
 - API-1 introduziu o contrato OpenAPI e já foi concluída e commitada.
-- API-2 trata OpenAPI como fonte das rotas Terraform e está sendo trabalhada
-  separadamente; este item não reabre nem substitui essa entrega.
+- API-2 tornou o OpenAPI a fonte das rotas Terraform e também foi concluída e
+  commitada ([registro](../historico/api-2.md)); este item não reabre nem
+  substitui essa entrega.
 - A evolução futura é melhorar a organização do contrato sem misturar essa
   refatoração com a API-1/API-2 atual.
 

@@ -37,7 +37,7 @@ externos continuam as documentadas na API-1.
 ## Derivação no Terraform
 
 Antes, `api.tf` continha um set literal de 34 route keys, além de `GET /me`.
-Agora [api.tf](../infra/terraform/api.tf) lê o contrato uma única vez:
+Agora [api.tf](../../infra/terraform/api.tf) lê o contrato uma única vez:
 
 ```hcl
 openapi_spec = yamldecode(file("${path.module}/../../openapi/portal.yaml"))
@@ -113,24 +113,24 @@ mais estrita da C7.2.4.1 continua bidirecional, com exceções explícitas vazia
 O contrato Python agora compara todos os dispatchers públicos e seus handlers,
 ampliando a cobertura anterior limitada às operações de turma.
 
-- [routes.tftest.hcl](../infra/terraform/tests/routes.tftest.hcl):
+- [routes.tftest.hcl](../../infra/terraform/tests/routes.tftest.hcl):
   Terraform avalia os próprios locals e recursos, com providers AWS/archive
   simulados e `command = plan`. Confere 35/34, /me separado, keys,
   JWT/scopes, API, authorizer e integration. Não lê HCL por regex.
 - O fingerprint de chaves ordenadas da API-1 é
   `c30736ca652e8d28253caba8b0e986730812b3a3163ddd37666826f2471d1af6`.
   É uma expectativa de teste, não uma segunda lista de provisionamento.
-- [tests/openapi.mjs](../tests/openapi.mjs) mantém 21 testes estruturais,
+- [tests/openapi.mjs](../../tests/openapi.mjs) mantém 21 testes estruturais,
   de segurança, equivalência e mutações. A equivalência com Terraform
   foi transferida para o teste nativo; o parser HCL estático foi removido.
-- [tests/api.mjs](../tests/api.mjs) preserva a proteção frontend da C7.2.4.1,
+- [tests/api.mjs](../../tests/api.mjs) preserva a proteção frontend da C7.2.4.1,
   usando OpenAPI como referência.
-- [test_api_routes.py](../tests/integration/test_api_routes.py) compara
+- [test_api_routes.py](../../tests/integration/test_api_routes.py) compara
   AST do backend com OpenAPI por método, path e handler; sem importar runtime.
-- [openapi_routes.mjs](../tests/contracts/openapi_routes.mjs) é uma ponte
+- [openapi_routes.mjs](../../tests/contracts/openapi_routes.mjs) é uma ponte
   JSON para Python reutilizar o parser YAML existente. Não deriva Terraform.
 
-O job Python do [CI](../.github/workflows/ci.yml) agora instala Node 22 e
+O job Python do [CI](../../.github/workflows/ci.yml) agora instala Node 22 e
 executa `npm ci` antes da integração. Não há dependência nova nem mudança
 de lockfile. O job Terraform também executará as mutações nativas.
 O parser interno do Playwright permanece isolado no adapter existente;
@@ -138,7 +138,7 @@ o LOW da API-1 não foi ampliado para uma dependência de runtime.
 
 ## Mutações A–H e casos adicionais
 
-[terraform_mutations.py](../tests/contracts/terraform_mutations.py) executa
+[terraform_mutations.py](../../tests/contracts/terraform_mutations.py) executa
 os cenários em cópias temporárias do módulo e do contrato. Alterações por
 âncoras textuais únicas produzem fixtures; **quem deriva as rotas é Terraform**.
 Não há parser YAML/HCL nem implementação paralela da derivação no script.

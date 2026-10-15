@@ -269,7 +269,9 @@ try {
   const summary = (NEW, IN_REVIEW, RESOLVED, ARCHIVED) => ({ NEW, IN_REVIEW, RESOLVED, ARCHIVED });
   const listItem = (id, title) => feedbackItem(1, { id, title });
 
-  // Admin: 409 ao salvar status. Nada muda no item, o detalhe continua aberto e a tela segue utilizável.
+  // Admin: 409 ao salvar status. C7.5: a lista é atualizada com o servidor (o expectedStatus local ficou velho e toda
+  // nova tentativa daria 409 de novo); o detalhe continua aberto, o aviso de erro aparece e a tela segue utilizável.
+  // A prova com um servidor que de fato aplica expectedStatus está em feedback-lifecycle-browser.mjs.
   {
     const { context, page, api } = await openAdmin();
     const conflict = "Este feedback mudou de status enquanto você editava. Recarregue a lista.";
@@ -291,16 +293,17 @@ try {
     assert.deepEqual(await noticeTexts(page), [{ error: true, text: conflict }]);
     const after = await snapshot(page, "adminFeedback");
     assert.equal(after.selectedId, id);
-    assert.equal(after.items.find((f) => f.id === id).status, "NEW", "o item não muda");
+    assert.equal(after.items.find((f) => f.id === id).status, "NEW", "este servidor fictício continua devolvendo NEW");
     assert.equal(await page.locator(".fb-detail").count(), 1);
     assert.match(await page.locator(".fb-detail .fb-status").innerText(), /Novo/);
-    // Sem redesenho depois do erro: o select continua com a escolha feita.
-    assert.equal(await page.locator("#fb-status-select").inputValue(), "RESOLVED");
-    assert.equal(api.gets.length, gets, "sem recarregar a lista");
+    // Depois do erro a tela reflete o servidor: a lista foi recarregada (uma vez) e o select acompanha o badge.
+    assert.equal(await page.locator("#fb-status-select").inputValue(), "NEW");
+    assert.equal(api.gets.length, gets + 1, "uma recarga da lista para conhecer o status real");
     const save = page.getByRole("button", { name: "Salvar status" });
     assert.ok(await save.isEnabled());
-    // Continua utilizável: a nova tentativa usa o mesmo expectedStatus e dá certo.
+    // Continua utilizável: a nova tentativa (agora com o status vindo do servidor) dá certo.
     api.handle = null;
+    await page.locator("#fb-status-select").selectOption("RESOLVED");
     await save.click();
     await page.getByText("Status do feedback atualizado.").waitFor();
     assert.deepEqual(api.statusPosts.at(-1), { id, status: "RESOLVED", expectedStatus: "NEW" });
@@ -380,7 +383,7 @@ try {
     await context.close();
   }
 
-  // Aluno: erro ao listar "Meus feedbacks" e "Tentar novamente"; erro no "Carregar mais" mantém os itens no state.
+  // Aluno: erro ao listar "Meus feedbacks" e "Tentar novamente"; erro no "Carregar mais" mantém os itens (state e tela).
   {
     const { context, page, api } = await open("student");
     const failure = "Falha fictícia ao listar feedbacks.";
@@ -410,13 +413,14 @@ try {
     assert.deepEqual(api.gets.at(-1), { limit: "20", cursor: "Y3Vyc29y" });
     mine = await snapshot(page, "myFeedback");
     assert.deepEqual([mine.items.length, mine.nextCursor, mine.loading, mine.error], [20, "Y3Vyc29y", false, failure]);
-    assert.equal(await list.locator(".feedback-card").count(), 0, "com erro, a tela mostra só o aviso");
-    // "Tentar novamente" recomeça do início, sem cursor.
+    assert.equal(await list.locator(".feedback-card").count(), 20, "C7.5: com erro no Carregar mais, os itens já carregados continuam na tela");
+    // "Tentar novamente" repete a mesma página (mesmo cursor), sem recomeçar nem duplicar.
     await list.getByRole("button", { name: "Tentar novamente" }).click();
-    await page.waitForFunction(() => document.querySelectorAll(".feedback-list .feedback-card").length === 20);
-    assert.deepEqual(api.gets.at(-1), { limit: "20" });
+    await page.waitForFunction(() => document.querySelectorAll(".feedback-list .feedback-card").length === 22);
+    assert.deepEqual(api.gets.at(-1), { limit: "20", cursor: "Y3Vyc29y" });
     mine = await snapshot(page, "myFeedback");
-    assert.deepEqual([mine.items.length, mine.nextCursor, mine.error], [20, "Y3Vyc29y", ""]);
+    assert.deepEqual([mine.items.length, mine.nextCursor, mine.error], [22, null, ""]);
+    assert.equal(new Set(mine.items.map((f) => f.id)).size, 22, "sem itens duplicados");
     assert.deepEqual([api.errors, api.dialogs], [[], 0]);
     await context.close();
   }

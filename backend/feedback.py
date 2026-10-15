@@ -205,7 +205,7 @@ def detect_image(head):
 
 def content_disposition(name):
     """inline; filename="<ASCII seguro>"; filename*=UTF-8''<percent-encoded>. Nada cru do usuário."""
-    ascii_name = "".join(ch if 32 <= ord(ch) < 127 and ch not in '"\;' else "_" for ch in name) or "imagem"
+    ascii_name = "".join(ch if 32 <= ord(ch) < 127 and ch not in '"\\;' else "_" for ch in name) or "imagem"
     return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 
