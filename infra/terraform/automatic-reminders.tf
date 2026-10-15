@@ -11,9 +11,9 @@ variable "automatic_reminder_cohorts" {
 }
 
 variable "automatic_reminder_enabled_cohorts" {
-  description = "Schedules selecionados para ativação mediante plano aprovado. Piloto inicial somente BRSA0267; conjunto vazio desliga todos."
+  description = "Turmas com recorrência terça/sexta às 20h aprovada após os pilotos naturais AUTO-5. Conjunto vazio desliga todos."
   type        = set(string)
-  default     = ["BRSA0267"]
+  default     = ["BRSA0257", "BRSA0267"]
   validation {
     condition     = try(length(setsubtract(var.automatic_reminder_enabled_cohorts, var.automatic_reminder_cohorts)) == 0, false)
     error_message = "Somente turmas com schedules preparados podem ser habilitadas; null não é permitido."

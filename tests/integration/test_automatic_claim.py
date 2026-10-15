@@ -94,6 +94,38 @@ class AutomaticReminderClaimTests(unittest.TestCase):
         self.assertEqual(len(self.mailer.sent), 2)
         self.assertEqual(self.raw_settings(), raw, "LIVE não migra nem regrava settings")
 
+    def test_brsa0257_regular_friday_handler_claim_withdrawal_and_retry(self):
+        import test_reminders
+        pk, slot, sync = "COHORT#BRSA0257", "2026-10-16T23:00:00Z", "2026-10-16T21:00:00Z"
+        self.repo.put(pk, "METADATA", {"code": "BRSA0257", "current": None})
+        draft = self.admin.dispatch("POST", "/cohorts/BRSA0257/preview", {
+            "csv": test_reminders.pending_csv(("One", "101", "one@example.test"), ("Two", "202", "two@example.test")),
+            "activeIds": ["001 KC (123)", "002 Lab (456)"]})["draft"]
+        self.admin.dispatch("POST", "/cohorts/BRSA0257/publish", {"draftId": draft["id"]})
+        self.repo.put(pk, "TEACH#teacher", {"userId": "teacher", "code": "BRSA0257", "email": "teacher@example.test"})
+        self.repo.put("USER#teacher", "TEACH#BRSA0257", {"code": "BRSA0257"})
+        raw = json.dumps(reminder_settings("teacher", True, 1, sync))
+        self.repo.table.put_item(Item={"PK": pk, "SK": "REMINDER_SETTINGS", "data": raw})
+        self.repo.put(pk, "PARTICIPATION#202", {"canvasId": "202", "status": "WITHDRAWN"})
+        event = {**self.event, "scheduledFor": slot, "version": 1, "cohortCode": "BRSA0257", "dryRun": False, "attemptNumber": "1"}
+        proof = SyncRun(self.repo, self.repo.get(pk, "METADATA"), scheduled_context({
+            **event, "type": "canvas-sync", "scheduledFor": sync, "attemptNumber": 1}), lambda: "2026-10-16T21:01:00Z")
+        proof.stages.update(catalog="succeeded", roster="succeeded")
+        proof.complete_unchanged(self.repo.get(pk, "METADATA"))
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDERS_ENABLED": "true", "AUTOMATIC_REMINDER_COHORTS": '["BRSA0257","BRSA0267"]',
+                                     "INSTRUCTOR_EMAIL_DOMAIN": "example.test"}), \
+                patch("automatic_reminders.reminders.SESMailer", return_value=self.mailer), \
+                patch("automatic_reminders.utc_now", return_value=slot), patch("automatic_reminders.time.sleep"):
+            context = SimpleNamespace(get_remaining_time_in_millis=lambda: 300000)
+            result = handler(event, context)[0]
+            retry = handler({**event, "attemptNumber": "2"}, context)[0]
+        self.assertEqual((result["status"], result["counts"]["sent"], result["counts"]["skipReasons"]), ("completed", 1, {"withdrawn": 1}))
+        self.assertEqual(retry["reason"], "already-finished")
+        self.assertEqual(len(self.mailer.sent), 1)
+        self.assertEqual(self.repo.get(pk, "AUTO_REMINDER#" + slot)["syncKey"], "SYNC_RUN#" + sync)
+        self.assertEqual(self.repo.keys(pk, "REMINDER#"), ["REMINDER#" + draft["id"] + "#101"])
+        self.assertEqual(self.repo.table.get_item(Key={"PK": pk, "SK": "REMINDER_SETTINGS"})["Item"]["data"], raw)
+
     def test_equal_settings_with_different_json_representations_acquire(self):
         variants = [json.dumps(self.settings), self.repo._encode(self.settings),
                     json.dumps(dict(reversed(list(self.settings.items()))), indent=2),

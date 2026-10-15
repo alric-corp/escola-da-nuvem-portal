@@ -1,8 +1,67 @@
 # AUTO-5 — ativação controlada dos lembretes automáticos
 
-**Em andamento. LIVE manual BRSA0267 PASS; envio manual normal BRSA0257 PASS, 22 enviados/22 deliveries. Scheduler natural pendente.**
+**Em andamento. Ambos pilotos naturais PASS: BRSA0267 em 13/10, 32 enviados / 32 deliveries; BRSA0257 em 14/10, 14 enviados / 14 deliveries. Pendentes a recorrência BRSA0257 e a remoção da exceção temporária.**
 
-**Estado atual — 10/10 às 18h54:** gate automático aplicado em operação única
+**Estado verificado — 15/10/2026, 00h37 America/Sao_Paulo:** ocorrência
+natural BRSA0257 de **14/10 às 20h PASS**, completed, uma tentativa,
+**14 sent / 14 delivered**. Canvas natural das 18h succeeded/published,
+prova, publicação e metadataVersion correlacionadas ao claim. População:
+56 alunos, 38 ACTIVE e 18 WITHDRAWN; 14 elegíveis enviados, 24 sem pendências,
+18 desistentes excluídos. Zero falhas, pendências, sending, unknown,
+duplicidade, reserva/envio WITHDRAWN ou destinatário fora da elegibilidade.
+SES saudável, Errors/Throttles/Bounce/Complaint/Reject zero observados e
+alarmes OK. Contagens acumuladas: BRSA0267 **59/59**, BRSA0257 **36/36**,
+total **95 envios / 95 entregas**, com registros anteriores preservados.
+State **87**, worker **5** e cinco Lambdas Active/Successful, AWS × state
+consistente. Manual false, alias **3 fechado**, IAM temporário revogado.
+BRSA0267 mantém cron terça/sexta; BRSA0257 permanece ENABLED com o `at`
+já consumido, **sem recorrência futura**. Auditoria somente leitura.
+**AUTO-5 ainda aberta:** restaurar o cron da BRSA0257, retirar a exceção
+datada em deploy revisado e concluir as verificações finais. Seção 28.
+
+**Checkpoint da implantação — 14/10/2026, 03h54 America/Sao_Paulo:** antecipação da
+BRSA0257 aplicada uma vez às 03h49–03h50, **0 add / 6 change / 0 destroy**,
+state **87**. BRSA0257 **ENABLED**, ocorrência única
+`at(2026-10-14T20:00:00)`; BRSA0267 **ENABLED**, terça/sexta às 20h.
+Worker versão **5** Active/Successful, exceção limitada a BRSA0257/14/10;
+gate automático true, manual false, alias manual **3 fechado**, IAM temporário
+revogado. Cinco Lambdas saudáveis; somente `automatic_reminders.py` mudou
+no ZIP, com os outros 13 módulos idênticos a produção e C7.4–C7.6 preservadas.
+CI completo SUCCESS. Full plan pós-apply **1/0/0 somente ACM**, zero ação
+residual AUTO-5; plano consumido removido. Contagens preservadas em
+BRSA0267 **59 sent / 59 deliveries** e BRSA0257 **22 / 22**, sem nova
+invocação da worker ou envio de lembrete na implantação. Resultado natural
+BRSA0257 **pendente**: exige Canvas natural de **14/10 às 18h** e avaliação
+da ocorrência das **20h**. Detalhes na seção 27. **AUTO-5 continua aberta.**
+
+**Checkpoint da auditoria — 14/10/2026, 01h22 America/Sao_Paulo:** Canvas natural
+de 13/10 às 18h succeeded; execução natural BRSA0267 das 20h completed,
+uma tentativa, **32 sent / 32 delivered**, sem falhas, pendências, unknown,
+duplicidade ou reserva/envio WITHDRAWN. Foram avaliados 59 alunos: 34 ACTIVE,
+25 WITHDRAWN; 32 elegíveis enviados e dois sem pendências. Publicação nova
+válida, distinta da usada no lote manual anterior. BRSA0267 permanece
+**ENABLED**, BRSA0257 **DISABLED**; gate automático **true**, manual **false**,
+alias manual **3 desabilitado**, IAM temporário revogado. State **85**;
+configuração/ZIP das cinco Lambdas e schedules conferidos com o state.
+Acumulado: BRSA0267 **59 sent / 59 deliveries** (27 manuais + 32 naturais),
+BRSA0257 **22 / 22**, sem novos envios na segunda turma. Errors/Throttles,
+Bounce/Complaint/Reject e falhas do Scheduler observados zero; alarmes OK.
+Auditoria somente leitura, sem nova execução ou alteração AWS. **Parte B do
+piloto concluída; AUTO-5 continua aberta**, aguardando ativação aprovada e
+primeira ocorrência natural BRSA0257. Evidências e limites na seção 26.
+
+**Checkpoint histórico — 10/10 às 19h12:** piloto BRSA0267 aplicado em operação única
+**0/1/0**, state **85**. BRSA0267 **ENABLED**; BRSA0257 **DISABLED**. Worker
+versão **4** Active/Successful, gate automático **true**, recuperação manual
+**false**; alias manual permanece na versão **3 desabilitada**, IAM temporário
+revogado. Cron terça/sexta às 20h America/Sao_Paulo, flexible OFF, target
+não qualificado da worker. Full plan **1/0/0 somente ACM**, sem ação residual
+da AUTO-5; plano consumido removido. Os **49 sent / 49 deliveries** anteriores
+permanecem preservados, sem novo lembrete, envio ou invocação da worker observado.
+Primeira ocorrência natural prevista: **13/10 às 20h**, condicionada à prova
+do Canvas natural das **18h**. Parte B ainda pendente; detalhes na seção 24.
+
+**Checkpoint do gate — 10/10 às 18h54:** gate automático aplicado em operação única
 **0/1/0**, state **84**, worker versão **4** Active/Successful com automático
 **true** e manual **false**. Alias manual permanece na versão **3 desabilitada**,
 sem routing weights; IAM temporário revogado. Ambos schedules continuam
@@ -2213,3 +2272,502 @@ não cancela uma Lambda já iniciada. Não improvisar rollback de código.
 
 **PARADA antes do apply do schedule.** AUTO-5 depende dos dois disparos
 naturais validados; BRSA0257 requer aprovação posterior ao aceite do piloto.
+
+## 24. Piloto BRSA0267 aplicado — Parte A concluída, Parte B pendente
+
+### Aprovação e preflight
+
+HEAD e `alric-corp/main` conferidos:
+`3dc27ab9fb4a419d371abf097d57ec61bbe06fd1`. CI **38089551590 SUCCESS**, três
+jobs concluídos, árvore rastreada limpa. State **84** e AWS × state sem
+divergências funcionais nos recursos conferidos. Worker Active/Successful,
+automático true/manual false, alias 3 desabilitado, sem routing weights,
+IAM temporário revogado e ambos schedules inicialmente DISABLED.
+
+Plano salvo `.build/auto5-brsa0267-enable.tfplan`, SHA-256 aprovado:
+
+```text
+48fa29e6ff5ded8e83b3b0ddc7a21e2e7c6f27e670e2d8d6eb86e661ef070112
+```
+
+O plano foi reaberto e revisado: **0 add / 1 change / 0 destroy**, apenas
+`aws_scheduler_schedule.automatic_reminders["BRSA0267"]`, state DISABLED →
+ENABLED. Cron, timezone, flexible window, target, input, retry e execution
+role idênticos. Sem replacement ou ação em BRSA0257, worker, alias, IAM,
+ACM, settings ou ZIP. Não foi gerado outro plano antes do apply.
+
+### Apply único e resultado
+
+**10/10/2026, 19:11:07–19:11:13 America/Sao_Paulo.**
+**0 added / 1 changed / 0 destroyed.** Uma tentativa; somente o schedule
+BRSA0267 foi atualizado. Nenhum invoke manual ou envio foi realizado.
+
+| Controle pós-apply | Resultado |
+| --- | --- |
+| State serial | **85** |
+| BRSA0267 | **ENABLED** |
+| BRSA0257 | **DISABLED** |
+| Cron | `cron(0 20 ? * TUE,FRI *)` |
+| Timezone / flexible | America/Sao_Paulo / OFF |
+| Target | ARN não qualificado da worker; `$LATEST` com automático true |
+| Worker | versão **4**, Active / Successful, configuração e ZIP preservados |
+| Gate automático / manual | **true / false** |
+| Alias manual | versão **3 desabilitada**, sem routing weights |
+| IAM temporário | revogado; simulações de Invoke negadas |
+| BRSA0267 REMINDER sent / deliveries | **27 / 27**, preservados |
+| BRSA0257 REMINDER sent / deliveries | **22 / 22**, preservados |
+| AUTO_REMINDER | BRSA0267: 1 completed anterior; BRSA0257: 0 |
+| REMINDER_SETTINGS | inalterados; readiness dos dois remetentes PASS |
+| Novos lembretes / envios / invocações da worker observados | **0 / 0 / 0** |
+| Novos Errors / Throttles / Bounce / Complaint observados | **0 / 0 / 0 / 0** |
+
+Full plan somente leitura concluído às **19:12:51**: **1 add / 0 change /
+0 destroy**, exclusivamente `aws_acm_certificate.portal`. Worker, alias,
+IAM e schedules sem ação residual. State permaneceu 85. O tfplan consumido
+foi apagado após a convergência. O ZIP permanece com SHA-256
+`e5084d5657a71161dcb91da283a683746482fa566a0505f45e33eb9c7d9b4308`.
+
+Evidências privadas: `/private/tmp/auto5-pilot-apply-20261010-kqvsc1vo`.
+Resumos agregados: `before-apply-summary.json`, `apply-summary.json`,
+`post-apply-summary.json` e `convergence-summary.json`. Nenhuma PII ou
+credencial foi registrada neste documento. O arquivo não rastreado do
+operador permanece preservado.
+
+### Terça-feira 13/10 — checklist anterior às 20h
+
+**PENDENTE: ocorrência futura.** Retomar o acompanhamento após o Canvas
+natural das 18h, com margem antes das 20h. Esta entrega não cria um agente
+de monitoramento futuro; a verificação operacional requer retomada da sessão.
+
+- [ ] Confirmar BRSA0267 ENABLED, BRSA0257 DISABLED, automático true,
+  manual false, alias 3 desabilitado e IAM temporário revogado.
+- [ ] Observar o Canvas **natural** das 18h; não executar sync manual.
+- [ ] Validar SYNC_RUN BRSA0267 do slot **2026-10-13T21:00:00Z**:
+  source `portal.scheduler`, status succeeded, catalog/enrollment succeeded,
+  notes published ou unchanged; publicationId e metadataVersion/prova válidas.
+- [ ] Confirmar METADATA correspondente, publicação current e `finishedAt`
+  até **2026-10-13T23:00:00Z** (20h local). Sem fallback de publicação.
+- [ ] Revalidar settings/version/automaticEnabled, vínculos e sender readiness.
+- [ ] Calcular elegibilidade atual pelo domínio, somente leitura; não usar 27
+  como público fixo e não invocar worker, LIVE ou dry-run manual.
+- [ ] Revalidar SES HEALTHY, sending enabled, quotas/rate, alarmes e ausência
+  de Bounce/Complaint relevantes. Capturar baseline agregado de dados/métricas.
+- [ ] Se a prova falhar, **desabilitar BRSA0267 antes das 20h** e investigar.
+  Não substituir a ocorrência natural por uma chamada manual.
+
+### Às 20h e após a execução natural
+
+- [ ] Observar o Scheduler do slot **2026-10-13T23:00:00Z**: source/type,
+  cohortCode, scheduledFor, executionId e attemptNumber coerentes; correlacionar
+  internamente sem imprimir evento bruto, IDs de alunos ou destinatários.
+- [ ] Confirmar invocação da worker, claim adquirido e AUTO_REMINDER coerente.
+- [ ] Registrar evaluated, active, withdrawn, eligible, sent, failed, unknown
+  e skips por motivo, incluindo already-sent e publicação alterada, se ocorrerem.
+- [ ] Provar WITHDRAWN sem reserva/envio, dedupe student/publication,
+  REMINDER consistentes e ausência de duplicidade inclusive em retries.
+- [ ] Correlacionar sent com SES Send e deliveries disponíveis; registrar
+  entregas pendentes sem presumir sucesso. Conferir Bounce/Complaint.
+- [ ] Confirmar Errors=0, Throttles=0, alarmes saudáveis e logs sem PII.
+- [ ] Se a publicação for a mesma, impedir reenvio aos 27 já contatados.
+  Publicação nova válida permite reavaliação pelas regras existentes.
+  **sent=0 pode ser PASS**; não exigir envio positivo.
+- [ ] Problema relevante → desabilitar BRSA0267 e investigar, sem retry manual.
+  Problema sistêmico → também fechar o gate automático. Revogação não cancela
+  uma Lambda já iniciada.
+- [ ] PASS → manter BRSA0267 ENABLED e entregar Parte B para revisão.
+  **BRSA0257 permanece DISABLED** até aprovação posterior específica.
+
+**Parte B ainda não executada. AUTO-5 permanece EM ANDAMENTO.** Não iniciar
+a segunda turma nem AUTO-6; preencher os resultados somente quando a
+ocorrência natural acontecer.
+
+## 25. Solicitação da Parte B — conferência temporal em 10/10 às 19h44
+
+A solicitação identifica a ocorrência de **13/10/2026**, mas o relógio do
+ambiente e o cabeçalho de data da resposta AWS confirmaram **10/10/2026,
+19:44 America/Sao_Paulo**. O Canvas de terça às 18h e o LIVE natural às 20h
+ainda são futuros. Consulta consistente confirmou ausência do
+`SYNC_RUN#2026-10-13T21:00:00Z`, esperada nesta data.
+
+**GO/NO-GO pendente, sem avaliação antecipada do piloto.** Não houve falha
+da prova de uma execução já devida; por isso nenhum kill switch foi acionado.
+Publicação, metadataVersion, etapas, finishedAt e população elegível da
+ocorrência de terça precisam ser validados após o sync natural correspondente.
+Nenhuma contagem histórica foi tomada como população autorizada para terça.
+
+Conferência somente leitura em produção:
+
+- State **85**; cinco Lambdas Active/Successful, hashes e configuração
+  correspondentes ao state; claim-fix preservado.
+- BRSA0267 **ENABLED**, BRSA0257 **DISABLED**; cron terça/sexta às 20h,
+  America/Sao_Paulo, flexible OFF, target automático sem alias manual.
+- Gate automático **true**; manual **false**; alias manual versão **3
+  desabilitada**, sem pesos adicionais; IAM temporário revogado.
+- REMINDER_SETTINGS das duas turmas inalterados, version 1,
+  automaticEnabled true; vínculos direto/reverso e sender readiness **PASS**.
+- SES **HEALTHY**, produção e sending habilitados; quota **50.000/24h**, rate
+  **14/s**, contador da conta **50/24h** no instante consultado. Este contador
+  da conta não representa exclusivamente os 49 lembretes das duas turmas.
+- BRSA0267: **27 sent / 27 delivered**, um AUTO_REMINDER completed histórico.
+  BRSA0257: **22 sent / 22 delivered**, AUTO_REMINDER zero.
+- Zero duplicidade entre os registros existentes; nenhum novo REMINDER.
+  Desde o checkpoint de 10/10 às 17:07:20, métricas consultadas sem novas
+  invocações da worker, Send/Delivery, Bounce/Complaint ou Errors/Throttles.
+  Ambos alarmes da worker **OK**.
+
+Evidências privadas: `/private/tmp/auto5-parte-b-temporal-33zvq6tc`, resumos
+`temporal-summary.json` e `preflight-summary.json`. Nenhuma PII registrada.
+Nenhuma alteração de infraestrutura/dados, invoke manual ou envio realizado.
+
+**Parte B permanece pendente para 13/10.** Retomar a sessão após o Canvas das
+18h, com margem antes das 20h, para executar o checklist da seção 24. Não há
+monitor autônomo agendado. BRSA0257 permanece desabilitada e AUTO-5 continua
+**EM ANDAMENTO**.
+
+## 26. Auditoria retrospectiva de 13/10 — piloto natural BRSA0267 PASS
+
+**Conferência em 14/10/2026, 01h22 America/Sao_Paulo. Parte B do piloto PASS.**
+Somente leitura na conta `712107929769`, região `us-east-1`. A primeira
+consulta da sessão usou credencial de outra conta e foi negada; após o acesso
+correto ficar disponível, o STS confirmou a conta do portal e a auditoria
+prosseguiu. Esse impedimento inicial foi resolvido e não é falha operacional.
+
+### Prova natural do Canvas e execução das 20h
+
+- `SYNC_RUN#2026-10-13T21:00:00Z`: source `portal.scheduler`, succeeded,
+  catalog/roster succeeded e grades published. BRSA0267 iniciou às
+  **18h01min14,453s** e terminou às **18h01min39,420s**, antes dos lembretes.
+  BRSA0257 também succeeded/published, terminando às **18h01min14,355s**.
+- Scheduler: **uma InvocationAttemptCount**, zero TargetErrorCount,
+  TargetErrorThrottledCount e InvocationDroppedCount observados no grupo
+  de lembretes. Configuração preservada: terça/sexta às 20h,
+  America/Sao_Paulo, flexible OFF, target não qualificado da worker;
+  envelope `portal.scheduler` / `automatic-reminders` e retries iguais ao state.
+- Worker: um START às **20h00min44,494s**, um END/REPORT às
+  **20h01min13,700s**, duração Lambda **29.205,69 ms**. Logs contêm apenas
+  o ciclo técnico e resumos `started` / `completed` do slot esperado,
+  `dryRun=false`; nenhuma linha inesperada ou indicador de PII detectado.
+- `AUTO_REMINDER#2026-10-13T23:00:00Z`: claim adquirido às
+  **20h00min48,159s**, completed às **20h01min13,619s**, reason null,
+  retryable false, **attemptNumber=1 / attempts=1**. ExecutionId válido,
+  correlacionado internamente; nenhum retry adicional observado.
+  PublicationId, metadataVersion e syncKey coincidem com a prova natural;
+  settingsVersion=1. O claim foi finalizado dentro da janela original.
+
+### População, dedupe e entregas
+
+| Resultado da ocorrência BRSA0267 | Quantidade |
+| --- | --- |
+| Alunos avaliados | **59** |
+| ACTIVE / WITHDRAWN | **34 / 25** |
+| Elegíveis / sent / delivered | **32 / 32 / 32** |
+| Skips: withdrawn / no-pending | **25 / 2** |
+| Failed / pending / sending / unknown | **0 / 0 / 0 / 0** |
+| Reservas ou envios WITHDRAWN | **0** |
+| Fora da população elegível | **0** |
+| Duplicatas aluno/publicação ou messageId | **0** |
+
+A população foi reconstituída com o snapshot da publicação da ocorrência,
+o histórico PARTICIPATION/AUDIT no momento da execução e as funções de
+avaliação do **ZIP publicado**, cujo hash coincide com o pacote aprovado.
+Os 32 destinatários elegíveis reconstituídos são exatamente os 32 registros
+REMINDER enviados pela ocorrência; chaves, publicação e horários conferidos.
+As 32 reservas ocorreram com participação ACTIVE. O resumo persistido coincide
+com o resumo final dos logs.
+
+A publicação de 13/10 é nova e válida, distinta da publicação dos 27 envios
+manuais anteriores. Vinte e seis destinatários também pertenciam ao lote
+anterior, agora em outra publicação; não houve reenvio da mesma combinação
+aluno/publicação. Os 27 REMINDER anteriores permanecem inalterados.
+
+Cada um dos **32 messageIds** novos possui `EMAIL/DELIVERY=delivered`.
+Métricas de 13/10 às **19h55** até a coleta: SES Send/Delivery **32/32**,
+Bounce/Complaint/Reject **0/0/0**; worker Invocations **1**, Errors/Throttles
+**0/0**, AsyncEventsDropped **0**. SES HEALTHY, produção e sending enabled;
+alarmes Errors/Throttles OK. As métricas SES são da conta e foram acompanhadas
+da correlação individual das entregas, não usadas isoladamente como prova.
+
+Acumulado após a ocorrência:
+
+- BRSA0267: **59 REMINDER sent / 59 deliveries**; dois AUTO_REMINDER
+  completed, sendo um da recuperação histórica e um natural de 13/10.
+- BRSA0257: **22 REMINDER sent / 22 deliveries**, preservados;
+  **AUTO_REMINDER=0**, sem novo envio ou ativação da segunda turma.
+
+### Controles atuais e limites da auditoria
+
+State remoto **85**. Cinco Lambdas Active/Successful, configuração e hash
+do pacote correspondentes ao state e ao aprovado na AUTO-5. Worker publicada
+versão **4**; gate automático true, manual false. Alias manual fixado na
+versão **3**, flags automático/manual false e sem routing weights. Simulações
+IAM negam Invoke no alias, na função não qualificada e na versão 3 para o
+operador temporário.
+
+BRSA0267 **ENABLED**, BRSA0257 **DISABLED**, Canvas **ENABLED**. State, cron,
+timezone, flexible, target, role, input e retry dos dois schedules conferidos
+sem divergências. REMINDER_SETTINGS das duas turmas inalterados desde 10/10,
+versão 1 e automaticEnabled=true; vínculos direto/reverso e sender readiness
+PASS. Publicação current e metadataVersion ainda coincidem com as provas de
+13/10 no instante da coleta.
+
+Esta é uma **auditoria retrospectiva**: não comprova acompanhamento humano
+antes das 20h. A prova natural persistida terminou antes do slot e foi
+correlacionada ao claim. Não houve sync manual, invoke, dry-run, envio, apply
+ou mudança AWS nesta sessão. Não foi gerado novo full plan Terraform; a
+conferência AWS × state dos recursos descritos não substitui esse plano de
+encerramento. O último full plan continua sendo o checkpoint histórico
+de 10/10, somente ACM, registrado na seção 24.
+
+Evidências privadas: `/private/tmp/auto5-natural-20261014-049d8v3c`.
+Resumos sanitizados: `audit-summary.json` e
+`domain-verification-summary.json`; partições, state, snapshots, configurações,
+logs e correlação de entregas permanecem em arquivos privados. A alteração
+local anterior da seção 25 e o arquivo não rastreado do operador foram
+preservados.
+
+**PASS → manter BRSA0267 ENABLED e entregar a Parte B para revisão.**
+**AUTO-5 continua aberta.** BRSA0257 permanece DISABLED e sua ativação exige
+aprovação específica; o alvo anterior de **16/10 às 20h** depende dessa
+ativação revisada, da prova natural do Canvas e dos demais gates.
+O encerramento ainda requer o primeiro Scheduler natural BRSA0257 PASS e
+as verificações finais previstas. Não iniciar AUTO-6.
+
+## 27. Antecipação BRSA0257 — 14/10/2026 às 20h
+
+O operador solicitou antecipar o alvo anterior de 16/10 para **14/10 às 20h
+America/Sao_Paulo**, após o piloto natural BRSA0267 PASS. Como 14/10 é
+quarta-feira, a alteração exige uma exceção limitada na worker e no Scheduler.
+**Implantação concluída em 14/10, 03h50. Resultado natural das 20h aprovado posteriormente; ver seção 28.**
+
+### Implementação e pacote isolado
+
+- BRSA0257: schedule existente DISABLED → ENABLED e
+  `cron(0 20 ? * TUE,FRI *)` → `at(2026-10-14T20:00:00)`.
+  Uma ocorrência única; timezone, flexible, target, role, input e retries
+  preservados. BRSA0267 mantém seu cron recorrente e seu estado ENABLED.
+- Worker: `automatic_live_day` admite somente
+  **BRSA0257 / 2026-10-14T23:00:00Z** além de terça/sexta. Os gates,
+  janela de 30 minutos, prova natural do mesmo dia, publicação, settings,
+  participação ACTIVE, dedupe e limites de retry continuam obrigatórios.
+  O caminho manual continua usando o calendário anterior, sem essa exceção.
+- Código isolado: commit **`1d86385f1ce3be2cf29dc471d3483c388e00c3f4`**, branch
+  `codex/auto5-brsa0257-20261014`, baseada no commit publicado `3dc27ab`.
+  [PR de revisão](https://github.com/alric-corp/escola-da-nuvem-portal/pull/1).
+  Somente `automatic_reminders.py` muda nos 14 módulos do pacote. Os outros
+  13 coincidem byte a byte com produção, preservando C7.4–C7.6 pendentes.
+- Pacote compartilhado pelas cinco Lambdas. ZIP SHA-256:
+  `99373b51e251f5e8ae98112f4b730e4f75a3deb0481e96458fec248a890ef683`.
+  CodeSha256: `mTc7UeJR9eiumBEvS3MOT3Wj3rBIHpZFj+wkiokO9oM=`.
+
+Validações locais: **310 backend no main / 305 no pacote isolado**, **84 Moto**,
+**24 Terraform**, fmt/validate e diff-check PASS; mutações do claim **12/12**
+e da autorização manual **11/11** detectadas. Novos testes exercitam o
+handler natural de quarta com persistência real Moto, a turma/data exatas,
+prova/publicação, janela/gates, WITHDRAWN, retry/dedupe e recusa pelo alias
+manual. CI [**38523512933 SUCCESS**](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38523512933),
+com os três jobs concluídos para o commit isolado, antes do apply.
+
+### Plano concreto revisado
+
+Preflight de 14/10, **03h36**, confirmou conta correta e state **85**,
+AWS × state das cinco Lambdas e dos schedules consistente; alias 3 fechado,
+IAM temporário revogado, settings/readiness PASS. BRSA0267 mantém 59 envios
+e 59 entregas; BRSA0257 mantém 22/22 e AUTO_REMINDER=0. Nenhuma nova
+execução da worker observada desde o piloto; SES saudável e alarmes OK.
+
+O full plan com refresh mostrou somente as seis atualizações esperadas e o
+ACM conhecido adicional. Um primeiro plano direcionado também incluiu ACM
+por dependência transitiva e foi rejeitado. O plano final usa o isolamento
+já adotado na AUTO-5: targets explícitos e **`-refresh=false`**, com a leitura
+AWS × state conferida e nova conferência obrigatória antes do apply.
+
+Plano salvo e reaberto em JSON: **0 add / 6 change / 0 destroy**, sendo
+as cinco Lambdas apenas para trocar o pacote e o schedule BRSA0257 apenas
+nos campos `state` e `schedule_expression`. Zero ações em ACM, IAM, alias,
+dados, frontend, API Gateway ou schedule BRSA0267; sem replacement.
+
+```text
+Plano: /private/tmp/auto5-oct14-prepare-6073p7qs/release/infra/terraform/.build/auto5-oct14.tfplan
+SHA-256: bff0f8674ee0174a5549b68c3ee710eb074f958eee9bb6fe43a92edd479aeb7b
+```
+
+O binário do full plan foi removido. O apply consumiu somente o plano
+isolado acima, após CI verde e validação de hashes, configuração real,
+state serial e margem para o horário do piloto. Nenhum envio ou invoke manual
+fez parte desta implantação.
+
+### Apply único e convergência
+
+**14/10/2026, 03h49min48,659s–03h50min32,210s America/Sao_Paulo.**
+Uma aplicação do arquivo salvo, **0 added / 6 changed / 0 destroyed**,
+state **85 → 87**. O marcador local impede repetir essa aplicação.
+
+| Controle pós-apply | Resultado |
+| --- | --- |
+| BRSA0257 | **ENABLED**, `at(2026-10-14T20:00:00)`, America/Sao_Paulo, flexible OFF |
+| BRSA0267 | **ENABLED**, cron terça/sexta 20h preservado |
+| Worker | versão publicada **5**, Active/Successful; concorrência 2, retries 2, idade máxima 1800 s |
+| Cinco Lambdas | Active/Successful, hash do ZIP aprovado e environments preservados |
+| Gate automático / manual | **true / false** |
+| Alias manual | versão **3**, ambas flags false, sem routing weights; alias inalterado |
+| IAM temporário | policy inalterada; simulações negam Invoke no alias, função e versão 3 |
+| REMINDER_SETTINGS / REMINDER / AUTO_REMINDER | preservados nas duas turmas |
+| Acumulado BRSA0267 / BRSA0257 | **59 / 22 sent**, entregas **59 / 22** preservadas |
+| Novas invocações da worker / Errors / Throttles observados | **0 / 0 / 0** |
+| Bounce / Complaint observados desde a implantação | **0 / 0** |
+| SES / alarmes | HEALTHY, produção/sending enabled; Errors/Throttles OK |
+
+Full plan pós-apply, somente leitura e sem salvar binário, concluído às
+**03h54**: **1 add / 0 change / 0 destroy**, exclusivamente
+`aws_acm_certificate.portal`. Zero ação residual AUTO-5 no checkout isolado;
+state permaneceu **87**. O plano consumido foi removido após a convergência.
+As mudanças de backend adiadas continuam fora deste pacote; o full plan
+do checkout isolado não inclui sua futura implantação.
+
+### Prova e aceite da ocorrência
+
+A prova exigida será **`SYNC_RUN#2026-10-14T21:00:00Z`**, proveniente do
+Canvas natural das **18h** do próprio dia 14: succeeded, catalog/roster
+succeeded, grades published ou unchanged, publicação current e
+metadataVersion iguais, finishedAt até `2026-10-14T23:00:00Z`.
+Se falhar, desabilitar BRSA0257 antes das 20h; a worker também bloqueia
+claim/envio se essa prova não for válida. Não reutilizar a prova de 13/10.
+
+Após o slot **`2026-10-14T23:00:00Z`**, auditar Scheduler, worker, claim,
+população real da publicação de 14/10, participação, dedupe, REMINDER,
+SES/deliveries e alarmes; zero envios pode ser correto. A ocorrência `at`
+não se repete. Depois de seu aceite, restaurar a recorrência terça/sexta da
+BRSA0257 por plano separado e remover a exceção datada em deploy revisado.
+Até essa limpeza, a data e a janela exatas já impedem outra quarta-feira.
+
+Evidências privadas: `/private/tmp/auto5-oct14-prepare-6073p7qs`, incluindo
+`release-manifest.json`, `plan-review-summary.json`, testes e logs privados
+dos planos. O resultado natural de 14/10 ainda era futuro neste checkpoint;
+a auditoria posterior está na seção 28. **AUTO-5 continua aberta.**
+
+## 28. Auditoria de 14/10 — piloto natural BRSA0257 PASS
+
+**Conferência em 15/10/2026, 00h37 America/Sao_Paulo**, na conta
+`712107929769`, `us-east-1`. Auditoria somente leitura, sem invocação da
+worker, sync, envio, retry manual, alteração de infraestrutura ou dados.
+
+### Prova, ocorrência e resultado
+
+- `SYNC_RUN#2026-10-14T21:00:00Z`: source `portal.scheduler`, succeeded,
+  catalog/roster succeeded e grades published. BRSA0257 iniciou às
+  **18h00min50,027s** e terminou às **18h01min13,932s**, antes do slot.
+  PublicationId/metadataVersion da prova coincidem com o claim e com o
+  METADATA current consultado. Settings version 1, inalterados desde o
+  preflight da implantação; vínculos direto/reverso e sender readiness PASS.
+- Scheduler: **uma InvocationAttemptCount**, zero erros, throttles ou
+  ocorrências descartadas observados. Uma invocação da worker, START às
+  **20h00min01,579s**, END/REPORT às **20h00min18,323s–18,324s**;
+  duração Lambda **16.743,46 ms**.
+- `AUTO_REMINDER#2026-10-14T23:00:00Z`: claim às
+  **20h00min05,283s**, completed às **20h00min18,243s**, reason null,
+  retryable false, **attemptNumber=1 / attempts=1**, settingsVersion=1.
+  SyncKey/prova/publicação coerentes e janela original respeitada.
+  Resumos técnicos `started` / `completed`, `dryRun=false`; um ciclo
+  START/END/REPORT, sem linhas inesperadas ou indicadores de PII detectados.
+
+| Resultado BRSA0257 | Quantidade |
+| --- | --- |
+| Alunos avaliados | **56** |
+| ACTIVE / WITHDRAWN | **38 / 18** |
+| Elegíveis / enviados / entregues | **14 / 14 / 14** |
+| Skips: no-pending / withdrawn | **24 / 18** |
+| Failed / pending / sending / unknown | **0 / 0 / 0 / 0** |
+| Reserva ou envio WITHDRAWN / fora da elegibilidade | **0 / 0** |
+| Duplicidade aluno/publicação ou messageId | **0 / 0** |
+
+A elegibilidade foi reconstituída a partir do snapshot da ocorrência, do
+histórico PARTICIPATION/AUDIT no momento das reservas e das funções do
+**ZIP efetivamente publicado**, conferido pelo hash aprovado. Os 14 alunos
+elegíveis reconstituídos são exatamente os 14 REMINDER sent da ocorrência;
+todas as reservas ocorreram com participação ACTIVE. Chaves, publicação e
+horários dos registros conferidos; contagens persistidas iguais às dos logs.
+
+Os **14 messageIds** possuem `EMAIL/DELIVERY=delivered`. Métricas de 14/10
+às **19h55** até a coleta: SES Send/Delivery **14/14**, Bounce/Complaint/
+Reject **0/0/0**; worker Invocations **1**, Errors/Throttles **0/0**,
+AsyncEventsDropped **0**. SES HEALTHY, produção/sending enabled;
+alarmes Errors/Throttles OK. As entregas foram correlacionadas por messageId,
+além da conferência das métricas da conta.
+
+Publicação distinta da usada no envio manual anterior: os 22 REMINDER
+históricos permanecem inalterados. BRSA0257 acumula **36 sent / 36 deliveries**,
+com um AUTO_REMINDER completed natural. BRSA0267 mantém **59/59** e seus dois
+AUTO_REMINDER anteriores, sem execução ou novos lembretes em 14/10. Total
+das duas turmas **95 sent / 95 deliveries**, sem messageId duplicado.
+
+### Controles e trabalho restante
+
+State remoto **87**. Cinco Lambdas Active/Successful, pacote aprovado e
+configurações correspondentes ao state; worker versão publicada **5**.
+Gate automático true e manual false, alias manual fixado na versão **3**
+com ambas flags false, sem routing weights. Simulações IAM negam Invoke
+no alias, na função não qualificada e na versão 3 para o operador temporário.
+
+State, cron/at, timezone, flexible, target, role, input e retry dos schedules
+conferidos sem divergência. BRSA0267 segue **ENABLED**, terça/sexta às 20h.
+BRSA0257 permanece **ENABLED** com `at(2026-10-14T20:00:00)` já passado:
+esse estado **não configura novo disparo nem recorrência**. A exceção da
+worker também está fora de sua janela, não liberando outra quarta-feira.
+
+**Os dois pilotos naturais estão aprovados; AUTO-5 ainda não encerrada.**
+Faltam restaurar o cron terça/sexta da BRSA0257 e remover a exceção datada
+da worker em alteração/deploy revisados, preservando os gates, alias/IAM,
+dados e deploys C7.4–C7.6 adiados. Depois, conferir full plan e demais
+controles finais e registrar o encerramento. Não é necessário aguardar
+um novo piloto em 16/10 para aceitar a ocorrência já validada de 14/10.
+Esta auditoria não executou essas mudanças e não gerou novo full plan.
+
+Evidências privadas: `/private/tmp/auto5-natural-20261015-aqf5fylo`.
+Resumos sanitizados: `audit-summary.json` e
+`domain-verification-summary.json`; partições, configurações, snapshot,
+state, logs e correlação de entregas permanecem em arquivos privados.
+
+## 29. Encerramento — recorrência definitiva e retirada da exceção
+
+Após os dois pilotos naturais PASS, o operador autorizou restaurar a
+recorrência BRSA0257, retirar a exceção temporária e concluir a AUTO-5.
+**Preparação em 15/10/2026; apply e verificações finais ainda pendentes.**
+
+- BRSA0257 permanece ENABLED e troca somente `schedule_expression`:
+  `at(2026-10-14T20:00:00)` → `cron(0 20 ? * TUE,FRI *)`.
+  BRSA0267 permanece ENABLED com o mesmo cron. Timezone America/Sao_Paulo,
+  flexible OFF, target, role, input e retries preservados.
+- Worker volta ao calendário normal terça/sexta, sem `PILOT_OCCURRENCE`
+  nem `automatic_live_day`. As regras de prova natural das 18h, janela,
+  settings, participação, dedupe e autorização manual permanecem intactas.
+- O pacote isolado retoma SHA-256
+  `e5084d5657a71161dcb91da283a683746482fa566a0505f45e33eb9c7d9b4308`.
+  Em relação à produção atual, muda apenas `automatic_reminders.py`;
+  os outros 13 módulos são idênticos. C7.4–C7.6 continuam fora do deploy.
+- Plano isolado reaberto e revisado: **0 add / 6 change / 0 destroy**,
+  cinco Lambdas pelo ZIP compartilhado e um campo do schedule BRSA0257.
+  Sem ações em ACM, IAM, alias, dados, frontend, API Gateway ou BRSA0267.
+  Full plan com refresh: somente essas ações e o ACM conhecido. Isolamento
+  final com targets e `-refresh=false`, condicionado à releitura AWS × state.
+
+```text
+Plano: /private/tmp/auto5-close-20261015-bgp4_pfz/release/infra/terraform/.build/auto5-close.tfplan
+SHA-256: 4b4c0b21997a9728a156aca721a040ef2a8ed3a5edc102e71a40fabca6fe7927
+State esperado antes do apply: 87
+```
+
+Testes locais: **307 backend no main / 302 no pacote isolado**, **84 Moto**,
+**24 Terraform**, fmt/validate e diff-check PASS. Mutações do claim **12/12**
+e da autorização manual **11/11** detectadas. Novas regressões provam os
+dois calendários terça/sexta, dedupe/retry e rejeição de 14/10 e de outra
+quarta-feira antes de construir clientes ou ler dados.
+
+A regra de autoria dos novos commits do Codex foi registrada em `AGENTS.md`:
+`Codex <codex@openai.com>`, reconhecido pelo GitHub como `codex`, usando
+identidade por comando e preservando a configuração pessoal do operador.
+Nenhum histórico anterior foi reescrito.
+
+Evidências privadas: `/private/tmp/auto5-close-20261015-bgp4_pfz`.
+O encerramento depende do CI completo, apply único do plano revisado,
+releitura dos controles, preservação dos 95 envios/95 entregas anteriores
+e full plan pós-apply sem ação residual AUTO-5, exceto o ACM conhecido.

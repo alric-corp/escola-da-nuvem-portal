@@ -158,7 +158,8 @@ run "automatic_gate_open_schedules_disabled" {
   assert {
     condition = toset(keys(aws_scheduler_schedule.automatic_reminders)) == toset(["BRSA0257", "BRSA0267"]) && alltrue([
       for code, schedule in aws_scheduler_schedule.automatic_reminders :
-      schedule.state == "DISABLED" && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
+      schedule.state == "DISABLED"
+      && schedule.schedule_expression == "cron(0 20 ? * TUE,FRI *)"
       && schedule.schedule_expression_timezone == "America/Sao_Paulo" && schedule.flexible_time_window[0].mode == "OFF"
       && schedule.group_name == aws_scheduler_schedule_group.automatic_reminders.name
       && schedule.target[0].arn == aws_lambda_function.automatic_reminders.arn

@@ -170,6 +170,22 @@ class AutomaticReminderAdapterTests(unittest.TestCase):
             result = [{"status": "skipped", "reason": reason, "retryable": False}]
             self.assertEqual(self.invoke(result)[0], result)
 
+    def test_former_oct14_pilot_and_other_wednesdays_refuse_before_clients(self):
+        import os
+        import automatic_reminders as automatic
+        from unittest.mock import Mock
+        with patch.dict(os.environ, {"AUTOMATIC_REMINDER_COHORTS": '["BRSA0257","BRSA0267"]'}):
+            for code in ("BRSA0257", "BRSA0267"):
+                for slot in ("2026-10-14T23:00:00Z", "2026-10-21T23:00:00Z"):
+                    with self.subTest(code=code, slot=slot), \
+                            patch.object(automatic, "utc_now", return_value=slot), \
+                            patch.object(automatic, "Repository") as repo, \
+                            patch.object(automatic.reminders, "SESMailer") as mailer:
+                        result = automatic.handler({**self.event, "cohortCode": code, "scheduledFor": slot}, Mock())[0]
+                        self.assertEqual((result["status"], result["reason"]), ("skipped", "not-due"))
+                        repo.assert_not_called()
+                        mailer.assert_not_called()
+
 
 class AutomaticSenderSettingsTests(unittest.TestCase):
     def setUp(self):
@@ -783,6 +799,32 @@ class AutomaticReminderWorkerTests(unittest.TestCase):
                 self.assertEqual(self.execute()[0]["reason"], "already-finished")
                 self.assertEqual(len(self.mailer.sent), 1)
                 self.assertEqual(len(self.repo.list("COHORT#BRSA0267", "AUTO_REMINDER#")), 1)
+
+    def test_both_cohorts_keep_regular_calendar_and_reject_former_pilot(self):
+        for code in ("BRSA0257", "BRSA0267"):
+            for day in (13, 14, 16, 21):  # terça, piloto antigo, sexta e outra quarta
+                with self.subTest(code=code, day=day):
+                    self.setUp()
+                    if code == "BRSA0257":
+                        self.repo.put("COHORT#" + code, "METADATA", {"code": code, "current": None})
+                        draft = self.admin.dispatch("POST", "/cohorts/" + code + "/preview", {
+                            "csv": canvas_csv(kc="", lab=""), "activeIds": ["001 KC (123)", "002 Lab (456)"]})
+                        self.admin.dispatch("POST", "/cohorts/" + code + "/publish", {"draftId": draft["draft"]["id"]})
+                    self.event["scheduledFor"] = self.at = sao_paulo(2026, 10, day, 20, 0)
+                    self.prepare(code=code)
+                    if day in (13, 16):
+                        result = self.execute(cohort_codes=[code])[0]
+                        self.assertEqual((result["status"], result["counts"]["sent"]), ("completed", 1))
+                        self.event.update(executionId="retry", attemptNumber=2)
+                        self.assertEqual(self.execute(cohort_codes=[code])[0]["reason"], "already-finished")
+                        self.assertEqual(len(self.mailer.sent), 1)
+                    else:
+                        before = copy.deepcopy(self.repo.items)
+                        with patch.object(self.repo, "get", side_effect=AssertionError("no read")), \
+                                patch.object(self.repo, "list", side_effect=AssertionError("no read")):
+                            result = self.execute(cohort_codes=[code])[0]
+                        self.assertEqual((result["status"], result["reason"]), ("skipped", "not-due"))
+                        self.assertEqual((self.repo.items, self.mailer.sent), (before, []))
 
     def test_invalid_time_or_event_never_sends_or_claims_in_any_mode(self):
         for changes in ({"scheduledFor": sao_paulo(2026, 10, 6, 19, 59)}, {"scheduledFor": sao_paulo(2026, 10, 6, 20, 1)},
