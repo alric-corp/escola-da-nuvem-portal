@@ -1,8 +1,22 @@
 # AUTO-5 — ativação controlada dos lembretes automáticos
 
-**Em andamento. Ambos pilotos naturais PASS: BRSA0267 em 13/10, 32 enviados / 32 deliveries; BRSA0257 em 14/10, 14 enviados / 14 deliveries. Pendentes a recorrência BRSA0257 e a remoção da exceção temporária.**
+**CONCLUÍDA em 15/10/2026. Envios manuais e pilotos naturais das duas turmas PASS; ambas recorrentes terça/sexta às 20h. Exceção temporária removida.**
 
-**Estado verificado — 15/10/2026, 00h37 America/Sao_Paulo:** ocorrência
+**Estado final — 15/10/2026, 01h17 America/Sao_Paulo:** BRSA0257 e
+BRSA0267 **ENABLED**, `cron(0 20 ? * TUE,FRI *)`, America/Sao_Paulo,
+flexible OFF. Worker versão **6**, sem exceção de 14/10; cinco Lambdas
+Active/Successful. Gate automático true, manual false, alias manual **3
+fechado**, IAM temporário revogado. Apply único **0/6/0**, state **89**.
+Os **95 REMINDER sent / 95 deliveries** foram reconferidos por messageId,
+sem duplicidade, alteração dos settings/claims/lembretes anteriores ou
+nova execução da worker. SES HEALTHY, alarmes OK, Errors/Throttles e
+Bounce/Complaint observados zero. Full plan final **1/0/0 somente ACM**,
+sem ação residual AUTO-5 no checkout isolado; plano consumido removido.
+Próximas ocorrências: **16/10 às 20h**, com prova natural do Canvas das 18h
+do próprio dia. C7.4–C7.6 continuam fora deste deploy e pendentes de revisão
+própria. **AUTO-5 encerrada; AUTO-6 não iniciada.** Detalhes na seção 29.
+
+**Checkpoint da auditoria — 15/10/2026, 00h37 America/Sao_Paulo:** ocorrência
 natural BRSA0257 de **14/10 às 20h PASS**, completed, uma tentativa,
 **14 sent / 14 delivered**. Canvas natural das 18h succeeded/published,
 prova, publicação e metadataVersion correlacionadas ao claim. População:
@@ -2731,7 +2745,7 @@ state, logs e correlação de entregas permanecem em arquivos privados.
 
 Após os dois pilotos naturais PASS, o operador autorizou restaurar a
 recorrência BRSA0257, retirar a exceção temporária e concluir a AUTO-5.
-**Preparação em 15/10/2026; apply e verificações finais ainda pendentes.**
+**Encerramento concluído em 15/10/2026, 01h17 America/Sao_Paulo.**
 
 - BRSA0257 permanece ENABLED e troca somente `schedule_expression`:
   `at(2026-10-14T20:00:00)` → `cron(0 20 ? * TUE,FRI *)`.
@@ -2767,7 +2781,49 @@ A regra de autoria dos novos commits do Codex foi registrada em `AGENTS.md`:
 identidade por comando e preservando a configuração pessoal do operador.
 Nenhum histórico anterior foi reescrito.
 
+### Apply e aceite final
+
+CI [**38679058377 SUCCESS**](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/38679058377),
+três jobs concluídos, antes da aplicação. Código do pacote isolado no
+commit `cf4aaab4d94949bf603a665a30859c7551d4574e`, integrado à main
+pela branch de encerramento, sem incluir os módulos de backend adiados
+no ZIP de produção. O GitHub reconhece o autor desse commit como `codex`.
+
+Apply único do plano salvo aprovado: **15/10, 01h07min08,460s–01h07min52,654s**,
+**0 added / 6 changed / 0 destroyed**, state **87 → 89**. Hashes, state e
+configuração real foram revalidados imediatamente antes da operação.
+
+| Verificação final | Resultado |
+| --- | --- |
+| BRSA0257 / BRSA0267 | **ENABLED / ENABLED**, terça/sexta às 20h, America/Sao_Paulo, flexible OFF |
+| Worker e cinco Lambdas | versão publicada **6** na worker; todas Active/Successful, pacote aprovado e environments preservados |
+| Exceção de quarta-feira | removida do pacote; calendário normal restaurado |
+| Gate automático / manual | **true / false** |
+| Alias manual / IAM temporário | versão **3**, ambas flags false; simulações de Invoke negadas e policy preservada |
+| BRSA0267 acumulado | **59 sent / 59 delivered** |
+| BRSA0257 acumulado | **36 sent / 36 delivered** |
+| Total correlacionado por messageId | **95 sent / 95 delivered**, sem duplicatas |
+| Settings / AUTO_REMINDER / REMINDER anteriores | idênticos ao preflight da aplicação |
+| Novas invocações da worker / Errors / Throttles observados | **0 / 0 / 0** |
+| Bounce / Complaint observados desde o deploy | **0 / 0** |
+| SES / alarmes | HEALTHY, produção/sending enabled; Errors/Throttles OK |
+
+Full plan final somente leitura, sem salvar binário, concluído às **01h17**:
+**1 add / 0 change / 0 destroy**, exclusivamente
+`aws_acm_certificate.portal`. Nenhuma ação residual AUTO-5; state permaneceu
+**89**. O plano consumido foi removido após a convergência. O full plan foi
+feito no checkout isolado; a futura implantação C7.4–C7.6 continua separada.
+
+**Critérios de encerramento satisfeitos:** ambas as turmas com envio manual
+e Scheduler natural PASS; recorrência definitiva restaurada; exceção retirada;
+gates/settings/IAM, dedupe/WITHDRAWN, SES/deliveries e observabilidade aprovados.
+As próximas execuções são **16/10 às 20h**, sujeitas à prova natural do Canvas
+das 18h e à elegibilidade/publicação atuais. Nenhuma invocação ou envio foi
+usado como teste nesta aplicação. **AUTO-5 CONCLUÍDA. AUTO-6 não iniciada.**
+
 Evidências privadas: `/private/tmp/auto5-close-20261015-bgp4_pfz`.
-O encerramento depende do CI completo, apply único do plano revisado,
-releitura dos controles, preservação dos 95 envios/95 entregas anteriores
-e full plan pós-apply sem ação residual AUTO-5, exceto o ACM conhecido.
+Resumos: `release-manifest.json`, `plan-review-summary.json`, `CI-final.json`,
+`apply-result.json`, `post-apply-summary.json`, `convergence-summary.json` e
+`consumed-plan-removed.json`; partições, configurações e entregas detalhadas
+permanecem privadas. O arquivo do operador e a configuração Git pessoal
+foram preservados; novos commits do Codex seguem a regra de `AGENTS.md`.

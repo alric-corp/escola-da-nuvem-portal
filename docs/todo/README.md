@@ -30,21 +30,20 @@ os registros históricos de abertura.
 - [17 — Canvas](concluido/17-integracao-api-canvas.md): integração
   implementada; rotação da credencial pessoal continua manutenção operacional.
 
-## Iniciativas operacionais em andamento
+## Operações concluídas
 
 Não são TODOs numerados: acompanham uma operação em produção e não recebem ID.
 
 ### AUTO-5 — lembretes automáticos
 
 [Evidências e checkpoints](../auto-5.md). Estado verificado em
-**15/10/2026, 00h37**: ambos pilotos naturais **PASS**. BRSA0267 em 13/10:
+**CONCLUÍDA em 15/10/2026, 01h17**: ambos pilotos naturais **PASS**. BRSA0267 em 13/10:
 32 enviados / 32 deliveries; BRSA0257 em 14/10: **14 enviados / 14 deliveries**,
-sem falhas, duplicidade ou envio WITHDRAWN. Faltam a recorrência BRSA0257,
-a remoção da exceção datada e as verificações de encerramento. Seções 26–28.
+sem falhas, duplicidade ou envio WITHDRAWN. Recorrência das duas turmas
+restaurada, exceção retirada e aceite final aprovado. Seções 26–29.
 
 - BRSA0267: Scheduler **ENABLED** (terça e sexta, 20h).
-- BRSA0257: Scheduler **ENABLED**, ocorrência única de **14/10 já consumida**;
-  sem recorrência futura até restaurar seu cron.
+- BRSA0257: Scheduler **ENABLED** (terça e sexta, 20h).
 - Gate automático **true**; recuperação manual **false**.
 
 Etapas:
@@ -59,14 +58,14 @@ Etapas:
   worker versão 5, CI verde e full plan somente ACM.
 - [x] Primeira ocorrência natural BRSA0257: **14/10 às 20h PASS**, com prova
   natural das 18h válida, **14 sent / 14 deliveries**; auditoria na seção 28.
-- [ ] Restaurar a recorrência terça/sexta da BRSA0257 em plano revisado.
-- [ ] Remover a exceção datada de 14/10 da worker em deploy revisado.
-- [ ] Encerramento: ambas as turmas com manual e Scheduler natural PASS,
+- [x] Restaurar a recorrência terça/sexta da BRSA0257 em plano revisado.
+- [x] Remover a exceção datada de 14/10 da worker em deploy revisado.
+- [x] Encerramento: ambas as turmas com manual e Scheduler natural PASS,
   gates/settings/IAM corretos, SES/dedupe/WITHDRAWN/observabilidade aprovados e
   full plan sem drift AUTO-5, exceto o ACM conhecido.
 
-**AUTO-5 está aberta; não está concluída** e não deve ser dada como concluída
-antes dos dois Schedulers naturais. Não iniciar AUTO-6.
+**AUTO-5 encerrada.** State 89, worker versão 6, 95 envios/95 entregas
+preservados e full plan final somente ACM conhecido. AUTO-6 não iniciada.
 
 ## Notas de contexto
 

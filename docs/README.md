@@ -27,7 +27,7 @@ Os históricos concluídos e o mapa de implementação estão em
 
 | Documento | Conteúdo |
 | --- | --- |
-| [auto-5.md](auto-5.md) | AUTO-5, em andamento: ativação controlada dos lembretes automáticos |
+| [auto-5.md](auto-5.md) | AUTO-5 concluída: pilotos manuais/naturais aprovados, recorrência terça/sexta nas duas turmas e 95 envios/95 entregas preservados |
 | [auto-2.1.md](auto-2.1.md), [auto-2.2.md](auto-2.2.md), [auto-2.3.md](auto-2.3.md), [auto-4.md](auto-4.md), [auto-5-claim.md](auto-5-claim.md) | Registros de entrega da automação de lembretes, concluídos; permanecem aqui por ora |
 | [historico/api-1.md](historico/api-1.md), [historico/api-2.md](historico/api-2.md) | API-1 (caracterização OpenAPI) e API-2 (OpenAPI como fonte das rotas Terraform), concluídas |
 
