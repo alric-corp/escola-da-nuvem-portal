@@ -83,11 +83,12 @@ const switchCohort = async (tab, code) => {
   await tab.locator("#cohort").selectOption(code);
   await tab.getByRole("heading", { name: `Painel da ${code}`, exact: true }).waitFor();
 };
+// Expansão 6: o nome do arquivo escolhido fica ao lado do botão de escolher (uma vez só na tela).
 const selectCsv = async (tab, name, content) => {
   await tab.locator("#csv-file").setInputFiles({ name, mimeType: "text/csv", buffer: Buffer.from(content) });
-  await tab.locator("#import-form .form-footer .small").getByText(name, { exact: true }).waitFor();
+  await tab.locator("#import-form .timp-file-name").getByText(name, { exact: true }).waitFor();
 };
-const filename = (tab) => tab.locator("#import-form .form-footer .small").innerText();
+const filename = (tab) => tab.locator("#import-form .timp-file-name").innerText();
 const hasPreview = async (tab) => (await tab.getByRole("heading", { name: "Conferência dos resultados", exact: true }).count()) > 0;
 const notices = (tab) => tab.locator("#notices");
 const importState = (tab) => tab.evaluate(async () => {
@@ -180,7 +181,8 @@ try {
 
     await tab.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
     await tab.getByRole("button", { name: "Salvar configurações", exact: true }).click();
-    await notices(tab).getByText("Configurações da turma atualizadas.", { exact: true }).waitFor();
+    // Expansão 8: o aviso de quem salvou não aparece para quem entrou; a espera é pela pessoa nova no topo (o boot terminou).
+    await tab.locator(".session-context small").filter({ hasText: "outro.admin@example.test" }).waitFor();
     assert.equal(calls("GET", "/me").length, 2);
     assert.deepEqual(await importState(tab), { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: true });
     await openImport(tab);
@@ -252,15 +254,16 @@ try {
     await tab.getByRole("button", { name: "Conferir arquivo" }).click();
     await tab.getByText(`Prévia ${A}-1`, { exact: true }).waitFor();
     await tab.locator("#csv-file").setInputFiles({ name: "grande.csv", mimeType: "text/csv", buffer: Buffer.alloc(2000001, "a") });
-    await notices(tab).locator(".notice.error", { hasText: "Selecione um CSV de até 2 MB." }).waitFor();
+    await tab.locator("#timp-check-status", { hasText: "Selecione um CSV de até 2 MB." }).waitFor();
     assert.equal(await filename(tab), "Nenhum arquivo selecionado");
     assert.equal(await hasPreview(tab), false);
     assert.deepEqual(await importState(tab), { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: false });
 
     await selectCsv(tab, "vazio.csv", "");
     await tab.getByRole("button", { name: "Conferir arquivo" }).click();
-    await notices(tab).locator(".notice.error", { hasText: "Selecione um arquivo CSV para continuar." }).waitFor();
+    await tab.locator("#timp-check-status", { hasText: "Selecione um arquivo CSV para continuar." }).waitFor();
     assert.equal(calls("POST", `/cohorts/${A}/preview`).length, 1);
+    assert.deepEqual(await notices(tab).locator(".notice.error").count(), 0, "o motivo fica na tela (Expansão 6), sem aviso temporário");
     assert.deepEqual(log.errors, []);
     await tab.close();
     console.log("Importação: limite de 2 MB e arquivo vazio OK.");
@@ -358,7 +361,8 @@ try {
     await tab.getByRole("button", { name: /Publicar atualização/ }).click();
     await notices(tab).getByText("Atualização publicada. Os alunos já podem consultar.", { exact: true }).waitFor();
     await tab.getByRole("heading", { name: `Painel da ${A}`, exact: true }).waitFor();
-    assert.equal(log.dialogs.at(-1).message, `Publicar as notas para 1 alunos da ${A}?`);
+    const inForce = new Date(report.publication.publishedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    assert.equal(log.dialogs.at(-1).message, `Publicar as notas para 1 aluno da ${A}?\n\nArquivo: notas-a.csv\n\nA publicação substitui a versão em vigor, de ${inForce}. Os alunos passam a ver as notas deste arquivo.`);
     assert.deepEqual(calls("POST", `/cohorts/${A}/publish`).map((c) => c.body), [{ draftId: `draft-${A}-1`, acknowledgeRemoved: false }]);
     assert.equal(calls("GET", "/me").length, meBefore + 1);
     await openImport(tab);
@@ -428,7 +432,8 @@ try {
     const meBefore = calls("GET", "/me").length;
     const publish = tab.getByRole("button", { name: /Publicar atualização/ });
     await publish.click();
-    await notices(tab).locator(".notice.error", { hasText: conflict }).waitFor();
+    await tab.locator("#timp-publish-status", { hasText: conflict }).waitFor();
+    assert.equal(await notices(tab).locator(".notice.error").count(), 0, "o motivo fica na tela (Expansão 6)");
     assert.doesNotMatch(await notices(tab).innerText(), /Atualização publicada/);
     assert.equal(calls("GET", "/me").length, meBefore);
     assert.ok(await hasPreview(tab));

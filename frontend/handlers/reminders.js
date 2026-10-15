@@ -103,7 +103,18 @@ export async function openBatch(ids) {
   await loadBatchPreview();
 }
 
-export async function sendBatch() {
+// A pergunta do envio em lote (Expansão 7): a mesma confirmação, no mesmo ponto, dizendo a turma, quem envia, que o envio é
+// imediato e sem volta e quantos dos selecionados ficam de fora (os motivos estão na lista).
+function batchQuestion(code, p, approved) {
+  const out = p.recipients.length - approved;
+  return `Enviar lembrete para ${plural(approved, "aluno", "alunos")} da ${code}?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota${p.sample?.from ? `, enviado de ${p.sample.from}` : ""}. O envio começa agora e não pode ser desfeito.${out ? `\n\n${plural(out, "aluno selecionado fica", "alunos selecionados ficam")} de fora; os motivos estão na lista.` : ""}`;
+}
+
+// started: avisa quem chamou que o envio vai começar (depois da confirmação e antes do pedido). announce: depois do render do
+// resultado, diz se o aviso temporário deve anunciá-lo — quem chama sabe se o resultado recebe o foco; com ele, o aviso
+// repetiria a tela (fechamento da Expansão 7). O aviso não afirma o desfecho: o lote pode voltar aceito, sem confirmação ou
+// interrompido por conflito.
+export async function sendBatch(started = () => {}, announce = () => true) {
   const code = state.code, p = state.batchPreview;
   // Uma nova prévia invalida também o resultado do envio anterior, mesmo com os mesmos alunos/publicação.
   // Sair do lote ou trocar de turma torna a resposta irrelevante para a tela, sem cancelar o envio no servidor.
@@ -112,14 +123,15 @@ export async function sendBatch() {
   // Só quem a prévia exibida aprovou (sem motivo para pular), qualquer que seja o motivo dos demais: o lote nunca cresce
   // depois da prévia. O servidor revalida cada um e ainda pode pular quem mudou desde então.
   const approvedRecipientIds = p.recipients.filter((r) => !r.skip).map((r) => r.id);
-  if (!approvedRecipientIds.length || !confirm(`Enviar lembrete para ${plural(approvedRecipientIds.length, "aluno", "alunos")}?`)) return;
+  if (!approvedRecipientIds.length || !confirm(batchQuestion(code, p, approvedRecipientIds.length))) return;
+  started();
   try {
     const result = await api.reminders.sendBatch(code, {
       studentIds: approvedRecipientIds, expectedPublicationId: p.publicationId });
     if (!current()) return;
     state.batchResults = result.results;
     render();
-    notice("Envio em lote concluído. Confira o resultado por aluno.");
+    if (announce()) notice("Chegou a resposta do envio em lote. Confira o resultado por aluno.");
   } catch (err) {
     if (current()) throw err;
   }
@@ -136,7 +148,8 @@ export async function copyReminder() {
   notice("Mensagem copiada.");
 }
 
-export async function verifySender() {
+// announce: como no envio em lote. O aviso não afirma o desfecho: o remetente pode já estar pronto ou parado por outro motivo.
+export async function verifySender(announce = () => true) {
   syncContext();
   const code = state.code, owner = state.me, request = ++senderRequest;
   const current = () => request === senderRequest && state.me === owner && state.code === code && state.view === "reminders";
@@ -146,7 +159,7 @@ export async function verifySender() {
     state.sender = sender;
     state.senderLoading = false;
     render();
-    notice("Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente.");
+    if (announce()) notice("Chegou a resposta do pedido de confirmação. Confira a situação do seu remetente.");
   } catch (err) {
     if (current()) throw err;
   } finally {

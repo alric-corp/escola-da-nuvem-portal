@@ -119,7 +119,8 @@ try {
       await page.getByRole("heading", { name: "Minhas atividades" }).waitFor();
       await page.getByRole("button", { name: "Feedback", exact: true }).click();
       await page.getByRole("heading", { name: "Ajude a melhorar a plataforma" }).waitFor();
-      assert.match(await page.locator(".feedback-origin").innerText(), /Sobre: Atividades/);
+      // Expansão 3 (docs/design-visual.md): o aluno vê o que vai junto com o envio, com o nome do menu dele.
+      assert.match(await page.locator(".feedback-origin").innerText(), /a tela de origem, Minhas atividades\./);
       await page.getByText("<script>alert(1)</script>", { exact: true }).waitFor();  // texto, não HTML
       assert.equal(await page.locator(".feedback-list script").count(), 0);
       // Validação local antes de enviar: sem tipo, nada vai para a API.
@@ -140,7 +141,8 @@ try {
         cohort: "BRSA0267", page: "activities" });
       assert.equal(await page.locator("#fb-title").inputValue(), "");
       const first = page.locator(".feedback-list .feedback-card").first();
-      assert.match(await first.innerText(), /Bug\s+Novo\s+KC aparece como pendente\s+26\/09\/2026/);
+      // Expansão 3: título, situação (o leitor de tela ouve "Situação:" e "enviado em"), tipo, data por extenso, tela de origem e a mensagem.
+      assert.match(await first.innerText(), /^KC aparece como pendente\s+Situação:\s+Novo\s+Bug ·\s+enviado em\s+26 de setembro de 2026 · a partir de Minhas atividades\s+A atividade 254 continua sem nota depois da correção\./);
       // Paginação: "Carregar mais" pede a próxima página com o cursor do backend.
       assert.equal(await page.locator(".feedback-list .feedback-card").count(), 20);
       await page.getByRole("button", { name: "Carregar mais" }).click();
@@ -173,7 +175,9 @@ try {
       await page.getByRole("heading", { name: "Feedbacks", exact: true }).waitFor();
       await page.locator(".fb-open").first().waitFor();
       assert.deepEqual(api.gets.at(-1), { limit: "50" }, "sem filtro: arquivados ficam de fora no backend");
-      assert.match(await page.locator(".fb-summary").innerText(), /Todos\s+2\s+Novos\s+1\s+Em análise\s+1\s+Resolvidos\s+0/);
+      // Expansão 9: o resumo do portal inteiro, com os arquivados (que ficam fora da lista padrão).
+      assert.equal(await page.locator(".afb-summary").count(), 1, "o resumo do portal (afb-summary)");
+      assert.match(await page.locator(".afb-summary").innerText(), /^No portal inteiro\s+Todos \(sem arquivados\)\s+2\s+Novos\s+1\s+Em análise\s+1\s+Resolvidos\s+0\s+Arquivados\s+3$/);
       await page.locator("#fb-filter-status").selectOption("ARCHIVED");
       await page.waitForFunction(() => document.querySelector("#fb-filter-status")?.value === "ARCHIVED");
       await page.getByText("Nenhum feedback neste filtro.").waitFor();
@@ -270,7 +274,8 @@ try {
   const listItem = (id, title) => feedbackItem(1, { id, title });
 
   // Admin: 409 ao salvar status. C7.5: a lista é atualizada com o servidor (o expectedStatus local ficou velho e toda
-  // nova tentativa daria 409 de novo); o detalhe continua aberto, o aviso de erro aparece e a tela segue utilizável.
+  // nova tentativa daria 409 de novo); o detalhe continua aberto, o erro aparece (Expansão 9: junto da ação, não num aviso solto)
+  // e a tela segue utilizável.
   // A prova com um servidor que de fato aplica expectedStatus está em feedback-lifecycle-browser.mjs.
   {
     const { context, page, api } = await openAdmin();
@@ -287,10 +292,14 @@ try {
     await page.locator(".fb-detail").waitFor();
     const gets = api.gets.length;
     await page.locator("#fb-status-select").selectOption("RESOLVED");
+    const answered = page.waitForResponse((r) => r.url().includes("/status"));
     await page.getByRole("button", { name: "Salvar status" }).click();
-    await page.locator("#notices .notice.error").waitFor();
+    await answered;
+    await page.waitForFunction(() => !!document.querySelector("#afb-op-status.is-error, #notices .notice"), null, { timeout: 5000 }).catch(() => {});
+    assert.equal(await page.locator("#afb-op-status.is-error").count(), 1, "o erro junto da ação");
     assert.deepEqual(api.statusPosts, [{ id, status: "RESOLVED", expectedStatus: "NEW" }]);
-    assert.deepEqual(await noticeTexts(page), [{ error: true, text: conflict }]);
+    assert.equal((await page.locator("#afb-op-status").innerText()).replace(/\s+/g, " ").trim(), `O status não foi alterado. ${conflict} Atualizar a lista`);
+    assert.deepEqual(await noticeTexts(page), []);
     const after = await snapshot(page, "adminFeedback");
     assert.equal(after.selectedId, id);
     assert.equal(after.items.find((f) => f.id === id).status, "NEW", "este servidor fictício continua devolvendo NEW");
@@ -300,10 +309,12 @@ try {
     assert.equal(await page.locator("#fb-status-select").inputValue(), "NEW");
     assert.equal(api.gets.length, gets + 1, "uma recarga da lista para conhecer o status real");
     const save = page.getByRole("button", { name: "Salvar status" });
-    assert.ok(await save.isEnabled());
+    // Expansão 9: com o status do servidor no seletor, Salvar status fica parado até outra escolha (pelo motivo, não pelo erro).
+    assert.ok(await save.isDisabled());
     // Continua utilizável: a nova tentativa (agora com o status vindo do servidor) dá certo.
     api.handle = null;
     await page.locator("#fb-status-select").selectOption("RESOLVED");
+    assert.ok(await save.isEnabled());
     await save.click();
     await page.getByText("Status do feedback atualizado.").waitFor();
     assert.deepEqual(api.statusPosts.at(-1), { id, status: "RESOLVED", expectedStatus: "NEW" });
@@ -344,7 +355,8 @@ try {
     assert.deepEqual(api.gets.slice(-2), [{ limit: "50", type: "BUG" }, { limit: "50", type: "SUGGESTION" }]);
     assert.equal(await page.locator(".fb-open").count(), 1);
     assert.equal(await page.getByText("Resposta A atrasada").count(), 0);
-    assert.match(await page.locator(".fb-summary").innerText(), /Todos\s+9\s+Novos\s+4\s+Em análise\s+3\s+Resolvidos\s+2/);
+    assert.equal(await page.locator(".afb-summary").count(), 1, "o resumo do portal (afb-summary)");
+    assert.match(await page.locator(".afb-summary").innerText(), /Todos \(sem arquivados\)\s+9\s+Novos\s+4\s+Em análise\s+3\s+Resolvidos\s+2\s+Arquivados\s+1$/);
     assert.equal(await page.locator("#fb-filter-type").inputValue(), "SUGGESTION");
     assert.equal(await page.getByRole("button", { name: "Carregar mais" }).count(), 1);
     assert.deepEqual([api.errors, api.dialogs], [[], 0]);

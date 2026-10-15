@@ -75,10 +75,11 @@ try {
     await tab.goto(url);
     return { context, tab, log };
   }
-  const cardsOf = (tab) => tab.locator(".metrics .metric").evaluateAll((els) => els.map((el) => [el.dataset.filter ?? null,
+  // Cartões de Notas da turma e, no painel (Expansão 4), os atalhos de filtro da Situação da turma: rótulo, número e legenda.
+  const cardsOf = (tab) => tab.locator(".metrics .metric, .teacher-home .tp-filter").evaluateAll((els) => els.map((el) => [el.dataset.filter ?? null,
     el.querySelector("span").textContent, el.querySelector("strong").textContent, el.querySelector("small").textContent]));
-  const rowsOf = (tab) => tab.locator(".student-table tbody tr").evaluateAll((els) => els.map((tr) => [tr.querySelector(".cell-name strong").textContent,
-    tr.querySelector(".cell-name").textContent.includes("Desistente"), tr.querySelector(".cell-status .badge").textContent]));
+  const rowsOf = (tab) => tab.locator(".teacher-home .tp-row").evaluateAll((els) => els.map((tr) => [tr.querySelector(".tp-student").textContent,
+    tr.querySelector(".tp-name").textContent.includes("Desistente"), tr.querySelector(".tp-status .tp-state").textContent]));
   const optionsOf = (tab, id) => tab.locator(`#${id} option`).evaluateAll((els) => els.map((el) => el.value));
   const noPageScroll = (tab) => tab.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   const calls = (log, op) => log.requests.filter((r) => r.path.endsWith(`/${op}`));
@@ -88,8 +89,9 @@ try {
   {
     const { context, tab, log } = await open({ marks: false });
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
-    assert.deepEqual(await cardsOf(tab), [["all", "Alunos na publicação", "5", "Ver todos os alunos"], ["ok", "Médias na referência", "2", "KCs ≥ 70% e Labs ≥ 95%"],
+    assert.deepEqual(await cardsOf(tab), [["all", "Alunos na publicação", "5", "Ver todos os alunos"], ["ok", "Médias na referência", "2", "KC ≥ 70% e LAB ≥ 95%"],
       ["attention", "Atenção", "1", "Uma média abaixo da referência"], ["critical", "Crítico", "2", "As duas médias abaixo da referência"],
+      ["pending", "Com atividades sem nota", "4", "Ao menos uma atividade liberada sem nota"],
       ["no-portal", "Ainda não entraram", "2", "No portal: sem conta ou com e-mail diferente do Canvas"]]);
     assert.deepEqual(await optionsOf(tab, "status-filter"), ["all", "missing-email", "pending", "no-portal", "ok", "attention", "critical"]);
     assert.deepEqual((await rowsOf(tab)).map(([name, badge]) => [name, badge]), [["Alice Saiu", false], ["Ana Ativa", false], ["Bruno Atenção", false], ["Caio Saiu", false], ["Carla Crítica", false]]);
@@ -109,8 +111,9 @@ try {
   {
     const { context, tab, log } = await open();
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
-    assert.deepEqual(await cardsOf(tab), [["active", "Alunos ativos", "3", "2 desistentes"], ["ok", "Médias na referência", "1", "KCs ≥ 70% e Labs ≥ 95%"],
+    assert.deepEqual(await cardsOf(tab), [["active", "Alunos ativos", "3", "2 desistentes"], ["ok", "Médias na referência", "1", "KC ≥ 70% e LAB ≥ 95%"],
       ["attention", "Atenção", "1", "Uma média abaixo da referência"], ["critical", "Crítico", "1", "As duas médias abaixo da referência"],
+      ["pending", "Com atividades sem nota", "3", "Ao menos uma atividade liberada sem nota"],
       ["no-portal", "Ainda não entraram", "1", "No portal: sem conta ou com e-mail diferente do Canvas"]]);
     assert.deepEqual(await rowsOf(tab), [["Ana Ativa", false, "Médias na referência"], ["Bruno Atenção", false, "Atenção"], ["Carla Crítica", false, "Crítico"],
       ["Alice Saiu", true, "Crítico"], ["Caio Saiu", true, "Médias na referência"]]);
@@ -208,11 +211,12 @@ try {
     await openBatch();
     await tab.getByText(/1 de 3 alunos vai receber/).waitFor();
     assert.equal(await tab.evaluate(() => document.activeElement.textContent), "Lembretes em lote");
-    const previewText = await tab.locator("tbody").innerText();
-    assert.match(previewText, /Bruno Atenção\s+1\s+Desistente/);
+    // Expansão 7: quem fica de fora vem agrupado por motivo, com o nome e quantas atividades sem nota.
+    const previewText = await tab.locator(".trem-out").innerText();
+    assert.match(previewText, /Desistente · 1\s+Bruno Atenção\s+1 sem nota/);
     assert.doesNotMatch(previewText, /withdrawn/);
     await tab.getByRole("button", { name: "Enviar para 1 aluno", exact: true }).click();
-    await tab.getByText("1 enviado · 0 pulados · 0 com falha.", { exact: true }).waitFor();
+    await tab.getByText("1 aceito pelo serviço de envio.", { exact: true }).waitFor();
     assert.deepEqual(calls(log, "send-reminders").map((r) => r.body), [{ studentIds: ["1"], expectedPublicationId: publication.id }]);
 
     await tab.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
@@ -220,9 +224,9 @@ try {
     await openBatch();
     await tab.getByText(/2 de 3 alunos vão receber/).waitFor();
     await tab.getByRole("button", { name: "Enviar para 2 alunos", exact: true }).click();
-    await tab.getByText("1 enviado · 1 pulado · 0 com falha.", { exact: true }).waitFor();
+    await tab.getByText("1 aceito pelo serviço de envio · 1 ficou de fora.", { exact: true }).waitFor();
     assert.deepEqual(calls(log, "send-reminders").map((r) => r.body.studentIds), [["1"], ["1", "2"]]);
-    assert.match(await tab.locator("tbody").innerText(), /Bruno Atenção\s+Pulado · Desistente/);
+    assert.match(await tab.locator(".trem-result").innerText(), /Ficaram de fora · 1\s+Desistente · 1\s+Bruno Atenção/);
 
     await tab.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
@@ -230,7 +234,9 @@ try {
     await tab.getByText(/0 de 3 alunos vão receber/).waitFor();
     assert.equal(await tab.locator('[data-action="send-reminders-batch"]').count(), 0);
     assert.equal(calls(log, "send-reminders").length, 2);
-    assert.deepEqual(log.dialogs, ["Enviar lembrete para 1 aluno?", "Enviar lembrete para 2 alunos?"]);
+    // A pergunta (Expansão 7): a mesma confirmação, com a turma, quem envia e quantos dos selecionados ficam de fora.
+    const question = (n, out) => `Enviar lembrete para ${n === 1 ? "1 aluno" : `${n} alunos`} da BRSA0267?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota, enviado de instrutor@example.test. O envio começa agora e não pode ser desfeito.\n\n${out === 1 ? "1 aluno selecionado fica" : `${out} alunos selecionados ficam`} de fora; os motivos estão na lista.`;
+    assert.deepEqual(log.dialogs, [question(1, 2), question(2, 1)]);
     assert.deepEqual(log.errors, []);
     await context.close();
   }
@@ -241,7 +247,7 @@ try {
     const { context, tab, log } = await open({ width });
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
     assert.ok(await noPageScroll(tab), `painel ${width}`);
-    assert.ok(await tab.locator(".student-table .badge.withdrawn").evaluateAll((els) => els.length === 2 && els.every((el) => {
+    assert.ok(await tab.locator(".teacher-home .tp-row .tp-tag:not(.is-portal)").evaluateAll((els) => els.length === 2 && els.every((el) => {
       const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })), `badge ${width}`);
     await tab.locator("#status-filter").selectOption("withdrawn");
     assert.ok(await noPageScroll(tab), `filtro ${width}`);

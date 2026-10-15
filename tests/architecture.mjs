@@ -426,33 +426,44 @@ test("app.js não implementa mais Lembretes: as actions, o clique, a navegação
     assert.doesNotMatch(app, pattern);
   // Nenhuma chamada local a operações de Lembretes: todas passam por remindersHandlers.
   assert.doesNotMatch(app, /(?<![\w.$])(loadPending|loadBatchPreview|loadSender|openBatch|sendBatch|sendReminder|verifySender|copyReminder)\s*\(/);
-  // Actions de Lembretes: um wrapper síncrono que devolve a Promise do handler (sem async/await extra).
+  // Actions de Lembretes: um wrapper síncrono que devolve a Promise do handler (sem async/await extra). As quatro ações das
+  // telas de Lembretes (Expansão 7) passam por uma composição do app.js, como publicar (Expansão 6) e restaurar (Expansão 5):
+  // cada uma chama a operação do handler uma vez e cuida só do que a pessoa vê (andamento, resultado e foco), sem tocar na API
+  // nem no estado de Lembretes.
   const actions = blockAfter(app, /\bconst actions\s*=/);
   const wrappers = {
     "retry-pending": /"retry-pending":\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*state\.pendingStudentId\s*\)\s*,/,
-    "retry-batch-preview": /"retry-batch-preview":\s*\(\)\s*=>\s*remindersHandlers\.loadBatchPreview\(\s*\)\s*,/,
     "reminders-batch": /"reminders-batch":\s*\(button\)\s*=>\s*remindersHandlers\.openBatch\(\s*button\.dataset\.ids\s*\)\s*,/,
-    "send-reminders-batch": /"send-reminders-batch":\s*\(\)\s*=>\s*remindersHandlers\.sendBatch\(\s*\)\s*,/,
     "copy-reminder": /"copy-reminder":\s*\(\)\s*=>\s*remindersHandlers\.copyReminder\(\s*\)\s*,/,
-    "refresh-sender": /"refresh-sender":\s*\(\)\s*=>\s*remindersHandlers\.loadSender\(\s*\)\s*,/,
-    "verify-sender": /"verify-sender":\s*\(\)\s*=>\s*remindersHandlers\.verifySender\(\s*\)\s*,/,
     "send-reminder": /"send-reminder":\s*\(\)\s*=>\s*remindersHandlers\.sendReminder\(\s*\)\s*,/,
   };
+  const composed = {
+    "retry-batch-preview": ["recheckReminderBatch", "loadBatchPreview"],
+    "send-reminders-batch": ["sendReminderBatch", "sendBatch"],
+    "refresh-sender": ["refreshReminderSender", "loadSender"],
+    "verify-sender": ["verifyReminderSender", "verifySender"],
+  };
   for (const [key, wrapper] of Object.entries(wrappers)) assert.match(actions, wrapper, key);
+  for (const [key, [composition, operation]] of Object.entries(composed)) {
+    assert.match(actions, new RegExp(`"${key}":\\s*\\(\\)\\s*=>\\s*${composition}\\(\\s*\\)\\s*,`), key);
+    const body = blockAfter(app, new RegExp(`async function ${composition}\\s*\\(\\s*\\)`));
+    assert.deepEqual(body.match(/\bremindersHandlers\.\w+\(/g), [`remindersHandlers.${operation}(`], `${composition} chama só ${operation}, uma vez`);
+    assert.doesNotMatch(body, /\bapi\.|\bnotice\(|\bstate\.(sender|senderError|senderLoading|batchIds|batchPreview|batchError|batchResults)\s*=(?!=)/, `${composition}: só apresentação`);
+  }
   assert.equal((actions.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length);
   // Clique do painel, menu "Lembretes" e boot: o mesmo ponto de busy/await de antes, agora pelo handler. A quinta chamada é a
   // recarga do detalhe depois de marcar ou reativar participação (C7.2.4), composta no app.js com o relatório.
   assert.match(app, /if\s*\(\s*button\.dataset\.studentPending\s*\)\s*return\s+busy\(\s*button\s*,\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*button\.dataset\.studentPending\s*\)\s*\);/);
   assert.match(app, /else\s+if\s*\(\s*state\.view\s*===\s*"reminders"\s*\)\s*busy\(\s*button\s*,\s*remindersHandlers\.loadSender\s*\);/);
   assert.match(app, /if\s*\(\s*state\.view\s*===\s*"reminders"\s*&&\s*teacher\(\)\s*\)\s*await\s+remindersHandlers\.loadSender\(\s*\);/);
-  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + 8);
+  assert.equal((app.match(/\bremindersHandlers\./g) || []).length, Object.keys(wrappers).length + Object.keys(composed).length + 8);
   assert.match(app, /await\s+remindersHandlers\.loadPending\(\s*studentId\s*\)/);
   // Continuam em app.js: actions, listeners, busy, boot, roteamento e a navegação global com teacherFilters.
   for (const kept of ["const actions = {", "async function busy(", "async function boot()", "function allowedWhileViewing(",
     'document.addEventListener("click"', 'document.addEventListener("change"', 'document.addEventListener("input"', 'document.addEventListener("submit"',
     "if (button.dataset.view) {", "if (returning && state.teacherFilters) Object.assign(state, state.teacherFilters);",
-    'if (state.view === "student-pending" && teacher()) return pendingPage();', 'if (state.view === "reminders-batch" && teacher()) return batchPage();',
-    'if (state.view === "reminders" && teacher()) return senderPage();'])
+    'if (state.view === "student-pending" && teacher()) return pendingPage();', 'if (state.view === "reminders-batch" && teacher()) return batchPage(batchView());',
+    'if (state.view === "reminders" && teacher()) return senderPage(senderView());'])
     assert.ok(app.includes(kept), kept);
 });
 
@@ -552,4 +563,244 @@ test("rota de participação: definida só no api.js, chamada só pelo app.js, c
     assert.match(read("frontend/pages/reminders.js"), new RegExp(`data-action="${action}"`), action);
   }
   assert.doesNotMatch(blockAfter(read("frontend/app.js"), /function\s+allowedWhileViewing\s*\(\s*button\s*\)/), /withdraw-student|reactivate-student/);
+});
+
+// Regras (seletor + declarações) de um trecho do CSS, sem comentários e sem os blocos @media em volta.
+function cssRules(section) {
+  const rules = [];
+  for (const [, prelude, body] of section.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const text = prelude.replace(/^[\s\S]*@media[^{]*$/, "").trim();
+    const selectors = [];
+    let depth = 0, current = "";
+    for (const ch of text) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth--;
+      if (ch === "," && depth === 0) { selectors.push(current.trim()); current = ""; } else current += ch;
+    }
+    selectors.push(current.trim());
+    rules.push({ selectors: selectors.filter(Boolean), properties: [...body.matchAll(/([\w-]+)\s*:/g)].map(([, p]) => p) });
+  }
+  return rules;
+}
+const cssSection = (css, title, next) => {
+  const start = css.indexOf(title);
+  assert.ok(start > 0, title);
+  // Até o comentário que abre a próxima seção; a última seção vai até o fim do arquivo.
+  const end = next ? css.indexOf(next, start) : -1;
+  return css.slice(css.indexOf("*/", start) + 2, end > 0 ? css.lastIndexOf("/*", end) : css.length);
+};
+
+// Piloto visual (docs/design-visual.md): a seção 28 do CSS só alcança o painel do aluno. Todo seletor começa em
+// .student-home ou em .layout:has(.student-home); um seletor solto mudaria outras telas sem revisão.
+test("piloto visual: seção 28 do styles.css só tem seletores escopados ao painel do aluno", () => {
+  const css = read("frontend/styles.css");
+  const selectors = cssRules(cssSection(css, "28. Piloto visual", "29. Casca global")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
+  const outside = selectors.filter((s) => !/^(\.student-home\b|\.layout:has\(\.student-home\))/.test(s));
+  assert.deepEqual(outside, []);
+  // Tokens novos só como apelidos: nenhuma cor literal nova entre os tokens semânticos.
+  const root = css.slice(css.indexOf(":root {"), css.indexOf("}", css.indexOf(":root {")));
+  for (const [, value] of root.matchAll(/--color-[\w-]+:\s*([^;]+);/g)) assert.doesNotMatch(value, /#[0-9a-f]{3,8}\b|\b(?:rgba?|hsla?)\(/i, value);
+});
+
+// Casca global (3ª iteração): a seção 29 vale para todas as telas, mas só alcança peças da casca (barra lateral, topo,
+// barra inferior, rodapé, faixas globais, o <main> como alvo de foco e espaço da barra). Conteúdo de tela fica fora;
+// :root sozinho só recebe o recuo de rolagem, e :root[data-sidebar|bottom-nav|header] (medidos pelo app.js) só
+// alcançam peças da casca.
+test("casca global: seção 29 do styles.css só tem seletores de peças da casca", () => {
+  const rules = cssRules(cssSection(read("frontend/styles.css"), "29. Casca global", "30. Componentes do aluno"));
+  // Atributos que o app.js escreve na raiz depois de medir a casca: só podem preceder peças da casca.
+  const selectors = rules.flatMap((r) => r.selectors).map((s) => s.replace(/^:root\[data-(sidebar="(fixa|rola)"|bottom-nav="(fixa|fluxo)"|header="(linha|sair-abaixo|quebrado)")\]\s+/, ""));
+  assert.ok(selectors.length > 40, `seletores lidos: ${selectors.length}`);
+  const shell = /^(:root|\.sidebar|\.brand-logo|\.workspace-label|\.cohort-label|#cohort|\.nav-item|\.sidebar-bottom|\.support-card|\.account|\.avatar|\.topline|\.location-context|\.session-context|\.role-chip|\.main-footer|#main-content|\.demo-bar|\.student-view-banner|\.skip-link)(?![\w-])/;
+  assert.deepEqual(selectors.filter((s) => !shell.test(s)), []);
+  assert.deepEqual(selectors.filter((s) => /\.(student-home|panel|journey|goal|activity|metric|badge|page-heading|feedback|fb-|table)/.test(s)), [], "nenhum seletor de conteúdo");
+  for (const rule of rules.filter((r) => r.selectors.includes(":root"))) assert.ok(rule.properties.length && rule.properties.every((p) => p.startsWith("scroll-padding")), rule.properties.join(", "));
+});
+
+// Componentes do aluno (seção 30): o que as telas do aluno no piloto usam igual. Só alcança essas telas: todo seletor
+// começa num :is() com uma ou mais delas (painel, Minhas atividades, Meu histórico), e nada mais.
+test("componentes do aluno: seção 30 do styles.css só alcança as telas do aluno no piloto", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "30. Componentes do aluno", "31. Expansão 1")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 25, `seletores lidos: ${selectors.length}`);
+  const scope = /^:is\(\.student-(home|activities|history|feedback)(, \.student-(home|activities|history|feedback))*\) /;
+  assert.deepEqual(selectors.filter((s) => !scope.test(s)), []);
+  assert.ok(selectors.some((s) => s.startsWith(":is(.student-home, .student-activities, .student-history) ")), "peças comuns às três telas");
+});
+
+// Expansão 1 (seção 31): estilos de Minhas atividades ficam presos à tela; nada vaza para histórico, feedback ou
+// telas do instrutor, que usam as mesmas classes (.activity-module, .tabs, .activity-card).
+test("Minhas atividades: seção 31 do styles.css só tem seletores escopados à tela", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "31. Expansão 1", "32. Expansão 2")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 30, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.student-activities\b|\.layout:has\(\.student-activities\))/.test(s)), []);
+});
+
+// Expansão 2 (seção 32): estilos de Meu histórico ficam presos à tela do aluno; "Publicações da turma" (instrutor) usa a
+// mesma página (history.js) e tem os seus na seção 35 (Expansão 5).
+test("Meu histórico: seção 32 do styles.css só tem seletores escopados à tela do aluno", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "32. Expansão 2", "33. Expansão 3")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 30, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.student-history\b|\.layout:has\(\.student-history\))/.test(s)), []);
+});
+
+// Expansão 3 (seção 33): estilos do Feedback do aluno ficam presos à tela dele. Instrutor e admin usam a mesma página
+// (feedback.js) pelo rodapé, e a área Feedbacks do admin, as mesmas classes (.feedback-list, .fb-*): continuam como antes.
+test("Feedback do aluno: seção 33 do styles.css só tem seletores escopados à tela do aluno", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "33. Expansão 3", "34. Expansão 4")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 40, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.student-feedback\b|\.layout:has\(\.student-feedback\))/.test(s)), []);
+});
+
+// Expansão 4 (seção 34): estilos do Painel do instrutor ficam presos ao painel (.teacher-home), inclusive carregamento e
+// erro. As outras telas do instrutor e do admin usam as mesmas peças genéricas (.panel, .button, tabelas) e não mudam.
+test("Painel do instrutor: seção 34 do styles.css só tem seletores escopados ao painel", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "34. Expansão 4", "35. Expansão 5")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 60, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.teacher-home\b|\.layout:has\(\.teacher-home\))/.test(s)), []);
+});
+
+// Expansão 5 (seção 35): estilos de Publicações da turma ficam presos à tela (.teacher-publications), inclusive carregamento
+// e erro. "Meu histórico" do aluno (mesmo history.js) e as outras telas do instrutor não têm a classe.
+test("Publicações da turma: seção 35 do styles.css só tem seletores escopados à tela", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "35. Expansão 5", "36. Expansão 6")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.teacher-publications\b|\.layout:has\(\.teacher-publications\))/.test(s)), []);
+});
+
+// Expansão 6 (seção 36): estilos de Atualizar notas ficam presos à tela (.teacher-import). As outras telas do instrutor e do
+// admin usam as mesmas peças genéricas (.button, .text-link, tabelas, formulários) e não mudam.
+test("Atualizar notas: seção 36 do styles.css só tem seletores escopados à tela", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "36. Expansão 6", "37. Expansão 7")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 60, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.teacher-import\b|\.layout:has\(\.teacher-import\))/.test(s)), []);
+});
+
+// Expansão 7 (seção 37): estilos de Lembretes ficam presos às duas telas (.teacher-reminders: "Lembretes" e "Lembretes em lote").
+// O detalhe do aluno, com a prévia e o envio individuais, não tem a classe e continua com as regras de antes.
+test("Lembretes: seção 37 do styles.css só tem seletores escopados às telas de Lembretes", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "37. Expansão 7", "38. Expansão 8")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.teacher-reminders\b|\.layout:has\(\.teacher-reminders\))/.test(s)), []);
+  const page = read("frontend/pages/reminders.js");
+  for (const detail of ["export function pendingPage", "function participationPanel", "function studentDetail", "export function reminderPreview"])
+    assert.doesNotMatch(blockAfter(page, new RegExp(detail.replace(/ /g, "\\s+") + "\\s*\\(")), /teacher-reminders|trem-/, `${detail}: o detalhe do aluno fica de fora`);
+});
+
+// Expansão 8 (seção 38): estilos de Turmas e acessos ficam presos à tela (.admin-access). A área Feedbacks do admin e as outras
+// telas usam as mesmas peças genéricas (.button, .text-link, formulários) e não mudam.
+test("Turmas e acessos: seção 38 do styles.css só tem seletores escopados à tela", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "38. Expansão 8", "39. Expansão 9")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.admin-access\b|\.layout:has\(\.admin-access\))/.test(s)), []);
+});
+
+// Expansão 9 (seção 39): estilos de Feedbacks administrativos ficam presos à tela (.admin-feedback). O Feedback do aluno e o envio
+// pelo rodapé (feedback.js, as mesmas classes .fb-*, .feedback-list) e as outras telas não mudam.
+test("Feedbacks administrativos: seção 39 do styles.css só tem seletores escopados à tela", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "39. Expansão 9")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.admin-feedback\b|\.layout:has\(\.admin-feedback\))/.test(s)), []);
+});
+
+// As regras da tela antiga de Feedbacks administrativos saíram com a Expansão 9: cartões que filtram no resumo, o cartão-botão da
+// lista, os filtros e as ações do detalhe. Nenhuma fonte gera essas classes e nenhuma regra do CSS as alcança; a lista do envio
+// pelo rodapé (li.feedback-card) continua.
+test("Feedbacks administrativos: as classes da tela antiga não são geradas nem estilizadas", () => {
+  const old = /(?<![\w-])(fb-filters|fb-actions|fb-summary)(?![\w-])/;
+  assert.deepEqual(["app.js", "ui.js", ...PAGES, ...HANDLERS].filter((file) => old.test(codeOf(file))), []);
+  const selectors = cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors);
+  assert.deepEqual(selectors.filter((sel) => old.test(sel) || /button\.feedback-card/.test(sel)), []);
+  assert.doesNotMatch(codeOf("pages/admin-feedback.js"), /feedback-card|metric/);
+  assert.ok(selectors.includes(".feedback-card"), ".feedback-card (envio pelo rodapé) continua");
+});
+
+// As regras da tela antiga de Turmas e acessos saíram com a Expansão 8: .checkbox-line não é gerada por nenhuma fonte, e
+// .approve-form só marca o formulário do pedido pendente para o app.js (o envio do vínculo), sem estilo próprio.
+test("Turmas e acessos: as classes da tela antiga não são estilizadas; approve-form só marca o pedido para o app.js", () => {
+  const rules = cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors);
+  assert.deepEqual(rules.filter((sel) => /(?<![\w-])(approve-form|checkbox-line)(?![\w-])/.test(sel)), []);
+  const generates = (cls) => ["app.js", "ui.js", ...PAGES, ...HANDLERS].filter((file) => new RegExp(`(?<![\\w-])${cls}(?![\\w-])`).test(codeOf(file)));
+  assert.deepEqual(generates("checkbox-line"), []);
+  assert.deepEqual(generates("approve-form"), ["app.js", "pages/access.js"]);
+  assert.match(read("frontend/app.js"), /form\.classList\.contains\("approve-form"\)/);
+});
+
+// As classes da tela antiga de Atualizar notas saíram com a Expansão 6: nenhuma fonte as gera e nenhuma regra do CSS as
+// alcança (as regras foram apagadas junto). "next-steps" (painel do aluno) não é "steps".
+test("Atualizar notas: as classes da tela antiga não são geradas nem estilizadas", () => {
+  const old = /(?<![\w-])(steps|drop-zone|fallback-note|activity-options|publish-footer|removal-warning|import-warnings|import-comparison|change-groups|integrity-(panel|grid|roster|checks|critical|warnings))(?![\w-])/;
+  const sources = ["app.js", "ui.js", ...PAGES, ...HANDLERS].filter((file) => old.test(codeOf(file)));
+  assert.deepEqual(sources, []);
+  assert.deepEqual(cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors).filter((sel) => old.test(sel)), []);
+  assert.ok(cssRules(read("frontend/styles.css")).some((r) => r.selectors.some((sel) => /\.next-steps\b/.test(sel))), ".next-steps (painel do aluno) continua");
+});
+
+// A tabela e os cartões da tela antiga de Publicações saíram com a Expansão 5: nenhuma fonte gera as classes e nenhuma regra
+// as alcança (as regras foram apagadas junto).
+test("Publicações da turma: as classes da tabela antiga não são geradas nem estilizadas", () => {
+  const old = /\b(history-table|h-(date|status|file|changes|action))\b/;
+  const sources = ["app.js", "ui.js", ...PAGES, ...HANDLERS].filter((file) => old.test(codeOf(file)));
+  assert.deepEqual(sources, []);
+  assert.deepEqual(cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors).filter((sel) => old.test(sel)), []);
+});
+
+// As classes da lista e dos cartões do painel antigo saíram com a Expansão 4: nenhuma fonte as gera e nenhuma regra do CSS
+// as alcança (as regras foram apagadas junto). .metric-filter saiu depois, na consolidação transversal (teste abaixo).
+test("Painel do instrutor: as classes do painel antigo não são geradas nem estilizadas", () => {
+  const old = /\b(student-table|student-tools|metrics-filters|metric-neutral|pending-count|portal-ok|pending-unit|focus-editor|cell-(name|kc|lab|progress|pending|status|portal|actions))\b/;
+  const sources = ["app.js", "ui.js", ...PAGES, ...HANDLERS].filter((file) => old.test(codeOf(file)));
+  assert.deepEqual(sources, []);
+  const selectors = cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors).filter((sel) => old.test(sel));
+  assert.deepEqual(selectors, []);
+});
+
+// Consolidação transversal: saíram as regras das doze classes que nenhuma fonte gerava desde antes do piloto (o gráfico simples, a
+// marca e o ponto ao vivo antigos, o formulário de turma antigo e as outras). Nenhuma fonte do frontend as gera e nenhuma regra do
+// CSS as alcança.
+test("consolidação: as classes legadas sem fonte não são geradas nem estilizadas", () => {
+  const LEGACY = "accent|brand-mark|brand-type|chart|chart-column|chart-track|class-entry|class-form|empty-icon|live-dot|pending-section|small-button";
+  const token = new RegExp(`(?<![\\w-])(${LEGACY})(?![\\w-])`);
+  const sources = [...RUNTIME.map((file) => [file, codeOf(file)]), ["index.html", read("frontend/index.html")]];
+  assert.deepEqual(sources.filter(([, code]) => token.test(code)).map(([file]) => file), []);
+  const selectors = cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length > 1000, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((sel) => new RegExp(`\\.(${LEGACY})(?![\\w-])`).test(sel)), []);
+});
+
+// Consolidação transversal: filterMetric (ui.js), o cartão que filtrava, ficou sem uso na Expansão 9 (a área Feedbacks passou aos
+// atalhos de status); saiu com as regras de .metric-filter. Nenhuma fonte a chama nem gera a classe, e nenhuma regra a alcança.
+test("consolidação: filterMetric e .metric-filter saíram (sem uso desde a Expansão 9)", () => {
+  assert.deepEqual(RUNTIME.filter((file) => /\bfilterMetric\b|(?<![\w-])metric-filter(?![\w-])/.test(codeOf(file))), []);
+  assert.deepEqual(cssRules(read("frontend/styles.css")).flatMap((r) => r.selectors).filter((sel) => /\.metric-filter(?![\w-])/.test(sel)), []);
+});
+
+// Consolidação transversal: com o mesmo seletor e o mesmo contexto (@media/@container), uma declaração que repete o valor da
+// anterior da mesma propriedade deixa a anterior sem efeito (a de depois sempre vence). As repetidas saíram; outra não pode voltar.
+test("consolidação: nenhuma declaração repete o valor da anterior com o mesmo seletor e contexto", () => {
+  const css = read("frontend/styles.css").replace(/\/\*[\s\S]*?\*\//g, "");
+  const last = new Map(), repeated = [];
+  const walk = (text, ctx) => {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf("{", i);
+      if (open < 0) return;
+      const prelude = text.slice(i, open).trim().replace(/\s+/g, " ");
+      let depth = 1, j = open + 1;
+      while (depth) { if (text[j] === "{") depth++; else if (text[j] === "}") depth--; j++; }
+      const body = text.slice(open + 1, j - 1);
+      if (prelude.startsWith("@")) walk(body, `${ctx}${prelude}|`);
+      else for (const decl of body.split(";")) {
+        const at = decl.indexOf(":");
+        if (at < 0) continue;
+        const key = `${ctx}${prelude}|${decl.slice(0, at).trim()}`, value = decl.slice(at + 1).trim();
+        if (last.get(key) === value) repeated.push(`${prelude} { ${decl.trim()} }`);
+        last.set(key, value);
+      }
+      i = j;
+    }
+  };
+  walk(css, "");
+  assert.ok(last.size > 3000, `declarações lidas: ${last.size}`);
+  assert.deepEqual(repeated, []);
 });

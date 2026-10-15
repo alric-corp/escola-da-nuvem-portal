@@ -92,7 +92,8 @@ try {
   const opsSince = (log, n) => log.requests.slice(n).map((r) => `${r.method} ${r.op}`);
   // Uma ida e volta de rede feita pela própria página: qualquer requisição que o app fosse disparar já teria saído.
   const flushNetwork = (tab) => tab.evaluate(() => fetch("/index.html", { cache: "no-store" }).then((r) => r.text()).then(() => true));
-  const cardsOf = (tab) => tab.locator(".metrics .metric").evaluateAll((els) => els.map((el) => [el.querySelector("span").textContent, el.querySelector("strong").textContent, el.querySelector("small").textContent]));
+  // Atalhos de filtro da Situação da turma (Expansão 4; antes, cartões .metric): rótulo, número e legenda.
+  const cardsOf = (tab) => tab.locator(".teacher-home .tp-filter").evaluateAll((els) => els.map((el) => [el.querySelector("span").textContent, el.querySelector("strong").textContent, el.querySelector("small").textContent]));
   const noPageScroll = (tab) => tab.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
   const insideViewport = (locator) => locator.evaluate((el) => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; });
 
@@ -118,7 +119,7 @@ try {
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
     assert.deepEqual((await cardsOf(tab))[0], ["Alunos ativos", "2", "1 desistente"]);
     assert.deepEqual((await tab.locator("#status-filter option").evaluateAll((els) => els.map((el) => el.value))).slice(0, 3), ["all", "active", "withdrawn"]);
-    assert.equal(await tab.locator(".student-table .badge.withdrawn").count(), 1);
+    assert.equal(await tab.locator(".teacher-home .tp-row .tp-tag:not(.is-portal)").count(), 1);
 
     await openDetail(tab, "Ana Ativa");
     mark = log.requests.length;
@@ -135,7 +136,7 @@ try {
     await tab.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
     assert.deepEqual((await cardsOf(tab))[0], ["Alunos na publicação", "3", "Ver todos os alunos"]);
     assert.equal(await tab.locator('#status-filter option[value="withdrawn"]').count(), 0);
-    assert.equal(await tab.locator(".student-table .badge.withdrawn").count(), 0);
+    assert.equal(await tab.locator(".teacher-home .tp-row .tp-tag:not(.is-portal)").count(), 0);
     assert.deepEqual(log.errors, []);
     await context.close();
   }

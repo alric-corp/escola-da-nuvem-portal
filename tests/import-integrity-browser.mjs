@@ -69,7 +69,10 @@ try {
     await page.getByRole("heading", { name: "Integridade" }).waitFor();
     return { page, api };
   }
-  const panel = (page) => page.locator(".integrity-panel");
+  // Expansão 6: a integridade é um bloco da prévia (.timp-integrity); o que muda (notas novas, removidas, atividades
+  // liberadas) fica no bloco "O que muda ao publicar" (.timp-changes), sem repetir na integridade.
+  const panel = (page) => page.locator(".timp-integrity");
+  const changesBlock = (page) => page.locator(".timp-changes");
   const publishButton = (page) => page.getByRole("button", { name: /Publicar atualização/ });
   const noOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth);
 
@@ -79,11 +82,12 @@ try {
       const { page, api } = await open(width, valid);
       const text = await panel(page).innerText();
       for (const expected of ["59 esperados", "59 encontrados", "0 extras", "0 ausentes", "166 encontradas", "IDs compatíveis com o curso",
-        "26 notas novas", "0 removidas", "1 atividade será liberada", "Matrícula conferida com o Canvas em 26/09/2026, 01:45",
-        "IDs conferem com a matrícula do Canvas", "atividades compatíveis com a turma", "estrutura válida"])
+        "Matrícula conferida com o Canvas em 26/09/2026, 01:45", "IDs conferem com a matrícula do Canvas", "atividades compatíveis com a turma", "estrutura válida"])
         assert.ok(text.includes(expected), `${expected} (${width}px)`);
-      assert.equal(await panel(page).locator(".integrity-checks .fail").count(), 0);
-      assert.equal(await page.locator(".integrity-critical").count(), 0);
+      const changed = await changesBlock(page).innerText();
+      for (const expected of ["26 notas novas", "0 removidas", "1 atividade será liberada"]) assert.ok(changed.includes(expected), `${expected} (${width}px)`);
+      assert.equal(await panel(page).locator(".timp-checks .is-fail").count(), 0);
+      assert.equal(await page.locator(".timp-issues.is-critical").count(), 0);
       assert.ok(await publishButton(page).isEnabled());
       assert.ok(await noOverflow(page), `sem rolagem lateral (válido, ${width}px)`);
       if (process.env.INTEGRITY_SCREENSHOTS)
@@ -94,13 +98,13 @@ try {
     // Equivalente ao BRSA0267-demo-tomas.csv: aluno fora da matrícula bloqueia; nome de teste só avisa.
     {
       const { page, api } = await open(width, demo, "BRSA0267-demo-tomas.csv");
-      const critical = page.locator(".integrity-critical");
+      const critical = page.locator(".timp-issues.is-critical");
       assert.match(await critical.innerText(), /1 aluno\(s\) não pertence\(m\) à turma no Canvas\.\s*Canvas ID 999999/);
       assert.doesNotMatch(await panel(page).innerText(), /@/);
-      assert.match(await page.locator(".integrity-warnings").innerText(), /Este arquivo parece ser de teste\./);
-      assert.match(await panel(page).locator(".integrity-checks .fail").innerText(), /IDs não conferem com a matrícula do Canvas/);
+      assert.match(await page.locator(".timp-issues.is-warning").innerText(), /Este arquivo parece ser de teste\./);
+      assert.match(await panel(page).locator(".timp-checks .is-fail").innerText(), /IDs não conferem com a matrícula do Canvas/);
       assert.ok(await publishButton(page).isDisabled());
-      assert.match(await page.locator(".publish-footer p").innerText(), /Publicação bloqueada pelas validações de integridade/);
+      assert.match(await page.locator("#timp-publish-reason").innerText(), /Publicação bloqueada pelas validações de integridade/);
       // Mesmo forçando o clique no botão desabilitado, nada é enviado (e o backend bloquearia de novo).
       await publishButton(page).evaluate((b) => b.click());
       assert.equal(api.publish, 0);
@@ -119,9 +123,9 @@ try {
     const noRoster = { critical: [{ code: "rosterUnavailable", count: 1, message: "Matrícula do Canvas ainda não disponível para validação. Aguarde a próxima sincronização automática antes de publicar." }],
       warnings: [], summary: { ...summary, rosterCapturedAt: null, studentsExpected: null, studentsExtra: 0, studentsMissing: 0 } };
     const { page, api } = await open(1440, noRoster);
-    assert.match(await page.locator(".integrity-critical").innerText(), /Aguarde a próxima sincronização automática antes de publicar/);
+    assert.match(await page.locator(".timp-issues.is-critical").innerText(), /Aguarde a próxima sincronização automática antes de publicar/);
     assert.doesNotMatch(await panel(page).innerText(), /Matrícula conferida com o Canvas em/);
-    assert.match(await panel(page).locator(".integrity-checks .fail").innerText(), /matrícula do Canvas ainda não conferida/);
+    assert.match(await panel(page).locator(".timp-checks .is-fail").innerText(), /matrícula do Canvas ainda não conferida/);
     assert.ok(await publishButton(page).isDisabled());
     assert.deepEqual(api.errors, []);
     await page.close();
@@ -134,7 +138,8 @@ try {
     await page.locator('[data-restore="p1"]').click();
     await page.getByText(/Esta publicação não pode ser restaurada porque não atende às validações atuais de integridade\./).waitFor();
     assert.equal(api.restore, 1);
-    assert.equal(await page.locator(".history-table tbody tr").count(), 2, "o histórico continua visível");
+    // Expansão 5: a explicação fica junto da publicação (sem aviso temporário) e a lista continua inteira.
+    assert.equal(await page.locator(".teacher-publications .tpub-entry").count(), 2, "o histórico continua visível");
     assert.deepEqual(api.errors, []);
     await page.close();
   }

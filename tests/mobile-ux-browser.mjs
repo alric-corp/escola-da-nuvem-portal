@@ -106,11 +106,16 @@ try {
     assert.doesNotMatch(await goals.nth(1).innerText(), /Falta|sem nota/);
     assert.equal(await page.getByText(/Foque (em|nos)/).count(), 0, "sem o alerta vermelho isolado");
     assert.equal(await page.locator(".metrics").count(), 0, "médias não aparecem duplicadas mais abaixo");
-    // Cabeçalho enxuto: só o h1 (sem eyebrow), contexto de turma continua fixo no topo.
+    // Cabeçalho enxuto: só o h1 (sem eyebrow), contexto de turma continua no topo. No celular o piloto visual mostra
+    // a turma no seletor do cabeçalho e mantém o "Turma BRSA0267" do topo só para leitura assistiva (sem repetir).
     assert.equal(await page.locator(".page-heading h1").count(), 1, "exatamente um h1");
     assert.equal(await page.locator(".page-heading .eyebrow").count(), 0, "sem eyebrow redundante");
     assert.match(await page.locator(".topline .location-context").innerText(), /Turma BRSA0267/);
-    assert.ok(await page.locator(".student-summary .ring").isVisible(), `anel de progresso visível em ${width}px`);
+    assert.ok(await page.locator("#cohort").isVisible(), `turma visível no seletor em ${width}px`);
+    assert.equal(await page.locator("#cohort").inputValue(), "BRSA0267");
+    // Progresso das atividades com nota (o anel virou texto + régua segmentada no piloto visual).
+    assert.ok(await page.locator(".student-summary .coverage-text").isVisible(), `cobertura visível em ${width}px`);
+    assert.match(await page.locator(".student-summary .coverage-text").innerText(), /^\d+ de \d+ atividades? com nota$/);
     const kcTop = await goals.nth(0).evaluate((el) => el.getBoundingClientRect().top);
     assert.ok(kcTop < 800, `média de KC visível ao abrir em ${width}px`);
 
@@ -123,23 +128,23 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
 
-    // Instrutor: cards com situação, portal e "Ver detalhes" dentro da tela.
+    // Instrutor: cada aluno numa linha empilhada (Expansão 4), com situação, portal e "Ver pendências" dentro da tela.
     const teacher = await open(browser, { width, role: "instructor" });
     await teacher.page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
     for (const name of ["Painel do instrutor", "Publicações da turma", "Atualizar notas", "Lembretes"])
       assert.ok(await teacher.page.getByRole("button", { name, exact: true }).isVisible(), `${name} visível em ${width}px`);
-    const rows = teacher.page.locator(".student-table tbody tr");
+    const rows = teacher.page.locator(".teacher-home .tp-row");
     assert.equal(await rows.count(), 2);
-    for (const selector of [".cell-name", ".cell-status .badge", ".cell-kc", ".cell-lab", ".cell-actions .text-link"])
+    for (const selector of [".tp-name", ".tp-status .tp-state", ".tp-avg.is-kc", ".tp-avg.is-lab", ".tp-action .text-link"])
       assert.ok(await insideViewport(rows.locator(selector)), `${selector} dentro da tela em ${width}px`);
-    assert.match(await rows.nth(0).innerText(), /Não entrou/);
-    // "Sem nota" é só o número, com rótulo acima via ::before (como KCs/Labs); "Ver detalhes"
-    // fica na coluna/área "Ações", separada.
-    assert.equal(await rows.nth(0).locator(".cell-pending").innerText(), "1");
-    assert.equal(await rows.nth(0).locator(".cell-pending").evaluate((el) => getComputedStyle(el, "::before").content), '"Sem nota"');
-    assert.equal(await rows.nth(0).locator(".cell-actions").innerText(), "Ver detalhes");
-    assert.equal(await rows.nth(1).locator(".cell-pending").innerText(), "0");
-    assert.equal(await rows.nth(1).locator(".cell-portal").isVisible(), false, "\"Entrou\" não ocupa espaço no card");
+    assert.match(await rows.nth(0).innerText(), /Não entrou no portal/);
+    // "Sem nota" é só o número, com o rótulo visível acima (como Média KC e Média LAB, fora da leitura assistiva, que ouve
+    // o cabeçalho da coluna); "Ver pendências" fica separado.
+    assert.equal(await rows.nth(0).locator(".tp-pending .tp-value").innerText(), "1");
+    assert.deepEqual(await rows.nth(0).locator(".tp-pending .tp-cell-label").evaluate((el) => [el.innerText, el.getAttribute("aria-hidden")]), ["Sem nota", "true"]);
+    assert.equal(await rows.nth(0).locator(".tp-action").innerText(), "Ver pendências");
+    assert.equal(await rows.nth(1).locator(".tp-pending .tp-value").innerText(), "0");
+    assert.equal(await rows.nth(1).locator(".tp-tag").count(), 0, "quem entrou no portal não ganha texto na linha");
     assert.equal(await teacher.page.getByRole("button", { name: "Ver pendências de Ana Teste" }).count(), 1);
     assert.match(await teacher.page.locator(".update-line").innerText(), /Última verificação:?\s*25\/09\/2026, 06:00 · sem mudanças/);
     // Envio manual vira alternativa, não ação principal.
@@ -149,34 +154,37 @@ try {
     await teacher.page.close();
   }
 
-  // Publicações da turma no desktop: "Restaurar" visível sem rolar a tabela para o lado (só
-  // "O que mudou" quebra linha); abaixo de 1024px continuam os cards.
+  // Publicações da turma (Expansão 5): "Restaurar" à vista sem rolar nada para o lado e sem rolagem lateral da página; "O que
+  // mudou" e o arquivo quebram linha. Com largura (1280 px ou mais: 52rem de tela) cada publicação é uma linha; abaixo,
+  // empilhada (antes: tabela a partir de 1024 px e cartões abaixo).
+  const restoreInView = (page) => page.locator("[data-restore]").first().evaluate((el) => {
+    for (let p = el.parentElement; p; p = p.parentElement) p.scrollLeft = 0;
+    window.scrollTo(0, el.getBoundingClientRect().top + scrollY - innerHeight / 2);
+    const b = el.getBoundingClientRect();
+    let clip = { left: 0, right: innerWidth };
+    for (let p = el.parentElement; p; p = p.parentElement) if (getComputedStyle(p).overflowX !== "visible") { const c = p.getBoundingClientRect(); clip = { left: Math.max(clip.left, c.left), right: Math.min(clip.right, c.right) }; }
+    return b.left >= clip.left - 1 && b.right <= clip.right + 1 && b.right <= innerWidth;
+  });
   for (const width of [768, 1024, 1280, 1440, 1920]) {
     const { page, errors } = await open(browser, { width, role: "instructor" });
     await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
     await page.locator('.sidebar nav [data-view="history"]').click();
-    const restore = page.getByRole("button", { name: "Restaurar", exact: true });
-    await restore.waitFor();
+    await page.locator("[data-restore]").first().waitFor();
     const m = await page.evaluate(() => {
-      const box = document.querySelector(".history-table"), table = box.querySelector("table");
-      const b = [...box.querySelectorAll("button")].find((x) => x.textContent.trim() === "Restaurar").getBoundingClientRect(), r = box.getBoundingClientRect();
-      return { row: getComputedStyle(table.querySelector("tbody tr")).display, tableScroll: table.scrollWidth > box.clientWidth + 1,
-        inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.right <= innerWidth, pageScroll: document.documentElement.scrollWidth > innerWidth,
-        changes: getComputedStyle(table.querySelector("td.h-changes")).whiteSpace, file: getComputedStyle(table.querySelector("td.h-file")).whiteSpace };
+      const entry = document.querySelector(".tpub-entry:not(.is-current)"), top = (s) => Math.round(entry.querySelector(s).getBoundingClientRect().top);
+      return { oneRow: new Set([top("h4"), top(".tpub-origin"), top(".tpub-changes")]).size === 1, pageScroll: document.documentElement.scrollWidth > innerWidth,
+        changes: getComputedStyle(entry.querySelector(".tpub-facts")).flexWrap, file: getComputedStyle(entry.querySelector(".tpub-origin")).overflowWrap };
     });
-    assert.equal(m.row, width < 1024 ? "grid" : "table-row", `layout em ${width}px`);
-    assert.ok(m.inside, `Restaurar visível em ${width}px`);
-    assert.equal(m.tableScroll, false, `sem rolagem lateral da tabela em ${width}px`);
+    assert.equal(m.oneRow, width >= 1280, `layout em ${width}px`);
+    assert.ok(await restoreInView(page), `Restaurar visível em ${width}px`);
     assert.equal(m.pageScroll, false, `sem rolagem lateral da página em ${width}px`);
-    // "O que mudou" e "Arquivo" quebram linha no desktop (nomes longos não empurram "Restaurar");
-    // as demais colunas continuam nowrap (regra global de tabela inalterada).
-    if (width >= 1024) assert.deepEqual([m.changes, m.file], ["normal", "normal"], "\"O que mudou\" e \"Arquivo\" quebram linha");
+    // "O que mudou" e o arquivo quebram linha (nomes longos não empurram "Restaurar").
+    assert.deepEqual([m.changes, m.file], ["wrap", "anywhere"], "\"O que mudou\" e o arquivo quebram linha");
     assert.deepEqual(errors, []);
     await page.close();
   }
-  // "Arquivo" com nome sem espaços de vários tamanhos não pode empurrar "Restaurar" para
-  // fora, em nenhuma largura de desktop. Evita quebrar palavra havendo espaço (overflow-wrap:
-  // anywhere só entra em uso quando a palavra não cabe).
+  // Arquivo com nome sem espaços de vários tamanhos não pode empurrar "Restaurar" para fora, em nenhuma largura de desktop.
+  // Evita quebrar palavra havendo espaço (overflow-wrap: anywhere só entra em uso quando a palavra não cabe).
   for (const length of [34, 50, 80]) {
     const filename = "a".repeat(length - 4) + ".csv";
     assert.equal(filename.length, length);
@@ -184,27 +192,19 @@ try {
       const { page, errors } = await open(browser, { width, role: "instructor", previousFilename: filename });
       await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
       await page.locator('.sidebar nav [data-view="history"]').click();
-      const restore = page.getByRole("button", { name: "Restaurar", exact: true });
-      await restore.waitFor();
-      const m = await page.evaluate(() => {
-        const box = document.querySelector(".history-table"), table = box.querySelector("table");
-        const b = [...box.querySelectorAll("button")].find((x) => x.textContent.trim() === "Restaurar").getBoundingClientRect(), r = box.getBoundingClientRect();
-        return { inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.right <= innerWidth,
-          tableScroll: table.scrollWidth > box.clientWidth + 1, pageScroll: document.documentElement.scrollWidth > innerWidth };
-      });
-      assert.ok(await page.locator(".history-table").getByText(filename).isVisible(), `nome de ${length} caracteres exibido em ${width}px`);
-      assert.ok(m.inside, `Restaurar visível com nome de ${length} caracteres em ${width}px`);
-      assert.equal(m.tableScroll, false, `sem rolagem lateral da tabela (${length} caracteres) em ${width}px`);
-      assert.equal(m.pageScroll, false, `sem rolagem lateral da página (${length} caracteres) em ${width}px`);
+      await page.locator("[data-restore]").first().waitFor();
+      assert.ok(await page.locator(".teacher-publications").getByText(filename).isVisible(), `nome de ${length} caracteres exibido em ${width}px`);
+      assert.ok(await restoreInView(page), `Restaurar visível com nome de ${length} caracteres em ${width}px`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `sem rolagem lateral da página (${length} caracteres) em ${width}px`);
       assert.deepEqual(errors, []);
       await page.close();
     }
   }
 
-  // Painel do instrutor no desktop: badges de situação ("Médias na referência", "Atenção",
-  // "Crítico") e o texto da coluna Portal ("Não entrou") não podem quebrar linha; a coluna
-  // "Ações" existe e "Ver detalhes" continua dentro da tela; a tabela não precisa de rolagem
-  // própria mesmo com o nome real mais longo já visto em produção (58 caracteres).
+  // Painel do instrutor no desktop: a situação ("Médias na referência", "Atenção", "Crítico") e "Não entrou no portal"
+  // não quebram linha; a coluna da ação existe (com nome para a leitura assistiva) e "Ver pendências" continua dentro da
+  // tela; a tabela não precisa de rolagem própria mesmo com o nome real mais longo já visto em produção (58 caracteres).
+  // Em 1024 px (menos de 52rem de painel) a lista já é a de linhas empilhadas: as mesmas garantias valem.
   const realLongName = "Allysson Borges - Allysson Roberto Borges Lima De Moraes";
   for (const width of [1024, 1280, 1440, 1500, 1600, 1920]) {
     const { page, errors } = await open(browser, { width, role: "instructor", studentsList: [{ ...below, name: realLongName, portalLinked: false }, students[1]] });
@@ -214,13 +214,13 @@ try {
       range.selectNodeContents(el);
       return range.getClientRects().length <= 1;
     }));
-    assert.ok(await oneLine(page.locator(".student-table .cell-status .badge")), `badges de situação em uma linha em ${width}px`);
-    assert.ok(await oneLine(page.locator(".student-table .cell-portal .badge")), `"Não entrou" em uma linha em ${width}px`);
-    assert.equal(await page.locator("th.cell-actions").innerText(), "Ações", `coluna Ações existe em ${width}px`);
-    assert.ok(await insideViewport(page.locator(".cell-actions .text-link")), `Ver detalhes visível em ${width}px`);
-    // "Sem nota" contém só o número (sem "· Ver detalhes" junto).
-    assert.match(await page.locator("tbody td.cell-pending").first().innerText(), /^\d+$/, `Sem nota só com o número em ${width}px`);
-    const scroll = await page.evaluate(() => { const box = document.querySelector(".student-table"); return box.scrollWidth > box.clientWidth + 1; });
+    assert.ok(await oneLine(page.locator(".tp-row .tp-state")), `situação em uma linha em ${width}px`);
+    assert.ok(await oneLine(page.locator(".tp-row .tp-tag")), `"Não entrou no portal" em uma linha em ${width}px`);
+    assert.equal(await page.locator(".tp-table thead th.tp-action").textContent(), "Ação", `coluna da ação existe em ${width}px`);
+    assert.ok(await insideViewport(page.locator(".tp-action .text-link")), `Ver pendências visível em ${width}px`);
+    // "Sem nota" contém só o número (sem a ação junto).
+    assert.match(await page.locator("tbody td.tp-pending .tp-value").first().innerText(), /^\d+$/, `Sem nota só com o número em ${width}px`);
+    const scroll = await page.evaluate(() => { const box = document.querySelector(".tp-table"); return box.scrollWidth > box.clientWidth + 1; });
     assert.equal(scroll, false, `sem rolagem própria da tabela (nome de 58 caracteres) em ${width}px`);
     assert.ok(await noHorizontalScroll(page), `sem rolagem lateral da página em ${width}px`);
     assert.deepEqual(errors, []);
@@ -233,20 +233,21 @@ try {
     const manyStudents = Array.from({ length: 18 }, (_, i) => ({ ...students[i % 2], id: `many${i}`, name: `Aluno Teste ${i}` }));
     const { page, errors } = await open(browser, { width: 1440, role: "instructor", studentsList: manyStudents });
     await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
-    for (const cls of ["cell-kc", "cell-lab", "cell-progress", "cell-pending"])
-      assert.equal(await page.locator(`.student-table td.${cls}`).first().evaluate((el) => getComputedStyle(el).textAlign), "right", `${cls} alinhado à direita`);
-    await page.locator(".student-table").scrollIntoViewIfNeeded();
+    for (const cls of ["tp-avg.is-kc", "tp-avg.is-lab", "tp-pending"])
+      assert.equal(await page.locator(`.tp-table td.${cls}`).first().evaluate((el) => getComputedStyle(el).textAlign), "right", `${cls} alinhado à direita`);
+    await page.locator(".tp-table").scrollIntoViewIfNeeded();
     const scrollBefore = await page.evaluate(() => scrollY);
     await page.evaluate(() => scrollBy(0, 600));
     const scrollAfter = await page.evaluate(() => scrollY);
     assert.ok(scrollAfter > scrollBefore, "a página realmente rolou (não é um falso positivo)");
-    const top = await page.locator(".student-table thead th").first().evaluate((el) => el.getBoundingClientRect().top);
+    const top = await page.locator(".tp-table thead th").first().evaluate((el) => el.getBoundingClientRect().top);
     assert.ok(top >= 0 && top < 100, `cabeçalho continua visível perto do topo após rolar (top=${top})`);
     // Hover/foco: a linha ganha destaque, sem virar link (nenhuma tag <a> na linha).
-    const row = page.locator(".student-table tbody tr").first();
-    const base = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
-    await row.locator(".cell-actions .text-link").focus();
-    const focused = await row.evaluate((el) => getComputedStyle(el).backgroundColor);
+    // O destaque fica nas células (o fundo de uma linha de tabela não pinta por cima delas).
+    const row = page.locator(".tp-table tbody tr").first();
+    const base = await row.locator(".tp-name").evaluate((el) => getComputedStyle(el).backgroundColor);
+    await row.locator(".tp-action .text-link").focus();
+    const focused = await row.locator(".tp-name").evaluate((el) => getComputedStyle(el).backgroundColor);
     assert.notEqual(base, focused, "linha destacada com foco no elemento interativo");
     assert.equal(await row.locator("a").count(), 0, "linha não vira link");
     assert.ok(await noHorizontalScroll(page));
@@ -259,8 +260,8 @@ try {
   await desktop.page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
   assert.equal(await desktop.page.locator(".sidebar nav").evaluate((el) => getComputedStyle(el).position), "static");
   assert.equal(await desktop.page.locator(".nav-item .nav-short").first().isVisible(), false);
-  assert.ok(await desktop.page.locator(".student-table thead").isVisible());
-  assert.equal(await desktop.page.locator(".student-table tbody tr").first().evaluate((el) => getComputedStyle(el).display), "table-row");
+  assert.ok(await desktop.page.locator(".tp-table thead").isVisible());
+  assert.equal(await desktop.page.locator(".tp-table tbody tr").first().evaluate((el) => getComputedStyle(el).display), "table-row");
   await desktop.page.close();
 
   // Depois das 18h a próxima verificação é amanhã às 6h (19h em Brasília = 22h UTC).
