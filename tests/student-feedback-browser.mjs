@@ -490,6 +490,9 @@ test("F5: anexos — nomes longos quebram, Remover com nome e 44 px, arquivo rec
   // Depois do envio a lista recarrega (o botão some por um instante): espera o botão de volta, livre, e o resultado.
   await card.page.waitForFunction(() => { const add = document.querySelector(".fb-card-add"); return add && !add.disabled && !document.querySelector(".fb-card-progress")?.textContent.startsWith("Enviando"); });
   await flush(card.page);
+  await assert.doesNotReject(() => card.page.waitForFunction((id) =>
+    document.activeElement?.matches(`.student-feedback .fb-card-add[data-fb-pick="${CSS.escape(id)}"]`),
+  FEW[0].id, { timeout: 5000 }), "foco no Adicionar imagem do mesmo feedback em até 5 segundos");
   assert.equal(await first.locator(".fb-card-progress").count() && await first.locator(".fb-card-progress").textContent(), "Imagem anexada ao feedback.");
   assert.equal(await card.page.evaluate(() => document.activeElement.matches(".fb-card-add")), true, "foco no Adicionar imagem");
   assert.deepEqual(await first.locator(".fb-card-add").evaluate((el) => document.getElementById(el.getAttribute("aria-describedby"))?.textContent), "Imagem anexada ao feedback.");
