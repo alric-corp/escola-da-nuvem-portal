@@ -124,7 +124,12 @@ test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turm
   assert.equal(hit, false, "menu não cobre o fim da página");
   // Nenhuma peça da casca passa da largura da tela. (O conteúdo do painel do instrutor tem dois botões que passam com
   // texto a 200% desde o HEAD; fica para a expansão daquela tela.)
-  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll(".sidebar, .sidebar *, .topline, .topline *")].filter((el) => el.getClientRects().length && (el.getBoundingClientRect().right > innerWidth + 0.5 || el.getBoundingClientRect().left < -0.5)).map((el) => el.className || el.tagName)), [], "casca sem rolagem lateral");
+  // C3: peças só para leitura assistiva (recortadas por clip-path inset(50%) ou clip rect(0 0 0 0)) não são vistas nem rolam;
+  // o tamanho delas no layout depende da fonte (o nome da página escondido passava da tela com a DejaVu Sans do Linux).
+  assert.deepEqual(await page.evaluate(() => {
+    const seen = (el) => { for (let p = el; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.clipPath === "inset(50%)" || s.clip === "rect(0px, 0px, 0px, 0px)") return false; } return true; };
+    return [...document.querySelectorAll(".sidebar, .sidebar *, .topline, .topline *")].filter((el) => el.getClientRects().length && seen(el) && (el.getBoundingClientRect().right > innerWidth + 0.5 || el.getBoundingClientRect().left < -0.5)).map((el) => el.className || el.tagName);
+  }), [], "casca sem rolagem lateral");
   await page.evaluate(() => scrollTo(0, 0));
   // Teclado: logo → turma → seis destinos → Sair, e o contorno de cada destino inteiro (pixels).
   await page.locator(".skip-link").focus();
@@ -339,6 +344,11 @@ test("N10: texto ampliado em tela estreita — casca compacta, identidade legív
         email: text, breaks, emailInside: er.left >= 0 && er.right <= innerWidth, role: document.querySelector(".role-chip").getClientRects().length > 0,
         // Papel e e-mail no mesmo parágrafo: o e-mail começa na linha do papel.
         together: Math.abs(document.querySelector(".role-chip").getClientRects()[0].top - email.getClientRects()[0].top) < 4,
+        // C3: o começo do e-mail (até o "@") cabe na linha do papel? Medido pelo próprio texto, sem depender de onde ele ficou.
+        fitsBeside: (() => { const chip = document.querySelector(".role-chip"), first = [...email.childNodes].find((n) => n.nodeType === Node.TEXT_NODE), r = document.createRange();
+          r.selectNodeContents(first); const w = [...r.getClientRects()].reduce((s, x) => s + x.width, 0), box = email.parentElement.getBoundingClientRect();
+          return chip.getBoundingClientRect().right + parseFloat(getComputedStyle(chip).marginRight) + w <= box.right + 0.5; })(),
+        startsLine: Math.abs(email.getClientRects()[0].left - email.parentElement.getBoundingClientRect().left) < 2,
         label: { text: loc.textContent, visible: lr.width > 2 && lr.height > 2 }, overflowX: document.documentElement.scrollWidth - innerWidth };
     });
     const label = id(o);
@@ -347,7 +357,9 @@ test("N10: texto ampliado em tela estreita — casca compacta, identidade legív
     assert.ok(m.role && m.emailInside && m.overflowX <= (o.role === "admin" && o.width === 320 ? 18 : 0), `${label}: identidade inteira na tela`);
     assert.match(m.email, /@example\.test$/, `${label}: e-mail inteiro`);
     // Papel curto ("Aluno"): o e-mail começa na mesma linha. (O do admin ocupa a linha toda; o e-mail segue na próxima.)
-    if (m.compact && o.role !== "admin") assert.ok(m.together, `${label}: papel e e-mail em linhas separadas`);
+    // C3: com fonte mais larga (DejaVu Sans no Linux), o começo do e-mail pode não caber depois do papel; ele desce inteiro e
+    // começa a linha seguinte, em vez de partir no meio de uma palavra.
+    if (m.compact && o.role !== "admin") assert.ok(m.fitsBeside ? m.together : m.startsLine, `${label}: papel e e-mail em linhas separadas (cabe ao lado: ${m.fitsBeside})`);
     assert.ok(m.breaks.every((c) => c === "@"), `${label}: e-mail quebrado no meio de uma palavra (depois de "${m.breaks.join('", "')}")`);
     assert.match(m.label.text, o.role === "admin" ? /Painel do instrutor/ : /Minhas atividades/, `${label}: nome da página para leitura assistiva`);
     assert.equal(m.label.visible, !m.compact, `${label}: nome da página ${m.compact ? "oculto (já está no menu e no título)" : "visível"}`);

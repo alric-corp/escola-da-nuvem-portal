@@ -1781,6 +1781,114 @@ foi descrita para a restauração; a mesma solução cabe ali (proposta). A orie
 perde (a tela abre com a versão em vigor). Entre abas, como na C1: a aba só sabe que a pessoa mudou no próximo `/me`. As sondas,
 os testes e as capturas usam o simulador da suíte (o mesmo modelo de `_restore` e `_focus_activities`); nenhuma operação real.
 
+## C3 — Robustez tipográfica e responsividade multiplataforma
+
+**Autorização.** Dada depois de a primeira CI Linux do PR #3 (run `38804653900`, `5867a62`) acusar 20 falhas de layout nos testes
+de navegador que passavam no macOS.
+
+**Escopo.** Só robustez tipográfica: sem redesenho; sem trocar a fonte (`system-ui` continua); sem mudar contratos, backend,
+OpenAPI ou regras de negócio.
+
+**Arquivos alterados.**
+- `frontend/styles.css`: 14 trechos, todos escopados à tela ou ao componente.
+- `frontend/app.js`: `showResult`.
+- Critério ajustado em 7 testes de navegador e 3 testes novos (IB10b, IB10c e P3b), em 7 arquivos de teste.
+
+Os registros da rodada ficam em `~/Developer/escola-da-nuvem/c3-robustez-tipografica/`, inclusive as tentativas descartadas, com a
+evidência de cada uma (`alteracoes-css.md`).
+
+**Causa.** No Ubuntu da CI, `system-ui` resolve para DejaVu Sans, 7% a 16% mais larga que a SF do macOS. Medido pelo CDP,
+"Desempenho" a 12 px tem 79,5 px contra 74,5, e uma frase em negrito, 195 contra 168.
+
+A reprodução num contêiner Linux sem rede, com os pacotes `fonts-dejavu-core` e `fonts-dejavu-mono` 2.37-8 do Ubuntu 24.04, deu
+exatamente as 20 falhas; sem a DejaVu (WenQuanYi), deu só 2. As fontes do `body` (Arial/Liberation Sans) e de código
+(Courier/Liberation Mono) têm métricas iguais nas duas plataformas.
+
+**Classificação das 20.**
+- 13 eram defeitos reais de layout (F1):
+  - barra inferior: "Desempenho" hifenizado em 2 linhas (A7, N2, S6);
+  - "Consultar atualização" com o `nowrap` global de `.button` (A10, B5, B9, H6);
+  - palavras maiores que a coluna em títulos, botões, fatos e resumos (F6, C6, P2, P3, PB2, IB10);
+  - o resultado focado mais alto que a área visível, que `scrollIntoView({block: "nearest"})` não rolava (C6).
+- 2 combinavam CSS e critério (F3): N10 e B8.
+- 2 eram de medição (F4):
+  - N1 media uma peça escondida da vista;
+  - V5 contava linhas por faixas de 4 px.
+- 3 eram compacidade presa às métricas da SF (F2): B11, H7 e F7.
+
+**Correções de CSS.**
+- **Barra inferior com até 4 destinos:** colunas `minmax(min-content, 1fr)` nas faixas de 4, 3 e 2 colunas do `auto-fit`, com `hyphens: manual` no rótulo curto. Só a coluna do rótulo que não cabe cresce, sem hífen. A SF fica igual (4 × 79 px a 320).
+- `overflow-wrap: anywhere`, o mesmo dos títulos do Painel e das Expansões 5–9, em:
+  - títulos das telas do aluno;
+  - `h2` e título do Acompanhamento do Painel;
+  - aviso de atualização automática, confirmação dos removidos e resumo das mudanças de Atualizar notas.
+- `white-space: normal` em "Consultar atualização" e nos valores "antes → depois" das notas.
+- Ponto de quebra sem largura (`content: "\200b" / ""`) depois do papel no topo compacto.
+- `margin-inline-end: 2rem` na grade título + link do Canvas (B8).
+- **Na faixa de texto muito ampliado que o Painel já usa (`max-width: 8.5rem`, 320 px com 250%), o espaço decorativo cede antes de qualquer palavra:**
+  - o preenchimento lateral dos botões do Painel (`var(--space-1)`);
+  - o separador "·" entre os fatos de Publicações (cada fato já ocupa a própria linha);
+  - a coluna do número das etapas de Atualizar notas (1,1em).
+
+  A quebra no meio da palavra fica só como último recurso, quando nem assim a palavra cabe: com a DejaVu, "manualmente" ao lado do ícone e "Publicação" ao lado do número.
+
+**Critérios de teste.**
+- Mantidos os limites de A7, N2 e S6 e todas as asserções de acesso: rolagem, corte, alvo de 44 px, foco, ordem do teclado e fonte mínima.
+- N1 ignora as peças recortadas para leitura assistiva.
+- V5 agrupa as linhas por sobreposição vertical.
+- N10 aceita o e-mail na linha seguinte quando o começo dele (até o "@") não cabe na linha do papel. A proibição de quebrar no meio da palavra continua.
+- B8 desconta da altura acrescentada pelo link as linhas a mais do próprio título.
+- B11, H7 e F7 medem a densidade com a tipografia de referência (`--font-ui: Arial, "Liberation Sans"`, injetada pelo teste), que dá o mesmo valor no macOS e no Linux. Os limites são os da aprovação, menos no histórico a 1440 px com texto a 200%:
+  - o teto da maior linha passou de 330 (304 da SF + 26) para 400 (376 da referência + 24), porque o resumo e a explicação daquela publicação quebram em uma linha a mais com uma fonte mais larga que a SF;
+  - entrou um teto para a soma das seis linhas, 1.875 (1.833 × 310/303, a folga da mediana). Sem ele, a regressão da E2 "resumo em duas linhas também na composição estreita" não mudaria mediana nem máximo na referência.
+- **Testes novos:**
+  - IB10b: a prévia com contagens de dois dígitos a 320 px com 250% ("17 notas alteradas (12 notas novas, 2 removidas)" pedia 313 px na DejaVu numa etapa de 290).
+  - P3b e IB10c: nenhuma palavra dos botões do Painel e dos títulos das etapas partida quando cabe, com a tipografia de referência.
+
+**Diferenças no macOS.** A equivalência no navegador (872 cenas) não acusa propriedade inesperada nem mudança de HTML, foco, árvore de acessibilidade ou ordem do Tab. As caixas que mudam com a SF são estas, todas intencionais:
+- **Minhas atividades (B8):** a grade título + link do Canvas fica 2rem mais estreita. De 1024 a 1440 px, nada muda de lugar. Com zoom a 200% (720 px), o título longo de um cartão passa a 2 linhas, e o cartão e a página crescem 18 px; o link fica a 48 px da nota (antes, 34 px e, em outro cartão, 16).
+- **Topo compacto do admin a 390 px com texto a 200%:** efeito do ponto de quebra do N10. "Administrador e instrutor" fica numa linha só e o e-mail inteiro na de baixo; antes, o papel quebrava em duas linhas. A altura do topo não muda.
+- **Na faixa de 8,5rem (320 px com 250%):**
+  - botões do Painel com menos preenchimento lateral: "Ver por atividade" em 1 linha e o ícone de "Enviar CSV" 10 px à esquerda;
+  - fatos de Publicações sem o separador;
+  - número da etapa 22 px mais perto do título.
+- **Valores "antes → depois" das notas:** agora quebram nos espaços. Na `5867a62`, com a lista aberta e a SF a 320 px, o valor mais longo passava da coluna (18 px a 200% e 93 px a 250%), e a página rolava para o lado (3 e 78 px).
+- **"automaticamente" no aviso de atualização automática (320 px a 250%):** tem 298 px com a SF, numa coluna de 290. Antes passava 8 px dela, para dentro da margem da página, e alargava junto o contexto da turma; agora quebra dentro da coluna (último recurso, sem espaço decorativo para ceder), e o contexto volta aos 290 px.
+
+**Garantias mantidas.** Continuam iguais:
+- o Design System, a fonte, as cores, a hierarquia e os componentes;
+- as alturas de alvo (44 px) e o contorno de foco medido em pixels;
+- a ordem do teclado igual à visual e a fonte mínima de 12 px;
+- o texto inteiro e acessível (sem reticências) e a semântica de status e alerta;
+- o comportamento das telas: HTML, árvore de acessibilidade e ordem do Tab iguais na equivalência.
+
+Nenhum `overflow-x: hidden`, fonte menor, alvo menor, `transform` ou `!important`.
+
+**Capturas.** 29 cenas × 3 fontes (SF, Verdana simulada, DejaVu real), antes e depois, só da janela, com o componente da cena ao
+centro. Ficam em `~/Desktop/escola-da-nuvem-capturas-piloto/c3-robustez-tipografica/` e no ZIP de mesmo nome, com `index.html`,
+`results.json` e `SHA256SUMS.txt`.
+- **SF:** 21 de 29 idênticas pixel a pixel; as 8 diferentes são as descritas acima. Rolagem lateral de 1 cena (a lista de notas aberta) para 0.
+- **Verdana e DejaVu:** rolagem lateral de 11 cenas para 0.
+
+**Validação.**
+- **macOS (worktree):** unidade 392/392 e navegador 220/220, no fuso local e em UTC; build, `node --check` e `git diff --check` limpos.
+- **Linux nas condições da CI:** contêiner sem rede, 4 CPUs, DejaVu e UTC.
+  - `5867a62`: 196/217 (as 20 falhas da CI mais C2-F5, um teste de tempo instável ali).
+  - C3: 220/220.
+- **Mutações direcionadas:** 42/42 mortas por asserção. Cada correção foi revertida e cada critério novo ganhou cenário negativo, no Linux e no macOS.
+- **Mutações antigas:** 1.127/1.134, as mesmas 7 sobreviventes de sempre, iguais às da revisão de integração. A mutação da E2 que a referência escondia no H7 é a razão do teto da soma.
+- **Equivalência no macOS:** `5867a62` × C3 em 872 cenas (tour, E9, Feedbacks administrativos e Atualizar notas). Nenhuma propriedade inesperada, e HTML, foco, árvore de acessibilidade e ordem do Tab iguais. As caixas só mudam nos componentes listados acima.
+- **Varreduras:** 17 telas × 9 configurações de estresse, com SF, Verdana e DejaVu.
+  - Rolagem lateral: nenhum problema novo; corrigidas 9 cenas (DejaVu e Verdana) e 3 (SF); nenhum resíduo que dependa da fonte.
+  - Palavras partidas: só como último recurso.
+  - Sobreposição de texto (linhas de texto de elementos diferentes que se cruzam): com a SF, nenhum par novo; com Verdana e DejaVu, só o par do Painel descrito nas limitações.
+- **CI do PR:** pendente no momento do commit.
+
+**Limitações.**
+- A cobertura do IB10b e da correção do resumo de Atualizar notas depende da fonte: o teste falha sem a correção no Linux (DejaVu), não no macOS (SF).
+- 12 cenas da varredura passam da tela com texto a 200–250% com qualquer fonte, inclusive a SF. São problemas de reflow fora das 20 falhas e anteriores à C3: Entrada pública, Pendências do aluno, Notas da turma, Feedback pelo rodapé do instrutor, e a sugestão de revisão em Meu desempenho e Minhas atividades a 250%. Ficam para uma rodada própria.
+- No Painel a 320 px com texto a 250%, os rótulos dos atalhos da Situação da turma passam da própria coluna com qualquer fonte, porque a coluna do rótulo é `minmax(0, 1fr)` ao lado do número. Com a SF, o fim de "referência" encosta no "6", como já acontecia antes da C3. Com fonte larga, a C3 tirou a rolagem lateral, e o rótulo fica acima do número, sem encostar nele. A correção muda com a SF um componente aprovado que não estava entre as 20 falhas, então fica como proposta para uma rodada própria: o preenchimento e o espaço cedem na faixa de 8,5rem, com quebra de palavra como último recurso.
+
 ## Decisões da Expansão 9
 
 1. Caixa de entrada, não painel: linhas finas, o título como o alvo, o status por texto e forma, o começo da mensagem; nenhuma

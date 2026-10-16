@@ -13,6 +13,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
+// C3: tipografia de referência dos testes de densidade e de quebra (Arial = Liberation Sans: as mesmas métricas no macOS e no Linux).
+const REFERENCE_FONT = ':root { --font-ui: Arial, "Liberation Sans", sans-serif; }';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
 const server = createServer(async (req, res) => {
@@ -47,6 +49,9 @@ const PREVIEWS = {
   curso: () => ({}),
   "curso-liberada": (body) => ({ activities: COURSE.map((a, i) => ({ ...a, active: body.activeIds ? body.activeIds.includes(a.id) : a.active || i === 9 })) }),
   remocao: () => ({ count: 23, changes: { ...CHANGES, previousCount: 24, currentCount: 23, studentsRemoved: [{ id: "31023", name: "Aluna Fictícia 23" }] } }),
+  // C3: contagens de dois dígitos (12 notas novas, 2 removidas e 3 alteradas), como numa sincronização real.
+  contagens: () => ({ changes: { ...CHANGES, gradesChanged: 17, gradesAdded: 12, gradesRemoved: 2, gradeDetails: STUDENTS.slice(0, 17).map((s, i) => ({ student: s.name,
+    activity: ACTIVITIES[3].name, before: i < 12 ? null : "7", after: i === 12 || i === 13 ? null : String(6 + (i % 5)) })) } }),
   bloqueada: () => ({ integrity: { critical: [{ code: "studentNotInRoster", count: 1, message: "1 aluno(s) não pertence(m) à turma no Canvas.", ids: ["999999"] }], warnings: [],
     summary: { ...SUMMARY, studentsFound: 25, studentsExtra: 1 } } }),
 };
@@ -620,6 +625,51 @@ test("IB10: sem rolagem lateral nem controle escondido em 320–1440 px, texto a
     assert.deepEqual([await pageScroll(page), await clipped(page)], [0, []], `${where}: falha da publicação`);
     await context.close();
   }
+});
+
+// C3: o resumo de cada mudança é uma linha flexível (seta + texto); a largura mínima dela é a da palavra mais longa com a seta.
+// Com contagens de dois dígitos e a DejaVu Sans do Linux da CI, "17 notas alteradas (12 notas novas, 2 removidas)" pedia 313 px
+// a 320 px com texto a 250% (a etapa tem 290) e a prévia rolava para o lado; com a SF do macOS, 286 px. Os dados do IB10 (uma
+// casa) ficam abaixo do limite nas duas fontes.
+test("IB10b: prévia com contagens de dois dígitos a 320 px com texto a 250% — resumos inteiros na etapa e sem rolagem lateral", async () => {
+  const { context, page, control } = await open({ width: 320, height: 568, text: 2.5 });
+  control.previewKind = "contagens";
+  await readyPreview(page);
+  for (const opened of await page.locator(".timp-change details").all()) await opened.evaluate((d) => { d.open = true; });
+  const summaries = await page.locator(".timp-change summary").evaluateAll((all) => all.map((el) => {
+    const r = el.getBoundingClientRect(), step = el.closest(".timp-step-body").getBoundingClientRect();
+    return { text: el.textContent.replace(/\s+/g, " ").trim(), inside: r.left >= step.left - 0.5 && r.right <= step.right + 0.5 };
+  }));
+  assert.ok(summaries.some((s) => s.text === "17 notas alteradas (12 notas novas, 2 removidas)"), JSON.stringify(summaries));
+  assert.deepEqual(summaries.filter((s) => !s.inside), [], "resumos dentro da etapa");
+  assert.deepEqual([await pageScroll(page), await clipped(page)], [0, []], "prévia sem rolagem lateral nem texto recortado");
+  await context.close();
+});
+
+// C3: com texto muito ampliado (faixa de 8,5rem do Painel), o número da etapa ocupa menos largura antes de qualquer quebra no meio
+// da palavra do título. Com a tipografia de referência (Arial = Liberation Sans: as mesmas larguras no macOS e no Linux),
+// "Publicação" (233 px) cabe ao lado do número (240 px); com a coluna do número de antes (1,6em, 72 px) sobravam 218 e a palavra
+// era partida. Com fonte mais larga que a referência (DejaVu Sans: 269 px), a quebra continua sendo o último recurso.
+test("IB10c: a 320 px com texto a 250%, nenhuma palavra dos títulos das etapas é partida quando cabe ao lado do número (tipografia de referência)", async () => {
+  const { context, page } = await open({ width: 320, height: 568, text: 2.5 });
+  await readyPreview(page);
+  await page.addStyleTag({ content: REFERENCE_FONT });
+  const m = await page.evaluate((sel) => {
+    const words = [];
+    for (const el of document.querySelectorAll(sel)) {
+      if (!el.getClientRects().length) continue;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) for (const w of n.textContent.matchAll(/\S+/g)) {
+        const r = document.createRange(); r.setStart(n, w.index); r.setEnd(n, w.index + w[0].length);
+        words.push({ el: el.textContent.replace(/\s+/g, " ").trim(), word: w[0], lines: new Set([...r.getClientRects()].filter((q) => q.width).map((q) => Math.round(q.top))).size });
+      }
+    }
+    return { reference: [...document.querySelectorAll(sel)].every((el) => /^Arial/.test(getComputedStyle(el).fontFamily)), words };
+  }, ".teacher-import .timp-step-title");
+  assert.ok(m.reference, "tipografia de referência aplicada");
+  assert.ok(m.words.some((w) => w.word === "Publicação"), JSON.stringify(m.words));
+  assert.deepEqual(m.words.filter((w) => w.lines > 1), [], "nenhuma palavra partida");
+  await context.close();
 });
 
 test("IB11: teclado na ordem da tarefa, com contorno inteiro (pixels) — inclusive no rótulo do seletor; no celular, o foco não fica atrás da barra inferior", async () => {

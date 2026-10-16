@@ -12,6 +12,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
+// C3: tipografia de referência dos testes de densidade e de quebra (Arial = Liberation Sans: as mesmas métricas no macOS e no Linux).
+const REFERENCE_FONT = ':root { --font-ui: Arial, "Liberation Sans", sans-serif; }';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
 const server = createServer(async (req, res) => {
@@ -214,6 +216,31 @@ test("P3: \"Enviar CSV manualmente\" e \"Salvar foco da turma\" cabem em 320 px 
     assert.deepEqual(errors, []);
     await context.close();
   }
+});
+
+// C3: com texto muito ampliado (faixa de 8,5rem), o preenchimento lateral dos botões cede largura antes de qualquer quebra no
+// meio da palavra. Com a tipografia de referência (Arial = Liberation Sans), "manualmente" (226 px) cabe no rótulo (236 px); com
+// o preenchimento de antes (40 px de cada lado) sobravam 176 e a palavra era partida. Com fonte mais larga que a referência
+// (DejaVu Sans: 271 px), a quebra continua sendo o último recurso (P3: texto inteiro e sem corte).
+test("P3b: a 320 px com texto a 250%, nenhuma palavra dos botões do Painel é partida quando cabe no botão (tipografia de referência)", async () => {
+  const { context, page } = await open({ width: 320, height: 640, text: 2.5, data: () => report(ROSTER, { focus: { activityIds: ["a1"], version: "v0" } }) });
+  await page.addStyleTag({ content: REFERENCE_FONT });
+  const m = await page.evaluate((sel) => {
+    const words = [];
+    for (const el of document.querySelectorAll(sel)) {
+      if (!el.getClientRects().length) continue;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) for (const w of n.textContent.matchAll(/\S+/g)) {
+        const r = document.createRange(); r.setStart(n, w.index); r.setEnd(n, w.index + w[0].length);
+        words.push({ el: el.textContent.replace(/\s+/g, " ").trim(), word: w[0], lines: new Set([...r.getClientRects()].filter((q) => q.width).map((q) => Math.round(q.top))).size });
+      }
+    }
+    return { reference: [...document.querySelectorAll(sel)].every((el) => /^Arial/.test(getComputedStyle(el).fontFamily)), words };
+  }, ".teacher-home .button");
+  assert.ok(m.reference, "tipografia de referência aplicada");
+  assert.ok(m.words.some((w) => w.word === "manualmente"), JSON.stringify(m.words));
+  assert.deepEqual(m.words.filter((w) => w.lines > 1), [], "nenhuma palavra partida");
+  await context.close();
 });
 
 test("P4: atalhos da Situação da turma filtram a lista com o mesmo número, pressionados um por vez, e levam o foco à lista; busca sem resultado diz o que limita e oferece limpar; filtros sobrevivem à ida e volta", async () => {

@@ -12,6 +12,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
+// C3: compacidade (alturas) medida com tipografia de referência — Arial, que tem as mesmas métricas da Liberation Sans do
+// Linux —, igual em toda plataforma. Transbordamento, recorte e legibilidade continuam com a fonte do sistema (H6).
+const REFERENCE_FONT = ':root { --font-ui: Arial, "Liberation Sans", sans-serif; }';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
 const server = createServer(async (req, res) => {
@@ -431,8 +434,16 @@ test("H6: sem rolagem lateral, controle recortado ou sobreposição em 320–144
 // lista passa à composição estreita (antes, 253 px numa tabela espremida); teto de 310 px, com a variação ao lado do
 // número e o resumo corrido.
 test("H7: várias publicações sem rolagem excessiva — linhas compactas no desktop e no celular, sem reduzir fonte nem alvo", async () => {
-  for (const [width, height, median, max, text = 1] of [[1440, 900, 100, 145], [1024, 768, 120, 143], [768, 1024, 160, 282], [390, 844, 190, 282], [320, 640, 200, 282], [1440, 900, 310, 330, 2]]) {
+  // C3: medida com a tipografia de referência (Arial = Liberation Sans). Os limites são os da E2, menos o teto da maior linha
+  // com texto a 200% no desktop: calibrado na SF (304 px + 26), ele é recalibrado na referência com folga parecida (376 + 24 =
+  // 400). A mediana continua no teto de 310 px; nos outros casos, nada muda. Na referência, a publicação mais alta já tem o
+  // resumo em 3 linhas: uma regressão que só leva outras linhas a essa altura não muda mediana nem máximo (o resumo em duas
+  // linhas também na composição estreita, da E2: 1.833 → 1.906 px no total). Por isso, a 200% no desktop, também a altura
+  // somada das seis publicações (a rolagem que elas pedem), com a folga relativa da mediana: 1.833 × 310/303 = 1.875.
+  for (const [width, height, median, max, text = 1, total = Infinity] of [[1440, 900, 100, 145], [1024, 768, 120, 143], [768, 1024, 160, 282], [390, 844, 190, 282], [320, 640, 200, 282], [1440, 900, 310, 400, 2, 1875]]) {
     const { context, page } = await open({ width, height, text });
+    await page.addStyleTag({ content: REFERENCE_FONT });
+    assert.ok(await page.locator(".student-history").evaluate((el) => /^Arial/.test(getComputedStyle(el).fontFamily)), `${width}px: tipografia de referência aplicada`);
     const m = await page.evaluate(() => {
       const lis = [...document.querySelectorAll(".student-history .history-list > li")];
       // Colunas alinhadas de uma publicação para outra (inclusive a primeira, sem "Sem nota"): a comparação é por leitura vertical.
@@ -444,6 +455,8 @@ test("H7: várias publicações sem rolagem excessiva — linhas compactas no de
     assert.ok(m.kc.length === 1 && m.lab.length === 1 && m.date.length === 1, `${width}px: colunas desalinhadas ${JSON.stringify(m)}`);
     const mid = m.closed[Math.floor(m.closed.length / 2)];
     assert.ok(mid <= median && Math.max(...m.closed) <= max, `${width}px: mediana ${mid} (máximo ${median}), maior ${Math.max(...m.closed)} (máximo ${max}): ${m.closed}`);
+    const sum = m.closed.reduce((s, h) => s + h, 0);
+    assert.ok(sum <= total, `${width}px: altura somada ${sum} (máximo ${total}): ${m.closed}`);
     assert.ok(m.font >= 12, `${width}px: fonte mínima ${m.font}px`);
     await context.close();
   }

@@ -337,7 +337,11 @@ function ownFocus() {
 function showResult(...selectors) {
   restoreFocus(...selectors);
   const active = document.activeElement;
-  if (active?.closest(".student-feedback") && selectors.some((selector) => active.matches(selector))) active.scrollIntoView({ block: "nearest" });
+  if (!active?.closest(".student-feedback") || !selectors.some((selector) => active.matches(selector))) return;
+  // C3: "nearest" não rola quando o resultado já passa das duas bordas da área visível (texto ampliado, fonte mais larga) e
+  // deixava o começo dele fora da tela; mais alto que a área, ele é alinhado pelo começo.
+  const room = innerHeight - (parseFloat(getComputedStyle(document.documentElement).scrollPaddingBottom) || 0);
+  active.scrollIntoView({ block: active.getBoundingClientRect().height > room ? "start" : "nearest" });
 }
 // Sem resposta (rede, tempo esgotado) ou com erro do servidor (5xx), o feedback pode ter entrado; com 4xx (409, 429, 403…)
 // ou antes de sair (sessão expirada), não. A mensagem do servidor já diz o que fazer.

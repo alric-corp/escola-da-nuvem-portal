@@ -1988,6 +1988,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .student-home .page-heading { margin: var(--space-5) 0 var(--space-5); }
 .student-home .page-heading h1 {
   margin-bottom: var(--space-2);
+  overflow-wrap: anywhere;
   font-size: clamp(1.5rem, 1.1rem + 1.1vw, 2rem);
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -2428,6 +2429,22 @@ details ul, .onboarding ol { padding-left: 24px; }
     font-size: 0.75rem;
   }
   .sidebar nav:has(> .nav-item:nth-child(5)) { grid-template-columns: repeat(auto-fit, minmax(max(6em, 33.33%), 1fr)); }
+  /* C3: com até quatro destinos, as colunas continuam iguais enquanto os rótulos cabem; se uma fonte mais larga (a DejaVu
+     Sans do Linux) não cabe na coluna, só a coluna daquele rótulo cresce até a palavra inteira, sem hífen nem quebra. As
+     faixas repetem a conta do auto-fit acima (colunas de max(6em, 25%) do rótulo de 0,75rem: 4, 3 ou 2 por linha); entre
+     elas e com uma coluna, fica o auto-fit. */
+  @media (min-width: 18.5em) {
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) { grid-template-columns: repeat(4, minmax(min-content, 1fr)); }
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) .nav-short { hyphens: manual; }
+  }
+  @media (min-width: 14em) and (max-width: 18em) {
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) { grid-template-columns: repeat(3, minmax(min-content, 1fr)); }
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) .nav-short { hyphens: manual; }
+  }
+  @media (min-width: 9.5em) and (max-width: 13.5em) {
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) { grid-template-columns: repeat(2, minmax(min-content, 1fr)); }
+    .sidebar nav:not(:has(> .nav-item:nth-child(5))) .nav-short { hyphens: manual; }
+  }
   /* Rótulos em 12 px (0,75rem, acompanha a fonte do navegador) para todos os papéis; quebram em duas linhas, com
      hífen, só quando a palavra não cabe. */
   .sidebar nav .nav-item,
@@ -2485,6 +2502,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   .session-context { display: block; }
   .session-context > * { display: inline; }
   .session-context .role-chip { margin-right: 8px; }
+  /* C3: se o começo do e-mail não cabe depois do papel (fonte mais larga), o e-mail desce inteiro em vez de partir no meio
+     de uma palavra; o ponto de quebra não tem largura e fica fora da leitura assistiva. */
+  .session-context .role-chip::after { content: "\200b" / ""; }
 }
 
 /* =========================================================
@@ -2551,6 +2571,8 @@ details ul, .onboarding ol { padding-left: 24px; }
 :is(.student-home, .student-activities, .student-history) .sync-times dd { font-weight: 500; color: var(--color-text); }
 :is(.student-home, .student-activities, .student-history) .update-line .button {
   width: auto;
+  white-space: normal;
+  text-align: left;
   min-height: 44px;
   padding: 0 var(--space-1);
   border: 0;
@@ -2680,6 +2702,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 :is(.student-activities, .student-history, .student-feedback) .page-heading { margin: var(--space-5) 0 var(--space-3); }
 :is(.student-activities, .student-history, .student-feedback) .page-heading h1 {
   margin-bottom: var(--space-2);
+  overflow-wrap: anywhere;
   font-size: clamp(1.5rem, 1.1rem + 1.1vw, 2rem);
   font-weight: 650;
   letter-spacing: -0.01em;
@@ -2803,7 +2826,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .student-activities .activity-card { container-type: inline-size; }
 @container (min-width: 40rem) {
   .student-activities .activity-card > div:not(.activity-result) > strong { max-width: 36rem; }
-  .student-activities .activity-card > div:has(> a.activity-link) { display: grid; grid-template-columns: minmax(0, max-content) auto; justify-content: start; column-gap: var(--space-4); }
+  .student-activities .activity-card > div:has(> a.activity-link) { display: grid; grid-template-columns: minmax(0, max-content) auto; justify-content: start; column-gap: var(--space-4); margin-inline-end: 2rem; }
   .student-activities .activity-card > div:has(> a.activity-link) > :not(a) { grid-column: 1; }
   .student-activities .activity-link { grid-column: 2; grid-row: 1 / span 2; align-self: end; align-items: flex-end; margin-top: 0; white-space: nowrap; }
 }
@@ -3148,7 +3171,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 
 .layout:has(.teacher-home) { font-family: var(--font-ui); }
 .teacher-home { container: teacher / inline-size; font-variant-numeric: tabular-nums; }
-.teacher-home h2 { margin: 0; font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; }
+.teacher-home h2 { margin: 0; font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; overflow-wrap: anywhere; }
 /* Os botões quebram o texto em vez de passar da largura (a regra global .button tem nowrap): com texto a 200% em
    320 px, "Enviar CSV manualmente" e "Salvar foco da turma" saíam da tela. Texto inteiro, alvo de 44 px. */
 .teacher-home .button { max-width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); font-size: 0.875rem; white-space: normal; text-align: center; }
@@ -3285,7 +3308,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-others { margin: 0; color: var(--color-text-muted); font-size: 0.8125rem; }
 /* Acompanhamento: o que pede ação fora das médias. Separado da situação acadêmica por uma linha fina. */
 .teacher-home .tp-follow { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-1) var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--color-line-soft); }
-.teacher-home .tp-follow-title { grid-column: 1 / -1; margin: 0; color: var(--color-text-muted); font-size: 0.8125rem; font-weight: 600; }
+.teacher-home .tp-follow-title { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; color: var(--color-text-muted); font-size: 0.8125rem; font-weight: 600; }
 .teacher-home .tp-follow .tp-filter > strong { font-size: 1.25rem; }
 .teacher-home .tp-follow .tp-filter > span { color: var(--color-text); }
 
@@ -3463,6 +3486,9 @@ details ul, .onboarding ol { padding-left: 24px; }
 }
 @container teacher (max-width: 8.5rem) {
   .teacher-home .tp-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "kc" "lab" "pending" "status" "action"; }
+  /* C3: o preenchimento lateral dos botões cede largura ao rótulo; a palavra que ainda assim não cabe (fonte mais larga, como a
+     DejaVu Sans do Linux) quebra em vez de sair do botão. */
+  .teacher-home .button { padding-inline: var(--space-1); overflow-wrap: anywhere; }
 }
 /* Com largura (52rem), tabela de verdade: uma linha por aluno, números alinhados à direita para comparar, cabeçalho
    fixo ao rolar a página, situação numa linha. */
@@ -3591,6 +3617,11 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-publications .tpub-fact { display: inline-flex; align-items: center; gap: 0.45em; }
 /* Separador só visual (texto alternativo vazio): a lista já separa os itens para a leitura assistiva. */
 .teacher-publications .tpub-fact:not(:last-child)::after { content: "·" / ""; margin-left: var(--space-1); color: var(--color-text-muted); }
+/* C3: texto muito ampliado em tela estreita (menos de 8,5rem, a faixa do Painel): cada fato já ocupa a própria linha, e o
+   separador só tirava largura da palavra mais longa (com a DejaVu Sans do Linux, "removida)" passava da tela). */
+@container publications (max-width: 8.5rem) {
+  .teacher-publications .tpub-fact:not(:last-child)::after { content: none; }
+}
 /* O que tira algo do que os alunos veem: o anel âmbar das telas do aluno e do painel (forma, não só cor). */
 .teacher-publications .tpub-fact.is-attention::before {
   content: "";
@@ -3682,7 +3713,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-import .button { max-width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); font-size: 0.875rem; white-space: normal; text-align: center; }
 .teacher-import .text-link { min-height: 44px; font-size: 0.875rem; font-weight: 600; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.25em; transition: text-decoration-color var(--motion-fast) var(--ease-standard); }
 .teacher-import .text-link:not(:disabled):hover { text-decoration-color: currentColor; }
-.teacher-import :is(.timp-filename, .timp-op, .timp-summary, .timp-in-force, .timp-roster, .timp-issues, .timp-alert, .timp-option-name, .timp-student) { overflow-wrap: anywhere; }
+.teacher-import :is(.timp-filename, .timp-op, .timp-summary, .timp-in-force, .timp-auto, .timp-ack, .timp-roster, .timp-issues, .timp-alert, .timp-option-name, .timp-student) { overflow-wrap: anywhere; }
 .teacher-import :is(.timp-facts dd, .timp-grades li, .timp-warnings ul) { overflow-wrap: anywhere; }
 /* Parágrafos (a regra global de p é em tom secundário): o que é conteúdo, no tom do texto; o de apoio, secundário. */
 .teacher-import :is(.timp-op, .timp-summary, .timp-lead, .timp-count, .timp-consequence, .timp-reason, .timp-recheck) { color: var(--color-text); }
@@ -3749,7 +3780,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 /* O que muda: uma linha por mudança, com a lista ao abrir; o que não muda, numa linha só. */
 .teacher-import .timp-change-list { border-top: 1px solid var(--color-line-soft); }
 .teacher-import .timp-change { border-bottom: 1px solid var(--color-line-soft); }
-.teacher-import .timp-change summary { display: flex; align-items: center; gap: 0.5em; min-height: 44px; padding: var(--space-1) 0; font-size: 0.9375rem; font-weight: 500; line-height: 1.45; list-style: none; }
+.teacher-import .timp-change summary { display: flex; align-items: center; gap: 0.5em; min-height: 44px; padding: var(--space-1) 0; font-size: 0.9375rem; font-weight: 500; line-height: 1.45; list-style: none; overflow-wrap: anywhere; }
 .teacher-import .timp-change summary::-webkit-details-marker { display: none; }
 .teacher-import .timp-change summary::after { content: ""; flex: none; order: -1; width: 0.45em; height: 0.45em; margin: 0 0.25em 0 0.1em; border: solid var(--color-text-muted); border-width: 0 0.12em 0.12em 0; transform: rotate(-45deg); transition: transform var(--motion-fast) var(--ease-standard); }
 .teacher-import .timp-change details[open] > summary::after { transform: rotate(45deg); }
@@ -3758,7 +3789,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-import .timp-grades li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--space-4); padding: var(--space-2) 0; border-top: 1px solid var(--color-line-soft); line-height: 1.45; }
 .teacher-import .timp-grade-student { font-weight: 600; }
 .teacher-import .timp-grade-activity { color: var(--color-text-muted); }
-.teacher-import .timp-grade-values { white-space: nowrap; }
+.teacher-import .timp-grade-values { white-space: normal; }
 .teacher-import .timp-warnings ul { display: grid; gap: var(--space-1); font-size: 0.875rem; line-height: 1.55; }
 
 /* O que já foi liberado: caixa e nome na mesma linha; tipo (marca da série), notas preenchidas e pontuação abaixo. */
@@ -3830,6 +3861,12 @@ details ul, .onboarding ol { padding-left: 24px; }
 }
 @container import (max-width: 11rem) {
   .teacher-import .timp-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "kc" "lab" "pending" "status"; }
+}
+/* C3: texto muito ampliado em tela estreita (menos de 8,5rem, a faixa do Painel): o número da etapa ocupa menos largura, e a
+   palavra que ainda assim não cabe ao lado dele (fonte mais larga) quebra em vez de passar da tela. */
+@container import (max-width: 8.5rem) {
+  .teacher-import .timp-n { min-width: max(var(--timp-gutter), 1.1em); }
+  .teacher-import .timp-step-body > .timp-step-title { overflow-wrap: anywhere; }
 }
 @container import (min-width: 36rem) {
   .teacher-import .timp-step-body { --timp-gutter: 2.25rem; }

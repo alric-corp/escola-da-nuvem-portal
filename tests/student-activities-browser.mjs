@@ -10,6 +10,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
+// C3: compacidade (número de linhas, alturas) medida com tipografia de referência — Arial, que tem as mesmas métricas da
+// Liberation Sans do Linux —, igual em toda plataforma. Transbordamento, recorte e legibilidade continuam medidos com a
+// fonte do sistema (system-ui), cuja largura varia: SF no macOS, DejaVu Sans no Linux.
+const REFERENCE_FONT = ':root { --font-ui: Arial, "Liberation Sans", sans-serif; }';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
 const server = createServer(async (req, res) => {
@@ -365,9 +369,11 @@ test("B8: link do Canvas ao lado do título quando há largura, sem sobrepor nad
         const titleLines = textRects(title), last = titleLines.at(-1), b = link.getBoundingClientRect(), c = card.getBoundingClientRect(), t = textRects(link)[0];
         const ring = { left: b.left - 6, right: b.right + 6, top: b.top - 6, bottom: b.bottom + 6 };
         const hit = (x, y) => document.elementFromPoint(x, y)?.closest("a.activity-link") === link;
-        const height = c.height; link.style.display = "none"; const without = card.getBoundingClientRect().height; link.style.display = "";
+        const height = c.height; link.style.display = "none"; const without = card.getBoundingClientRect().height, titleLinesWithout = textRects(title).length; link.style.display = "";
         return { name: title.textContent, box: b.height, left: Math.round(b.left), clickable: hit(b.left + b.width / 2, b.top + 2) && hit(b.left + b.width / 2, b.bottom - 2) && hit(b.left + 2, b.top + b.height / 2),
           added: height - without, oneLineLabel: textRects(link).length === 1,
+          // C3: linhas que o título ganha porque o link fica ao lado (a coluna dele encolhe) e a altura de cada uma.
+          extraTitleLines: titleLines.length - titleLinesWithout, titleLh: parseFloat(getComputedStyle(title).lineHeight),
           besideTitle: titleLines.every((r) => r.right <= b.left + 0.5) && Math.abs((t.top + t.bottom) / 2 - (last.top + last.bottom) / 2) < 4,
           ownLine: b.top >= last.bottom - 1 && Math.abs(b.left - titleLines[0].left) <= 1,
           coversText: [...card.querySelectorAll("small, strong, .badge, .review-hint")].flatMap(textRects).some((r) => inter(b, r) > 1),
@@ -388,7 +394,9 @@ test("B8: link do Canvas ao lado do título quando há largura, sem sobrepor nad
       if (o.wide) {
         assert.ok(r.besideTitle, `${id}: link fora da coluna ao lado do título`);
         assert.ok(r.oneLineLabel, `${id}: rótulo do link quebrado na coluna ao lado do título`);
-        assert.ok(r.added <= 4, `${id}: o link acrescenta ${r.added.toFixed(1)} px à linha`);
+        // C3: com fonte mais larga, o título pode ganhar uma linha porque o link fica ao lado dele, a 48 px da nota; essa linha é
+        // do título. A caixa de 44 px do link continua sem acrescentar altura além dela.
+        assert.ok(r.added - r.extraTitleLines * r.titleLh <= 4, `${id}: o link acrescenta ${(r.added - r.extraTitleLines * r.titleLh).toFixed(1)} px à linha (título com ${r.extraTitleLines} linha(s) a mais)`);
         assert.ok(r.ringInside, `${id}: contorno de foco sai da linha`);
         assert.ok(r.gapToResult >= 48, `${id}: link encostado na nota (${Math.round(r.gapToResult)} px)`);
       } else assert.ok(r.ownLine, `${id}: link fora da própria linha (abaixo do título, na coluna dele)`);
@@ -547,7 +555,14 @@ test("B11: no celular os filtros de situação ficam visíveis em até duas linh
     assert.ok(m.minH >= 44 && m.minW >= 44, `${label}: área de toque ${m.minW}×${m.minH}`);
     assert.ok(Math.abs(m.font - 0.875) < 0.01, `${label}: fonte dos filtros ${m.font}rem`);
     assert.deepEqual(m.order, m.dom, `${label}: ordem visual = ordem do teclado`);
-    if (!o.text) assert.ok(m.lines <= 2, `${label}: filtros em ${m.lines} linhas`);
+    // C3: com a fonte do sistema, o número de linhas dependia da largura dela (a 2ª linha ocupava 287 de 290 px com a SF do
+    // macOS e 301 px com a DejaVu Sans do Linux, que usava três). A compacidade é medida com a tipografia de referência.
+    if (!o.text) {
+      await page.addStyleTag({ content: REFERENCE_FONT });
+      const [reference, lines] = await page.locator(".student-activities .tabs").evaluate((g) => [/^Arial/.test(getComputedStyle(g.querySelector(".tab")).fontFamily), new Set([...g.querySelectorAll(".tab")].map((t) => Math.round(t.getBoundingClientRect().top))).size]);
+      assert.ok(reference, `${label}: tipografia de referência aplicada`);
+      assert.ok(lines <= 2, `${label}: filtros em ${lines} linhas (tipografia de referência)`);
+    }
     // A marca do filtro ativo acompanha o recuo do texto (começa e termina onde o rótulo começa e termina).
     const mark = await page.locator('.student-activities .tab[aria-pressed="true"]').evaluate((el) => { const s = getComputedStyle(el), a = getComputedStyle(el, "::after"); return [a.left, a.right, s.paddingLeft, s.paddingRight]; });
     assert.deepEqual(mark.slice(0, 2), mark.slice(2), `${label}: marca do filtro ativo fora do recuo do texto`);

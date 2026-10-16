@@ -124,13 +124,24 @@ const lastLineWords = (locator) => locator.evaluateAll((els) => els.map((el) => 
   const last = Math.max(...tops);
   return [el.innerText.trim(), tops.filter((t) => Math.abs(t - last) <= 2).length];
 }));
+// C3: linhas visuais por sobreposição vertical. Antes, faixas fixas de 4 px (Math.round(top / 4)) separavam palavras da mesma
+// linha com tamanhos de fonte diferentes (o papel e o e-mail) quando o topo de uma caía na faixa seguinte — o que acontecia
+// com a DejaVu Sans do Linux. Texto só para leitura assistiva (recortado) não é linha visível.
 const lineCount = (locator) => locator.evaluate((el) => {
-  const tops = new Set(), walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-  for (let node; (node = walker.nextNode());) for (const m of node.data.matchAll(/\S+/g)) {
+  const seen = (node) => { for (let p = node.parentElement; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.clipPath === "inset(50%)" || s.clip === "rect(0px, 0px, 0px, 0px)") return false; } return true; };
+  const boxes = [], walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let node; (node = walker.nextNode());) if (seen(node)) for (const m of node.data.matchAll(/\S+/g)) {
     const r = document.createRange(); r.setStart(node, m.index); r.setEnd(node, m.index + m[0].length);
-    const box = r.getClientRects()[0]; if (box && box.width > 1) tops.add(Math.round(box.top / 4));
+    const box = r.getClientRects()[0]; if (box && box.width > 1) boxes.push(box);
   }
-  return tops.size;
+  const lines = [];
+  for (const b of boxes.sort((a, c) => a.top - c.top)) {
+    const last = lines.at(-1);
+    // Mesma linha quando a palavra sobrepõe verticalmente mais da metade da menor altura.
+    if (last && b.top < last.bottom - Math.min(b.height, last.bottom - last.top) / 2) last.bottom = Math.max(last.bottom, b.bottom);
+    else lines.push({ top: b.top, bottom: b.bottom });
+  }
+  return lines.length;
 });
 
 test("V1: sem moldura de foco no <main> do piloto; destino do foco (C7.1) e contorno dos controles iguais", async () => {

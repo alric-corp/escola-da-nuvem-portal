@@ -12,6 +12,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
+// C3: compacidade (altura dos tipos) medida com tipografia de referência — Arial, que tem as mesmas métricas da Liberation
+// Sans do Linux —, igual em toda plataforma. Transbordamento, recorte e legibilidade continuam com a fonte do sistema (F6, C6).
+const REFERENCE_FONT = ':root { --font-ui: Arial, "Liberation Sans", sans-serif; }';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist");
 const server = createServer(async (req, res) => {
@@ -561,7 +564,13 @@ test("F7: composição — formulário e lista lado a lado com largura (a lista 
     assert.ok(m.footerGap <= 24 * text, `${label}: vão de ${m.footerGap}px entre o que vai junto e o botão`);
     // Tipos: duas colunas de caixas quando cabem; na coluna estreita, lista simples. Antes da lista simples, com caixas
     // empilhadas, o grupo media ~17rem em 320 px e ~24rem em 390 px a 200%; agora ~13rem nos dois.
-    assert.ok(m.types / m.rem <= 15, `${label}: tipos com ${Math.round(m.types)}px (${(m.types / m.rem).toFixed(1)}rem)`);
+    // C3: o limite de 15rem separa a lista simples das caixas empilhadas de antes. Com a fonte do sistema, a altura dependia da
+    // largura dela (13,7rem com a SF do macOS; 17,4rem com a DejaVu Sans do Linux, sem virar caixa). Medida com a tipografia
+    // de referência.
+    await page.addStyleTag({ content: REFERENCE_FONT });
+    const [reference, types] = await page.locator(".student-feedback .feedback-types").evaluate((el) => [/^Arial/.test(getComputedStyle(el).fontFamily), el.getBoundingClientRect().height]);
+    assert.ok(reference, `${label}: tipografia de referência aplicada`);
+    assert.ok(types / m.rem <= 15, `${label}: tipos com ${Math.round(types)}px (${(types / m.rem).toFixed(1)}rem, tipografia de referência)`);
     assert.ok(m.font >= 12 * text - 0.5, `${label}: fonte mínima ${m.font}px`);
     await context.close();
   }
