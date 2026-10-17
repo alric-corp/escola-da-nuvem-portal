@@ -1889,6 +1889,112 @@ centro. Ficam em `~/Desktop/escola-da-nuvem-capturas-piloto/c3-robustez-tipograf
 - 12 cenas da varredura passam da tela com texto a 200–250% com qualquer fonte, inclusive a SF. São problemas de reflow fora das 20 falhas e anteriores à C3: Entrada pública, Pendências do aluno, Notas da turma, Feedback pelo rodapé do instrutor, e a sugestão de revisão em Meu desempenho e Minhas atividades a 250%. Ficam para uma rodada própria.
 - No Painel a 320 px com texto a 250%, os rótulos dos atalhos da Situação da turma passam da própria coluna com qualquer fonte, porque a coluna do rótulo é `minmax(0, 1fr)` ao lado do número. Com a SF, o fim de "referência" encosta no "6", como já acontecia antes da C3. Com fonte larga, a C3 tirou a rolagem lateral, e o rótulo fica acima do número, sem encostar nele. A correção muda com a SF um componente aprovado que não estava entre as 20 falhas, então fica como proposta para uma rodada própria: o preenchimento e o espaço cedem na faixa de 8,5rem, com quebra de palavra como último recurso.
 
+## C3.3 — Reflow e acionabilidade (F08, I-01, I-02)
+
+**Origem.** Auditorias C3.2 do PR #3 (`8eadb8f`): F08 (BLOCKER, Sair da conta) e I-01/I-02 (IMPORTANT, regressões do PR
+em relação à `main` em "Meu desempenho"). Reproduzidos antes de corrigir, com API simulada, no macOS (SF) e no Linux
+(DejaVu, contêiner sem rede), e com uma fonte larga (Verdana).
+
+**Escopo.** Só `frontend/styles.css` (7 trechos: 3 da A.1 e 1 da A.2) e testes de navegador. Sem JavaScript, sem trocar a fonte, sem reduzir
+texto, sem esconder overflow, sem `z-index`.
+
+**F08 — Sair da conta.** A barra lateral tem largura em px (210 px no tablet, 244 px até 1279 px), mas iniciais, nome e
+Sair crescem com o texto, e a conta era uma linha flexível sem quebra. Com texto a partir de 175%, de 761 a 1279 px, o
+Sair passava 39 a 136 px para fora da barra, sobre o conteúdo. Como a barra não cabia na altura da janela, ela rolava com
+a página (`data-sidebar="rola"`, sem posicionamento), e o conteúdo, pintado depois, recebia o clique.
+- No Painel, a 768 px com texto a 200%, o centro do Sair acionava o filtro Crítico. Em outras larguras, acionava outro
+  atalho (Atenção, Sem nota, Ainda não entraram) ou nada. Depois que o primeiro clique filtrava a lista, os seguintes
+  chegaram a "Limpar filtros" e "Exportar CSV".
+- Nas 10 telas medidas a 768 px com texto a 200%, nenhum ponto do Sair recebia o clique. O teclado continuava certo.
+- Não existia na `main`; vinha da casca do piloto (C2).
+- Correção: `flex-wrap: wrap` na conta, com o bloco do nome partindo de 0 e crescendo até a própria largura
+  (`flex: 1 1 0; max-width: max-content`).
+  - A quebra usa o tamanho hipotético dos itens. Sem a base 0, a conta quebraria antes de o nome encolher, e mudaria o
+    admin ("Administrador e instrutor") com texto normal de 768 a 1440 px.
+  - Com ela, a conta só quebra quando nem o nome no mínimo cabe. Então nome e Sair descem para as linhas seguintes, na
+    ordem do DOM, dentro da barra.
+  - Com texto normal, a composição é a mesma. As exceções são os casos em que o Sair já passava da área de conteúdo
+    da barra, mesmo com o nome no mínimo: nome longo no tablet (22 px) e admin no tablet (6 px). Nesses casos ele desce
+    para a linha seguinte.
+
+**I-01 — médias do resumo.** No celular, rótulo e número dividem uma linha (`minmax(0, 1fr) auto`). Com texto a 200%, a
+coluna do rótulo ia a 0 px e "Média em KCs" passava por baixo do "51,3%": até 463 px de tinta em comum com a SF, 445 com
+a DejaVu. Lado a lado, cada média precisa do número de 2,25rem mais o recuo. Com texto a 200%, o resumo
+(`overflow: hidden`) cortava o número e o "%" a 601, 768, 1101, 1200, 1280 e 1440 px, conforme a fonte. A 1280 px, o "%"
+sumia por inteiro na DejaVu e na Verdana.
+- Correção: container query em rem na área das médias (`container: metas`), que segue o texto, como as listas de "Meu
+  histórico".
+  - Abaixo de 24rem, as médias empilham. Com texto normal, a área tem 31rem ou mais.
+  - Abaixo de 17rem, o número desce para baixo do rótulo. 320 px têm 18rem com texto normal.
+  - Abaixo de 8,5rem (320 px com 250%), o recuo lateral cede antes do número, como nos atalhos do Painel (C3).
+- Calibragem: o número mais largo ("96,4%") mede 6,62rem na SF, 7,58 na DejaVu e 8,25 na Verdana. Lado a lado, as
+  médias pedem até 22,5rem; rótulo e número numa linha, até 15,7rem.
+
+**I-02 — títulos letra a letra.** As colunas de "Meu desempenho" abriam em `min-width: 1200px`, com a coluna lateral de
+no mínimo 18rem. Com texto a 200%, de 1200 a 1440 px, "Por onde começar" ficava com 0 a 216 px, e 15 palavras dos
+títulos quebravam (11 letra a letra, como "Introdução" em 10 linhas).
+- Correção: o limite passa a `min-width: 75em`, em em, que segue o tamanho de fonte do navegador. São 1200 px com texto
+  normal (o mesmo de antes) e 2400 px a 200%.
+- Com texto de 125% a 175% no desktop, as colunas empilham abaixo de 75em, como já acontecia com o zoom equivalente.
+
+**Testes novos.**
+- P10 (Painel): clique real em cinco pontos do Sair, com o click registrado na captura (o logout nunca executa); Crítico
+  sem `aria-pressed`; peças da conta dentro da barra; Espaço no Sair; nome longo; admin no tablet; conta do admin numa
+  linha com texto normal no desktop.
+- V11: geometria do texto, caixas, recorte, área de conteúdo e tinta (pixels) das médias de 320 a 1440 px com texto
+  ampliado; composição igual com texto normal.
+- V12: nenhuma palavra partida nos títulos de 1200 a 1440 px a 200%; limite das colunas em 1199/1200 px (texto normal) e
+  em 2399/2400 px (200%).
+- Os três falham na `8eadb8f` pelo motivo do defeito e passam na correção.
+
+**A.1 — cartão "Seu resumo" (coluna da esquerda).** Achado na inspeção das capturas da C3.3, igual antes e depois dela.
+
+- **Botão:** com texto a 200%, de 1101 a 1440 px, o resumo ficava em duas colunas (limite em px) e a coluna da esquerda
+  tinha 138–212 px úteis. O texto e o ícone de "Ver minhas atividades" saíam do botão em até 39 px: ele é `inline-flex`
+  com `justify-content: center` e `max-width: 100%`, e só "atividades" mede cerca de 168 px na DejaVu.
+- **Contagens:** "3 para revisar" (`white-space: nowrap`) passava da coluna em até 91,8 px. Também passava a 320 px com
+  200% em fonte larga (4,9 px na DejaVu).
+- **Ícone:** abaixo de 1280 px o svg do botão encolhia junto com o texto que quebra (a regra da casca com
+  `flex-shrink: 0` só vale a partir de 1280 px). Ficava com 18 px a 1101 px com texto normal em fonte larga, 7,7–17,6 px
+  de 320 a 768 px com texto a 200%, e 0 px (some) a 320 px com 200% em fonte larga.
+- **Correções:**
+  - o limite de duas colunas do resumo passa a `max-width: 68.75em`, o mesmo raciocínio do limite das colunas: 1100 px
+    com texto normal, 2200 px a 200%;
+  - as contagens deixam de ter `nowrap`. Os itens continuam passando inteiros para a linha seguinte, e só um item que
+    sozinho não cabe quebra o texto entre palavras;
+  - o ícone do botão não encolhe (`flex: none`, como em `.tp-actions` do Painel). Com texto normal, só muda onde ele
+    encolhia: a 1101 px com fonte larga, passa de 18 para 20 px, sem mudar o botão nem o cartão.
+- **Teste:** V13 verifica texto e ícone dentro do botão, ícone inteiro (largura igual à altura), botão e contagens dentro
+  da área útil da coluna de 320 a 1440 px com texto a 200%, clique e Enter no botão a 1280 px, e, com texto normal, duas
+  colunas a partir de 1101 px e o ícone inteiro.
+
+**A.2 — botão no reflow extremo.** Com o ícone inteiro (A.1), a 320 px com texto a 250% e fonte larga o texto e o ícone
+passavam 13–15 px do botão: a coluna tem 208 px, e "atividades" (205 px na DejaVu, 202 px na Verdana), o intervalo de
+12 px e o ícone de 20 px não cabem numa linha. Centralizado, o excesso saía pelos dois lados. Nem sem recuo caberia.
+
+- **Correção:** `@media (max-width: 9em)` com `flex-wrap: wrap` no botão do resumo: só nessa condição o ícone pode descer
+  para a linha seguinte, centralizado. São 360 px com texto a 250% e 144 px com texto normal (não existe), então o botão
+  não muda com texto normal nem a 200% (lá o ícone cabe ao lado do rótulo em todas as fontes medidas).
+- **Medido antes de escolher:** a mesma quebra por container query na coluna (`max-width: 6.5rem`) dá o mesmo resultado,
+  mas quebra até 372 px a 250% (o ícone desce sem precisar) e exige `container-type` na coluna. A quebra sem condição (A1-2)
+  mudava o botão a 1101 px com texto normal.
+- **Teste:** V14, com a fonte do sistema e com uma fonte larga em toda plataforma (Verdana; no Linux, DejaVu Sans): rótulo
+  inteiro e dentro do botão, sem palavra partida e sem reduzir a fonte; ícone inteiro e dentro do botão; botão dentro da
+  coluna e da janela; alvo de 44 px; pontos do rótulo e do ícone no botão; foco visível e sem recorte; contagens na
+  coluna; ícone ao lado do rótulo com texto normal e a 200%; clique e Enter a 320 px com 250%.
+
+**Fora do escopo (registrado, sem mudança).**
+
+- Atalhos da Situação da turma a 320/250% com a SF (proposta da C3, acima).
+- "Sugestão de revisão" com `nowrap` em Minhas atividades e Meu desempenho a 320/250%.
+- Rolagem lateral de "Meu desempenho" a 320/250%, igual antes e depois da C3.3:
+  - "Sugestão de revisão" (`nowrap`) nos cartões de atividade: 25 px na SF e 67 px na Verdana;
+  - o nome da tela no topo ("Meu desempenho", `nowrap`): 63 px com fonte larga;
+  - "Como interpretar minhas notas?": 11 px com fonte larga.
+- A 320 px com texto a 300% (fora da cobertura), "atividades" sozinha é mais larga que a coluna: com fonte larga passa
+  25–27 px do botão mesmo com o ícone na linha de baixo.
+- Pendências do aluno, Feedback pelo rodapé e Entrada pública (herdados da `main`).
+
 ## Decisões da Expansão 9
 
 1. Caixa de entrada, não painel: linhas finas, o título como o alvo, o status por texto e forma, o começo da mensagem; nenhuma

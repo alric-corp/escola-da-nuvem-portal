@@ -61,14 +61,15 @@ after(async () => {
 });
 
 // control: report (objeto ou função), reportMode ("ok" | "error" | "hold"), focusMode ("ok" | "409" | "hold"), autoSync.
-async function open({ width = 1440, height = 900, text = 1, role = "instructor", data = () => report(), autoSync = true, saved = null } = {}) {
+// email: outra conta (o nome no menu é a parte antes do @).
+async function open({ width = 1440, height = 900, text = 1, role = "instructor", data = () => report(), autoSync = true, saved = null, email: account = null } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date("2026-10-11T15:00:00-03:00"));
   const errors = [], control = { data, reportMode: "ok", focusMode: "ok", reports: 0, focusPosts: [], holds: {} };
   page.on("pageerror", (error) => errors.push(error.message));
   if (text !== 1) { const cdp = await context.newCDPSession(page); await cdp.send("Page.enable"); await cdp.send("Page.setFontSizes", { fontSizes: { standard: Math.round(16 * text), fixed: Math.round(13 * text) } }); }
-  const email = role === "admin" ? "admin@example.test" : role === "student" ? "ana.1@example.test" : "instrutor@example.test";
+  const email = account || (role === "admin" ? "admin@example.test" : role === "student" ? "ana.1@example.test" : "instrutor@example.test");
   await page.addInitScript(({ email, saved }) => {
     localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 }));
     if (saved) localStorage.setItem("avanca.context", JSON.stringify({ owner: email, code: "BRSA0267", view: "overview", ...saved }));
@@ -508,4 +509,56 @@ test("P9: o admin vê o mesmo painel; o aluno não tem .teacher-home", async () 
   await student.page.locator(".student-home").waitFor();
   assert.equal(await student.page.locator(".teacher-home").count(), 0);
   await student.context.close();
+});
+
+// C3.3 (F08): a barra lateral tem largura fixa em px (210 px no tablet, 244 px até 1279 px). Com texto ampliado a conta
+// não cabia numa linha e o Sair saía da barra, por baixo do conteúdo pintado depois dele: o clique no Sair acionava o
+// filtro Crítico (ou outro controle, ou nada). Clique real do mouse do Chromium em cinco pontos do Sair; cada click é
+// registrado na fase de captura (window), antes do listener do app (document). Só o click que chega ao Sair é parado
+// (nunca sai da conta); os outros seguem para o app, para o efeito real aparecer. Também o Espaço no Sair, uma conta de
+// nome longo e o admin ("Administrador e instrutor") com texto normal: no tablet o Sair passava 22 e 6 px da área da
+// barra; no desktop a conta continua numa linha, como antes (o nome encolhe antes de a linha quebrar).
+test("P10: o clique no Sair da conta chega ao Sair no tablet e no desktop estreito com texto ampliado; o filtro Crítico não é acionado", async () => {
+  for (const o of [{ width: 768, height: 1024, text: 2 }, { width: 1024, height: 768, text: 1.75 }, { width: 1279, height: 800, text: 2 },
+    { width: 800, height: 1024, text: 2.5 }, { width: 1024, height: 768, email: "allysson.roberto.borges.lima@example.test" },
+    { width: 1024, height: 768, role: "admin" }, { width: 1280, height: 800, role: "admin", oneLine: true }, { width: 1440, height: 900, role: "admin", oneLine: true }]) {
+    const { context, page, errors } = await open(o);
+    const id = `${o.width}×${o.height}${o.text ? ` texto ${o.text * 100}%` : ""}${o.email ? " nome longo" : ""}${o.role ? ` ${o.role}` : ""}`;
+    await page.evaluate(() => document.querySelector('.sidebar [data-action="logout"]').scrollIntoView({ block: "center" }));
+    await settle(page);
+    const m = await page.evaluate(() => {
+      const sb = document.querySelector(".sidebar"), s = getComputedStyle(sb), b = sb.getBoundingClientRect();
+      const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
+      return { inner: { left: b.left + parseFloat(s.paddingLeft), right: b.right - parseFloat(s.paddingRight) }, sair: box(sb.querySelector('[data-action="logout"]')), avatar: box(sb.querySelector(".account .avatar")),
+        conta: [...sb.querySelectorAll(".account > *, .account strong, .account small")].map((el) => ({ peca: el.getAttribute("class") || el.tagName.toLowerCase(), ...box(el) })) };
+    });
+    const points = [[0.5, 0.5], [0.2, 0.25], [0.8, 0.25], [0.2, 0.75], [0.8, 0.75]].map(([fx, fy]) => [m.sair.left + m.sair.width * fx, m.sair.top + m.sair.height * fy]);
+    const covered = await page.evaluate((points) => points.map(([x, y]) => { const el = document.elementFromPoint(x, y);
+      return el?.closest('[data-action="logout"]') ? null : `${el?.tagName.toLowerCase()}.${el?.getAttribute("class") || ""}`; }).filter(Boolean), points);
+    await page.evaluate(() => {
+      window.__cliques = [];
+      window.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        window.__cliques.push(!b ? e.target.tagName.toLowerCase() : b.dataset.action || (b.dataset.filter ? `filtro ${b.dataset.filter}` : b.textContent.trim().slice(0, 40)));
+        if (b?.dataset.action === "logout") { e.preventDefault(); e.stopImmediatePropagation(); }
+      }, true);
+    });
+    for (const [x, y] of points) { await page.mouse.click(x, y); await settle(page); }
+    const cliques = await page.evaluate(() => window.__cliques);
+    const critico = await page.locator('.tp-overview [data-filter="critical"]').getAttribute("aria-pressed");
+    await page.evaluate(() => { window.__cliques = []; });
+    await page.locator('.sidebar [data-action="logout"]').focus();
+    await page.keyboard.press("Space");
+    const teclado = await page.evaluate(() => window.__cliques);
+    assert.deepEqual(cliques, Array(5).fill("logout"), `${id}: os cinco cliques no Sair foram entregues a: ${cliques.join(", ")}`);
+    assert.equal(critico, "false", `${id}: o filtro Crítico foi acionado`);
+    assert.deepEqual(covered, [], `${id}: pontos do Sair cobertos por ${covered.join(", ")}`);
+    assert.ok(m.sair.width >= 44 && m.sair.height >= 44, `${id}: Sair com área de 44 px`);
+    for (const p of m.conta) assert.ok(p.left >= m.inner.left - 0.5 && p.right <= m.inner.right + 0.5,
+      `${id}: ${p.peca} da conta em ${Math.round(p.left)}–${Math.round(p.right)} px, fora da barra (${Math.round(m.inner.left)}–${Math.round(m.inner.right)} px)`);
+    assert.deepEqual(teclado, ["logout"], `${id}: Espaço no Sair`);
+    if (o.oneLine) assert.ok(m.sair.top < m.avatar.bottom && m.sair.bottom > m.avatar.top, `${id}: com texto normal a conta fica numa linha (iniciais, nome e Sair)`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });

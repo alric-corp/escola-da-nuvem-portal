@@ -71,11 +71,13 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-async function open({ width = 1440, height = 900, data = report } = {}) {
+// text: escala da fonte padrão do navegador (texto a 200% = 32 px, Page.setFontSizes; o protocolo só aceita inteiros).
+async function open({ width = 1440, height = 900, data = report, text = 1 } = {}) {
   const context = await browser.newContext({ viewport: { width, height } });
   const page = await context.newPage();
   const errors = [], external = [], calls = { report: 0 };
   page.on("pageerror", (error) => errors.push(error.message));
+  if (text !== 1) { const cdp = await context.newCDPSession(page); await cdp.send("Page.enable"); await cdp.send("Page.setFontSizes", { fontSizes: { standard: Math.round(16 * text), fixed: Math.round(13 * text) } }); }
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await context.route("**/*", async (route) => {
     const url = new URL(route.request().url());
@@ -351,4 +353,247 @@ test("V10: a turma sai do resumo e continua no contexto de navegação", async (
   assert.match(await page.locator(".topline .location-context").innerText(), /Turma BRSA0267/);
   assert.equal(await page.locator("#cohort").inputValue(), "BRSA0267");
   await context.close();
+});
+
+// C3.3 (I-01): médias do resumo pela geometria real. O Range cobre a área de conteúdo da fonte (maior que a linha com
+// line-height 1, não serve para linhas empilhadas); por isso: texto de cada peça dentro da própria caixa (na horizontal),
+// caixas do rótulo e do número disjuntas, e número com o "%" dentro do recorte dos ancestrais (o resumo tem overflow: hidden).
+const goalsGeometry = (page) => page.evaluate(() => {
+  const rects = (el) => { const out = [], w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.textContent.trim()) continue; const r = document.createRange(); r.selectNodeContents(n); out.push(...[...r.getClientRects()].filter((b) => b.width && b.height)); }
+    return out; };
+  const outside = (rs, b) => Math.max(0, ...rs.map((x) => Math.max(x.right - b.right, b.left - x.left)));
+  const goals = [...document.querySelectorAll(".student-home .summary-goals .goal")];
+  const list = goals.map((g) => {
+    const label = g.querySelector(".goal-label"), value = g.querySelector(":scope > strong"), lb = label.getBoundingClientRect(), vb = value.getBoundingClientRect(), vr = rects(value);
+    let clip = { left: 0, right: innerWidth }, by = "janela";
+    for (let p = value.parentElement; p; p = p.parentElement) {
+      const s = getComputedStyle(p); if (s.overflowX === "visible") continue;
+      const c = p.getBoundingClientRect(), l = c.left + parseFloat(s.borderLeftWidth), r = c.right - parseFloat(s.borderRightWidth);
+      if (l > clip.left || r < clip.right) by = p.getAttribute("class"); clip = { left: Math.max(clip.left, l), right: Math.min(clip.right, r) };
+    }
+    // Área de conteúdo da média (sem o recuo): o número cabe nela, não só no cartão (fontes mais largas que a da CI).
+    const gb = g.getBoundingClientRect(), gs = getComputedStyle(g), content = { left: gb.left + parseFloat(gs.borderLeftWidth) + parseFloat(gs.paddingLeft), right: gb.right - parseFloat(gs.borderRightWidth) - parseFloat(gs.paddingRight) };
+    return { label: label.textContent, value: value.textContent, labelOut: outside(rects(label), lb), valueOut: outside(vr, vb), contentOut: outside(vr, content),
+      boxes: Math.max(0, Math.min(lb.right, vb.right) - Math.max(lb.left, vb.left) - 0.5) * Math.max(0, Math.min(lb.bottom, vb.bottom) - Math.max(lb.top, vb.top) - 0.5),
+      clipped: Math.max(0, ...vr.map((x) => Math.max(x.right - clip.right, clip.left - x.left))), by, beside: vb.top < lb.bottom - 0.5 };
+  });
+  // Todo texto das médias (rótulo, número, referência, situação, nota) dentro da borda do resumo, que corta o que passa.
+  const [a, b] = goals.map((g) => g.getBoundingClientRect()), summary = document.querySelector(".student-home .journey.student-summary");
+  const sb = summary.getBoundingClientRect(), ss = getComputedStyle(summary), edge = { left: sb.left + parseFloat(ss.borderLeftWidth), right: sb.right - parseFloat(ss.borderRightWidth) };
+  const cut = goals.flatMap((g) => rects(g)).map((x) => Math.max(x.right - edge.right, edge.left - x.left)).filter((d) => d > 0.5);
+  return { goals: list, sideBySide: b.top < a.bottom - 0.5, goalsTextCut: cut.length ? Math.max(...cut) : 0 };
+});
+// Tinta: três capturas da mesma média (só fundo, só rótulo, só número; visibility não mexe no layout) e os pixels que o
+// rótulo e o número pintam em comum.
+async function goalInk(page, index) {
+  const clip = await page.evaluate((i) => { const g = document.querySelectorAll(".student-home .summary-goals .goal")[i]; g.scrollIntoView({ block: "center" }); const b = g.getBoundingClientRect();
+    return { x: Math.max(0, b.left), y: Math.max(0, b.top), width: Math.min(innerWidth, b.right) - Math.max(0, b.left), height: Math.min(innerHeight, b.bottom) - Math.max(0, b.top) }; }, index);
+  const shot = async (label, value) => {
+    await page.evaluate(([i, l, v]) => { const g = document.querySelectorAll(".student-home .summary-goals .goal")[i]; g.querySelector(".goal-label").style.visibility = l ? "" : "hidden"; g.querySelector(":scope > strong").style.visibility = v ? "" : "hidden"; }, [index, label, value]);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    return (await page.screenshot({ clip })).toString("base64");
+  };
+  const shots = [await shot(false, false), await shot(true, false), await shot(false, true)];
+  await page.evaluate((i) => { const g = document.querySelectorAll(".student-home .summary-goals .goal")[i]; g.querySelector(".goal-label").style.visibility = ""; g.querySelector(":scope > strong").style.visibility = ""; }, index);
+  return page.evaluate(async (shots) => {
+    const pixels = async (b64) => { const img = new Image(); img.src = "data:image/png;base64," + b64; await img.decode();
+      const c = document.createElement("canvas"); c.width = img.width; c.height = img.height; const ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0); return ctx.getImageData(0, 0, c.width, c.height).data; };
+    const [B, L, V] = await Promise.all(shots.map(pixels));
+    let both = 0;
+    for (let i = 0; i < B.length; i += 4) { const ink = (P) => Math.abs(P[i] - B[i]) + Math.abs(P[i + 1] - B[i + 1]) + Math.abs(P[i + 2] - B[i + 2]) > 60; if (ink(L) && ink(V)) both++; }
+    return both;
+  }, shots);
+}
+
+test("V11: com texto ampliado, rótulo, número e \"%\" das médias aparecem inteiros, sem sobreposição nem recorte (320–1440 px); com texto normal, a mesma composição", async () => {
+  for (const o of [{ width: 320, height: 640, text: 2 }, { width: 320, height: 640, text: 2.5 }, { width: 390, height: 844, text: 2.5 }, { width: 768, height: 1024, text: 2 },
+    { width: 1101, height: 900, text: 2 }, { width: 1280, height: 800, text: 2 }, { width: 1440, height: 900, text: 2 }]) {
+    const { context, page, errors } = await open(o);
+    const id = `${o.width}×${o.height} texto ${o.text * 100}%`;
+    const m = await goalsGeometry(page);
+    assert.equal(m.goals.length, 2, `${id}: duas médias`);
+    for (const [i, g] of m.goals.entries()) {
+      assert.ok(g.labelOut <= 0.5, `${id}: "${g.label}" passa ${g.labelOut.toFixed(1)} px da própria coluna (por baixo do número)`);
+      assert.ok(g.valueOut <= 0.5, `${id}: "${g.value}" passa ${g.valueOut.toFixed(1)} px da própria caixa`);
+      assert.ok(g.boxes === 0, `${id}: rótulo e número de "${g.label}" se sobrepõem`);
+      assert.ok(g.clipped <= 0.5, `${id}: "${g.value}" cortado em ${g.clipped.toFixed(1)} px por ${g.by}`);
+      assert.ok(g.contentOut <= 0.5, `${id}: "${g.value}" passa ${g.contentOut.toFixed(1)} px da área de conteúdo da média`);
+      const ink = await goalInk(page, i);
+      assert.equal(ink, 0, `${id}: ${ink} pixels de tinta em comum entre "${g.label}" e "${g.value}"`);
+    }
+    assert.ok(m.goalsTextCut === 0, `${id}: texto das médias cortado em ${m.goalsTextCut.toFixed(1)} px pela borda do resumo`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Texto normal: no celular o número fica ao lado do rótulo; a partir de 601 px as médias ficam lado a lado (como antes).
+  for (const o of [{ width: 320, height: 640, beside: true }, { width: 390, height: 844, beside: true }, { width: 601, height: 900, side: true }, { width: 768, height: 1024, side: true },
+    { width: 1101, height: 900, side: true }, { width: 1440, height: 900, side: true }]) {
+    const { context, page } = await open(o);
+    const m = await goalsGeometry(page);
+    if (o.beside) assert.ok(m.goals.every((g) => g.beside), `${o.width} px: número ao lado do rótulo com texto normal`);
+    if (o.side) assert.ok(m.sideBySide, `${o.width} px: médias lado a lado com texto normal`);
+    await context.close();
+  }
+});
+
+// C3.3 (I-02): a 1200–1440 px com texto a 200%, a coluna lateral (mínimo de 18rem, com o limite das colunas em px) deixava
+// "Por onde começar" com 0–216 px e os títulos das atividades quebravam letra a letra. Lê as linhas reais de cada palavra
+// dos títulos (Range), em títulos variados (as atividades da turma e uma lista longa): nenhuma palavra partida.
+const brokenTitleWords = (page) => page.evaluate(() => {
+  const out = [];
+  for (const t of document.querySelectorAll(".student-home .activity-card > div > strong")) {
+    const n = [...t.childNodes].find((x) => x.nodeType === 3); if (!n) continue;
+    for (const m of n.data.matchAll(/\S+/g)) {
+      const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+      const lines = new Set([...r.getClientRects()].filter((b) => b.width > 0.5).map((b) => Math.round(b.top))).size;
+      if (lines > 1) out.push(`"${m[0]}" em ${lines} linhas (título com ${Math.round(t.getBoundingClientRect().width)} px)`);
+    }
+  }
+  return out;
+});
+const columnCount = (page) => page.locator(".student-home .student-columns").evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").length);
+
+test("V12: com texto a 200% em 1200–1440 px, nenhum título de atividade é partido; com texto normal as duas colunas começam em 1200 px, como antes", async () => {
+  for (const o of [{ width: 1440, height: 900, text: 2 }, { width: 1280, height: 800, text: 2 }, { width: 1200, height: 900, text: 2 }, { width: 1440, height: 900, text: 2, data: many }]) {
+    const { context, page, errors } = await open(o);
+    const id = `${o.width}×${o.height} texto ${o.text * 100}%${o.data ? " (lista longa)" : ""}`;
+    assert.ok(await page.locator(".student-home .activity-card > div > strong").count() > 0, `${id}: atividades em "Por onde começar"`);
+    assert.deepEqual(await brokenTitleWords(page), [], `${id}: palavras partidas nos títulos`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 0, `${id}: sem rolagem lateral`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Limite das colunas: com texto normal, 1200 px (o mesmo de antes); a 200%, 2400 px (segue o tamanho do texto).
+  for (const [width, height, text, cols] of [[1199, 900, 1, 1], [1200, 900, 1, 2], [1440, 900, 1, 2], [2399, 1200, 2, 1], [2400, 1200, 2, 2]]) {
+    const { context, page } = await open({ width, height, text });
+    assert.equal(await columnCount(page), cols, `${width} px, texto ${text * 100}%: ${cols} coluna(s)`);
+    await context.close();
+  }
+});
+
+// C3.3-A.1: cartão "Seu resumo". Com texto a 200% de 1101 a 1440 px, o resumo em duas colunas (limite em px) deixava a
+// coluna da esquerda com 138–212 px úteis: o texto e o ícone de "Ver minhas atividades" saíam do botão e "3 para revisar"
+// (nowrap) passava da coluna; a 320 px com texto a 200% e fonte larga, "3 para revisar" também passava. Abaixo de 1280 px
+// o ícone do botão encolhia com o texto que quebra (até 0 px: some). Geometria pelo texto real (Range) contra a caixa do
+// botão, a de cada contagem e a área útil da coluna (sem o recuo); o ícone inteiro tem largura igual à altura.
+const summaryColumn = (page) => page.evaluate(() => {
+  const ov = document.querySelector(".student-home .summary-overview"), s = getComputedStyle(ov), b = ov.getBoundingClientRect();
+  const col = { left: b.left + parseFloat(s.paddingLeft), right: b.right - parseFloat(s.paddingRight) };
+  const rects = (el) => { const out = [], w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) { if (!n.data.trim()) continue; const r = document.createRange(); r.selectNodeContents(n); out.push(...[...r.getClientRects()].filter((x) => x.width > 0.5)); }
+    return out; };
+  const outside = (rs, box) => Math.max(0, ...rs.map((x) => Math.max(x.right - box.right, box.left - x.left)));
+  const btn = ov.querySelector(".button"), bb = btn.getBoundingClientRect(), ib = btn.querySelector("svg").getBoundingClientRect();
+  return { columns: getComputedStyle(document.querySelector(".student-home .journey.student-summary")).gridTemplateColumns.split(" ").length,
+    buttonText: outside(rects(btn), bb), buttonIcon: outside([ib], bb), icon: [ib.width, ib.height], buttonColumn: Math.max(0, bb.right - col.right, col.left - bb.left),
+    counts: [...ov.querySelectorAll(".summary-counts li")].map((li) => ({ text: li.textContent.trim(), own: outside(rects(li), li.getBoundingClientRect()), column: outside(rects(li), col) })) };
+});
+
+test("V13: no cartão \"Seu resumo\", texto e ícone do botão (inteiro, sem ser espremido) e as contagens ficam dentro da coluna de 320 a 1440 px com texto a 200%; com texto normal, duas colunas a partir de 1101 px, como antes", async () => {
+  for (const [width, height] of [[320, 640], [390, 844], [601, 900], [768, 1024], [1024, 768], [1100, 900], [1101, 900], [1200, 900], [1280, 800], [1440, 900]]) {
+    const { context, page, errors } = await open({ width, height, text: 2 });
+    const id = `${width}×${height} texto 200%`, m = await summaryColumn(page);
+    assert.ok(m.buttonText <= 0.5, `${id}: texto de "Ver minhas atividades" passa ${m.buttonText.toFixed(1)} px do botão`);
+    assert.ok(m.buttonIcon <= 0.5, `${id}: ícone de "Ver minhas atividades" passa ${m.buttonIcon.toFixed(1)} px do botão`);
+    assert.ok(Math.abs(m.icon[0] - m.icon[1]) <= 0.5, `${id}: ícone de "Ver minhas atividades" espremido (${m.icon.map((x) => x.toFixed(1)).join("×")} px)`);
+    assert.ok(m.buttonColumn <= 0.5, `${id}: o botão passa ${m.buttonColumn.toFixed(1)} px da coluna`);
+    assert.ok(m.counts.length > 0, `${id}: contagens no resumo`);
+    for (const c of m.counts) {
+      assert.ok(c.own <= 0.5, `${id}: "${c.text}" passa ${c.own.toFixed(1)} px da própria caixa`);
+      assert.ok(c.column <= 0.5, `${id}: "${c.text}" passa ${c.column.toFixed(1)} px da coluna`);
+    }
+    if (width === 1280) {
+      // Onde o texto saía do botão: o centro dele é o botão, e clique e Enter levam a "Minhas atividades".
+      const center = await page.locator(".student-home .summary-overview .button").evaluate((el) => { el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+      assert.ok(await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".summary-overview .button"), center), `${id}: o centro do botão é o botão`);
+      await page.mouse.click(...center);
+      await page.getByRole("heading", { name: "Minhas atividades", level: 1 }).waitFor();
+      await page.getByRole("button", { name: "Meu desempenho", exact: true }).click();
+      await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
+      await page.locator(".student-home .summary-overview .button").focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("heading", { name: "Minhas atividades", level: 1 }).waitFor();
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Texto normal: o resumo fica em duas colunas a partir de 1101 px e em uma até 1100 px, como antes; ícone inteiro.
+  for (const [width, cols] of [[1100, 1], [1101, 2], [1280, 2], [1440, 2]]) {
+    const { context, page } = await open({ width, height: 900 });
+    const m = await summaryColumn(page);
+    assert.equal(m.columns, cols, `${width} px com texto normal: ${cols} coluna(s) no resumo`);
+    assert.ok(Math.abs(m.icon[0] - m.icon[1]) <= 0.5, `${width} px com texto normal: ícone de "Ver minhas atividades" espremido (${m.icon.map((x) => x.toFixed(1)).join("×")} px)`);
+    await context.close();
+  }
+});
+
+// C3.3-A.2: botão do resumo no reflow extremo. A 320 px com texto a 250%, a palavra mais longa ("atividades"), o intervalo
+// e o ícone não cabem numa linha da coluna (208 px): com fonte larga, texto e ícone passavam 13–15 px do botão. Medido com
+// a fonte do sistema e com uma fonte larga em toda plataforma (Verdana; no Linux, DejaVu Sans), como a referência da C3.
+const WIDE_FONT = ':root { --font-ui: Verdana, "DejaVu Sans", sans-serif; }';
+const summaryButton = (page) => page.evaluate(() => {
+  const ov = document.querySelector(".student-home .summary-overview"), os = getComputedStyle(ov), ob = ov.getBoundingClientRect();
+  const col = { left: ob.left + parseFloat(os.paddingLeft), right: ob.right - parseFloat(os.paddingRight) };
+  const btn = ov.querySelector(".button"); btn.scrollIntoView({ block: "center" });
+  const b = btn.getBoundingClientRect(), svg = btn.querySelector("svg"), s = svg.getBoundingClientRect();
+  const words = [], walker = document.createTreeWalker(btn, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) for (const m of n.data.matchAll(/\S+/g)) {
+    const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+    const rects = [...r.getClientRects()].filter((x) => x.width > 0.5);
+    words.push({ word: m[0], rects, lines: new Set(rects.map((x) => Math.round(x.top))).size });
+  }
+  const frags = words.flatMap((w) => w.rects);
+  const outside = (rs, box) => Math.max(0, ...rs.map((x) => Math.max(x.right - box.right, box.left - x.left, x.bottom - box.bottom, box.top - x.top)));
+  const text = { top: Math.min(...frags.map((x) => x.top)), bottom: Math.max(...frags.map((x) => x.bottom)), right: Math.max(...frags.map((x) => x.right)) };
+  const center = (x) => [(x.left + x.right) / 2, (x.top + x.bottom) / 2];
+  const hits = [center(b), ...frags.map(center), center(s)].map(([x, y]) => !!document.elementFromPoint(x, y)?.closest(".summary-overview .button"));
+  btn.focus();
+  const st = getComputedStyle(btn), ring = (parseFloat(st.outlineOffset) || 0) + (parseFloat(st.outlineWidth) || 0);
+  let clip = { left: 0, right: innerWidth };
+  for (let p = btn.parentElement; p && p !== document.body; p = p.parentElement) { const ps = getComputedStyle(p); if (ps.overflowX !== "visible") { const c = p.getBoundingClientRect(); clip = { left: Math.max(clip.left, c.left), right: Math.min(clip.right, c.right) }; } }
+  return {
+    textOut: outside(frags, b), split: words.filter((w) => w.lines > 1).map((w) => w.word), label: words.map((w) => w.word).join(" "),
+    fontRatio: parseFloat(st.fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize),
+    icon: [s.width, s.height], iconOut: outside([s], b), iconBeside: s.left >= text.right - 0.5 && (s.top + s.bottom) / 2 >= text.top && (s.top + s.bottom) / 2 <= text.bottom,
+    buttonOut: Math.max(0, b.right - col.right, col.left - b.left, b.right - innerWidth, -b.left), size: [b.width, b.height], hits,
+    focus: { visible: btn.matches(":focus-visible"), outline: st.outlineStyle !== "none" && parseFloat(st.outlineWidth) > 0, clipped: Math.max(0, clip.left - (b.left - ring), b.right + ring - clip.right) },
+    counts: [...ov.querySelectorAll(".summary-counts li")].map((li) => { const rs = [...(() => { const r = document.createRange(); r.selectNodeContents(li); return r.getClientRects(); })()].filter((x) => x.width > 0.5); return { text: li.textContent.trim(), out: Math.max(0, ...rs.map((x) => Math.max(x.right - col.right, col.left - x.left))) }; }),
+  };
+});
+
+test("V14: no reflow extremo (320 px a 250%, fonte do sistema e fonte larga), o botão \"Ver minhas atividades\" mantém rótulo inteiro, ícone inteiro, conteúdo dentro do alvo e foco visível; com texto normal e a 200%, a mesma composição (ícone ao lado do rótulo)", async () => {
+  // [largura, altura, escala do texto, o ícone tem de ficar ao lado do rótulo?] — a 200% ele cabe ao lado em qualquer fonte medida.
+  const cases = [[320, 640, 2.5, false], [390, 844, 2.5, false], [320, 640, 2, true], [390, 844, 2, true], [1101, 900, 1, true], [1280, 800, 1, true], [1440, 900, 1, true], [320, 640, 1, true]];
+  for (const font of [null, WIDE_FONT]) for (const [width, height, text, beside] of cases) {
+    const { context, page, errors } = await open({ width, height, text });
+    if (font) await page.addStyleTag({ content: font });
+    await page.evaluate(() => document.fonts.ready);
+    const id = `${width}×${height} texto ${text * 100}%${font ? " fonte larga" : ""}`, m = await summaryButton(page);
+    assert.equal(m.label, "Ver minhas atividades", `${id}: rótulo inteiro`);
+    assert.ok(m.textOut <= 0.5, `${id}: texto de "Ver minhas atividades" passa ${m.textOut.toFixed(1)} px do botão`);
+    assert.deepEqual(m.split, [], `${id}: palavra partida no botão`);
+    assert.ok(Math.abs(m.fontRatio - 0.875) <= 0.001, `${id}: fonte do botão reduzida (${m.fontRatio.toFixed(3)}rem)`);
+    assert.ok(m.icon[0] > 0 && m.icon[1] > 0 && Math.abs(m.icon[0] - m.icon[1]) <= 0.5, `${id}: ícone ausente ou espremido (${m.icon.map((x) => x.toFixed(1)).join("×")} px)`);
+    assert.ok(m.iconOut <= 0.5, `${id}: ícone passa ${m.iconOut.toFixed(1)} px do botão`);
+    assert.ok(m.buttonOut <= 0.5, `${id}: o botão passa ${m.buttonOut.toFixed(1)} px da coluna ou da janela`);
+    assert.ok(m.size[0] >= 44 && m.size[1] >= 44, `${id}: alvo de ${m.size.map((x) => x.toFixed(0)).join("×")} px`);
+    assert.ok(m.hits.every(Boolean), `${id}: ponto do rótulo ou do ícone que não é o botão`);
+    assert.ok(m.focus.visible && m.focus.outline && m.focus.clipped <= 0.5, `${id}: contorno de foco ${JSON.stringify(m.focus)}`);
+    if (beside) assert.ok(m.iconBeside, `${id}: ícone fora da linha do rótulo (composição mudou)`);
+    for (const c of m.counts) assert.ok(c.out <= 0.5, `${id}: "${c.text}" passa ${c.out.toFixed(1)} px da coluna`);
+    assert.deepEqual(errors, []);
+    if (width === 320 && text === 2.5 && font) {
+      // Onde o texto saía do botão: clique real no centro e Enter levam a "Minhas atividades".
+      const center = await page.locator(".student-home .summary-overview .button").evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+      await page.mouse.click(...center);
+      await page.getByRole("heading", { name: "Minhas atividades", level: 1 }).waitFor();
+      await page.getByRole("button", { name: "Meu desempenho", exact: true }).click();
+      await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
+      await page.locator(".student-home .summary-overview .button").focus();
+      await page.keyboard.press("Enter");
+      await page.getByRole("heading", { name: "Minhas atividades", level: 1 }).waitFor();
+    }
+    await context.close();
+  }
 });

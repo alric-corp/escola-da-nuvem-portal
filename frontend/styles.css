@@ -2025,6 +2025,15 @@ details ul, .onboarding ol { padding-left: 24px; }
   text-align: left;
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
+/* C3.3-A.1: o ícone não encolhe (como em .tp-actions do painel do instrutor). Abaixo de 1280 px o svg encolhia junto com
+   o texto que quebra: 18 px a 1101 px com fonte larga e até 0 px (some) a 320 px com texto a 200%. */
+.student-home .journey .button svg { flex: none; }
+/* C3.3-A.2: reflow extremo. Com a janela até 9em (360 px com texto a 250%; 144 px com texto normal, que não existe), a
+   palavra mais longa ("atividades"), o intervalo e o ícone não cabem numa linha da coluna: a 320 px com 250% e fonte
+   larga, texto e ícone passavam 13–15 px do botão. Só nessa condição o ícone pode descer para a linha seguinte. */
+@media (max-width: 9em) {
+  .student-home .journey .button { flex-wrap: wrap; }
+}
 
 /* Cobertura: quantas atividades liberadas já têm nota. Texto visível + régua de segmentos (cheio = com nota, só
    contorno = sem nota), em cinza neutro: não é série (KC/LAB), nem situação, nem ação. Sem porcentagem, para não
@@ -2048,7 +2057,10 @@ details ul, .onboarding ol { padding-left: 24px; }
   color: var(--color-text-muted);
   font-size: 0.875rem;
 }
-.student-home .summary-counts li { display: inline-flex; align-items: baseline; gap: 0.45em; white-space: nowrap; }
+/* C3.3-A.1: sem nowrap. Os itens continuam passando inteiros para a linha seguinte (a lista quebra pelo tamanho natural
+   de cada item); só quando um item sozinho não cabe na coluna (320 px com texto a 200%, fonte larga) o texto dele quebra
+   entre palavras, em vez de passar da coluna. */
+.student-home .summary-counts li { display: inline-flex; align-items: baseline; gap: 0.45em; }
 
 .student-home .summary-goals {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2130,9 +2142,12 @@ details ul, .onboarding ol { padding-left: 24px; }
   border-top: 1px solid var(--color-line-soft);
 }
 .student-home .student-summary .grading-help { margin: 0; }
-/* Conteúdo: o que fazer agora à esquerda; o que mudou e a evolução, mais silenciosos, ao lado no desktop. */
+/* Conteúdo: o que fazer agora à esquerda; o que mudou e a evolução, mais silenciosos, ao lado no desktop.
+   C3.3 (I-02): o limite é em em (segue o tamanho de fonte do navegador): 1200 px com texto normal, 2400 px a 200%. Em
+   px, com texto ampliado a coluna lateral (mínimo de 18rem) deixava "Por onde começar" com 0–216 px e os títulos das
+   atividades quebravam letra a letra; agora as colunas empilham, como no tablet. */
 .student-home .student-columns { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); align-items: start; }
-@media (min-width: 1200px) {
+@media (min-width: 75em) {
   .student-home .student-columns { grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 1fr); gap: var(--space-7); }
 }
 .student-home .student-columns .panel { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; }
@@ -2189,7 +2204,11 @@ details ul, .onboarding ol { padding-left: 24px; }
 .student-home .summary-sketch .summary-text i:nth-child(3) { width: 14rem; }
 .student-home .summary-sketch .goal i:nth-child(2) { width: 6rem; height: 2.25rem; }
 
-@media (max-width: 1100px) {
+/* C3.3-A.1: o resumo só fica em duas colunas com a mesma largura relativa ao texto que tem com texto normal (limite em
+   em: 1100 px com texto normal, 2200 px a 200%). Em px, com texto a 200% de 1101 a 1440 px a coluna "Seu resumo" ficava
+   com 138–212 px úteis: o texto e o ícone de "Ver minhas atividades" saíam do botão e "3 para revisar" invadia as
+   médias. Abaixo do limite, a mesma composição do tablet (resumo acima das médias). */
+@media (max-width: 68.75em) {
   .student-home .journey.student-summary { grid-template-columns: minmax(0, 1fr); }
   .student-home .summary-goals { border-top: 1px solid var(--color-line-soft); border-left: 0; }
 }
@@ -2222,6 +2241,26 @@ details ul, .onboarding ol { padding-left: 24px; }
   .student-home .goal > :not(.goal-label, strong) { grid-column: 1 / -1; }
   .student-home .goal > strong { margin: 0; font-size: 1.75rem; }
   .student-home .goal-bar { margin: var(--space-3) 0 var(--space-2); }
+}
+/* C3.3 (I-01): as médias acompanham a largura real delas (container query em rem, que segue o texto), não a da janela.
+   Lado a lado, cada média precisa do número de 2,25rem mais o recuo: com texto a 200% o número passava da coluna e o
+   resumo (overflow: hidden) cortava o "%" (768, 1101, 1280 e 1440 px). Abaixo de 24rem elas empilham (com texto normal
+   a área das médias tem 31rem ou mais e nada muda). No celular, rótulo e número dividem uma linha: abaixo de 17rem
+   (320 px tem 18rem com texto normal) o número desce para baixo do rótulo, em vez de a coluna do rótulo ir a 0 px e as
+   palavras passarem por baixo do número. */
+.student-home .summary-goals { container: metas / inline-size; }
+@container metas (max-width: 24rem) {
+  .student-home .goal { grid-column: 1 / -1; }
+  .student-home .goal + .goal { border-top: 1px solid var(--color-line-soft); border-left: 0; }
+}
+@container metas (max-width: 17rem) {
+  .student-home .goal { grid-template-columns: minmax(0, 1fr); }
+  .student-home .goal > strong { justify-self: start; }
+}
+/* No limite (320 px com texto a 250%), o número sozinho pode ser mais largo que a média com o recuo (fontes largas):
+   o recuo lateral cede antes do número, como nos atalhos do Painel (C3, mesma faixa de 8,5rem). */
+@container metas (max-width: 8.5rem) {
+  .student-home .goal { padding-inline: var(--space-1); }
 }
 
 /* =========================================================
@@ -2305,7 +2344,14 @@ details ul, .onboarding ol { padding-left: 24px; }
 .support-card svg { display: none; }
 .support-card strong { color: var(--color-text); font-size: 0.8125rem; font-weight: 600; }
 .support-card p { margin-top: var(--space-1); color: var(--color-text-muted); font-size: 0.75rem; line-height: 1.5; }
-.account { gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-line-soft); }
+/* C3.3 (F08): a barra lateral tem largura fixa em px (210 px no tablet, 244 px até 1279 px), mas iniciais, nome e Sair
+   crescem com o texto. Sem quebra, com texto a partir de 175% o Sair passava para fora da barra, sobre o conteúdo
+   pintado depois dele, que recebia o clique (no Painel, o filtro Crítico). Quando não cabem numa linha, nome e Sair
+   descem para as linhas seguintes, na ordem do DOM e dentro da barra. O bloco do nome parte de 0 e cresce até a própria
+   largura: a quebra só acontece quando nem o nome no mínimo cabe (antes, o nome encolhia e a conta ficava numa linha;
+   com texto normal continua assim, inclusive com o papel longo do admin). */
+.account { flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--color-line-soft); }
+.account > div { flex: 1 1 0; max-width: max-content; }
 .avatar { width: 2.25rem; height: 2.25rem; flex: none; border: 1px solid var(--color-line); background: none; color: var(--color-text); font-family: var(--font-code); font-size: 0.75rem; }
 .account strong { color: var(--color-text); font-size: 0.8125rem; }
 .account small { color: var(--color-text-muted); font-size: 0.75rem; }
