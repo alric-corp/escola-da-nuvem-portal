@@ -131,7 +131,7 @@ try {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.getByRole("button",{name:"Voltar ao painel",exact:true}).click();
   await page.getByRole("heading",{name:"Painel da BRSA0267",exact:true}).waitFor();
-  await page.locator(".focus-editor summary").click();
+  // Expansão 4: o Foco da turma fica aberto no painel; a confirmação aparece na própria seção.
   assert.equal(await page.locator(".focus-list li").count(),3);
   await page.getByRole("button",{name:"Salvar foco da turma",exact:true}).click();
   await page.getByText("Foco da BRSA0267 atualizado.",{exact:true}).waitFor();

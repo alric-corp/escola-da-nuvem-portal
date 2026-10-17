@@ -159,18 +159,21 @@ try {
   await page.getByRole("button", { name: /Ver como instrutor/ }).click();
   await page.getByRole("heading", { name: "Desempenho dos alunos" }).waitFor();
   assert.equal(await page.locator("tbody tr").count(), 6);
+  // Atalhos de filtro da Situação da turma (Expansão 4; antes, cartões .metric), com o de atividades sem nota.
   assert.deepEqual(
-    await page.locator(".metrics .metric > span").allTextContents(),
-    ["Alunos na publicação", "Médias na referência", "Atenção", "Crítico", "Ainda não entraram"],
+    await page.locator(".teacher-home .tp-filter > span").allTextContents(),
+    ["Alunos na publicação", "Médias na referência", "Atenção", "Crítico", "Com atividades sem nota", "Ainda não entraram"],
   );
   assert.deepEqual(
     await page.locator("#status-filter option").allTextContents(),
     ["Todos os status", "Sem e-mail no Canvas", "Com atividades sem nota", "Ainda não entraram no portal", "Médias na referência", "Atenção", "Crítico"],
   );
   assert.deepEqual(
-    await page.locator(".metrics .metric > strong").allTextContents(),
-    ["6", "2", "2", "1", "2"],
+    await page.locator(".teacher-home .tp-filter > strong").allTextContents(),
+    ["6", "2", "2", "1", "3", "2"],
   );
+  // O graduado não entra nas três situações e é dito com palavras.
+  assert.equal(await page.locator(".tp-others").textContent(), "Fora dessas situações: 1 graduado.");
 
   await page.screenshot({
     path: `${previewDir}/instrutor.png`,
@@ -205,7 +208,7 @@ try {
     });
   }
   await page.setViewportSize({ width: 1440, height: 1100 });
-  await page.getByLabel("Filtrar status").selectOption("ok");
+  await page.getByLabel("Filtrar", { exact: true }).selectOption("ok");
   assert.equal(await page.locator("tbody tr").count(), 2);
   await page
     .getByRole("button", { name: "Atualizar notas", exact: true })
@@ -215,9 +218,10 @@ try {
   await page.getByRole("button", { name: /Ver como aluno/ }).click();
   for (const width of [1920, 2560, 3840]) {
     await page.setViewportSize({ width, height: 1440 });
+    // O indicador de cobertura (substituiu o anel no piloto visual) não transborda em telas largas.
     assert.ok(
       await page
-        .locator(".ring > div")
+        .locator(".student-summary .coverage")
         .evaluate((el) => el.scrollWidth <= el.clientWidth),
     );
     assert.ok(

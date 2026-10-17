@@ -39,8 +39,9 @@ const metrics = (html) => [...html.matchAll(/<article class="metric[^"]*"><span>
   .map(([, label, value, caption]) => ({ label, value, caption }));
 const options = (html, id) => [...((html.match(new RegExp(`<select id="${id}"[^>]*>(.*?)</select>`)) || ["", ""])[1])
   .matchAll(/<option value="([^"]*)"[^>]*>([^<]*)<\/option>/g)].map(([, value, label]) => [value, label]);
-const teacherRows = (html) => [...html.matchAll(/<tr><td class="cell-name">([\s\S]*?)<\/tr>/g)].map(([, row]) => ({
-  name: row.match(/<strong>([^<]*)<\/strong>/)[1], withdrawnBadge: />Desistente</.test(row), status: (row.match(/<td class="cell-status"><span class="badge ([^"]*)"/) || [])[1],
+// Linha do painel (Expansão 4): nome no cabeçalho da linha, "Desistente" junto do nome, situação por texto e forma.
+const teacherRows = (html) => [...html.matchAll(/<tr class="tp-row"[^>]*>([\s\S]*?)<\/tr>/g)].map(([, row]) => ({
+  name: row.match(/<span class="tp-student">([^<]*)<\/span>/)[1], withdrawnBadge: />Desistente</.test(row), status: (row.match(/<span class="tp-state is-([^"]*)"/) || [])[1],
   details: /data-student-pending=/.test(row) }));
 const classRows = (html) => [...html.matchAll(/<tr><th scope="row">([\s\S]*?)<\/tr>/g)].map(([, row]) => ({
   name: row.match(/^([^<]*)/)[1].trim(), withdrawnBadge: />Desistente</.test(row), status: (row.match(/<span class="badge ([^"]*)">[^<]*<\/span><\/td>$/) || [])[1] }));
@@ -58,15 +59,16 @@ const report = (students) => ({ students, publication: { id: "p1", publishedAt: 
 const page = (students, values = {}) => withState({ report: report(students), ...values }, () => teacherPage());
 const visible = (students, values = {}) => withState({ report: report(students), ...values }, () => filteredStudents().map((r) => r.name));
 
-// A. Sem nenhuma marca, o painel é o de antes: mesmos cartões, valores, legendas, filtros, ordenação e nenhuma menção
-// a desistente.
+// A. Sem nenhuma marca, o painel é o de antes: mesmos atalhos de filtro (cartões até a Expansão 4, que acrescentou o de
+// atividades sem nota, contado pela mesma regra do filtro), valores, legendas, filtros, ordenação e nenhuma menção a desistente.
 test("A: zero desistentes mantém cartões, filtros, tabela e ordenação atuais", () => {
   const html = page(rowsWith());
   assert.deepEqual(cards(html), [
     { filter: "all", label: "Alunos na publicação", value: "6", caption: "Ver todos os alunos" },
-    { filter: "ok", label: "Médias na referência", value: "2", caption: "KCs ≥ 70% e Labs ≥ 95%" },
+    { filter: "ok", label: "Médias na referência", value: "2", caption: "KC ≥ 70% e LAB ≥ 95%" },
     { filter: "attention", label: "Atenção", value: "1", caption: "Uma média abaixo da referência" },
     { filter: "critical", label: "Crítico", value: "2", caption: "As duas médias abaixo da referência" },
+    { filter: "pending", label: "Com atividades sem nota", value: "4", caption: "Ao menos uma atividade liberada sem nota" },
     { filter: "no-portal", label: "Ainda não entraram", value: "2", caption: "No portal: sem conta ou com e-mail diferente do Canvas" },
   ]);
   assert.deepEqual(options(html, "status-filter"), [["all", "Todos os status"], ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"],
@@ -92,7 +94,7 @@ test("B: com desistentes, o primeiro cartão vira Alunos ativos, com legenda sin
 // C e D. Os cartões acadêmicos e "Ainda não entraram" usam só ativos; critérios e referências não mudam.
 test("C/D: cartões acadêmicos e Ainda não entraram excluem desistentes", () => {
   const values = Object.fromEntries(cards(page(rowsWith(["4", "5"]))).map((c) => [c.filter, c.value]));
-  assert.deepEqual(values, { active: "4", ok: "1", attention: "1", critical: "1", "no-portal": "1" });
+  assert.deepEqual(values, { active: "4", ok: "1", attention: "1", critical: "1", pending: "3", "no-portal": "1" });
   // Alice (desistente, portalLinked=false) não entra em Ainda não entraram; Bruno (ativo, false) entra.
   assert.equal(cards(page(rowsWith(["4"]))).find((c) => c.filter === "no-portal").value, "1");
   assert.equal(cards(page(rowsWith(["2"]))).find((c) => c.filter === "no-portal").value, "1");
@@ -181,11 +183,12 @@ test("J: skip withdrawn vira Desistente na prévia e no resultado do lote", () =
     recipients: [{ id: "1", name: "Ana Ativa", pending: 1, skip: null }, { id: "4", name: "Alice Saiu", pending: 4, skip: "withdrawn" },
       { id: "3", name: "Carla Crítica", pending: 3, skip: "no-email" }] };
   const html = withState({ batchPreview: preview, batchError: "", batchResults: null }, () => batchPage());
-  assert.match(strip(html), /Alice Saiu 4 Desistente/);
-  assert.match(strip(html), /Carla Crítica 3 Sem e-mail no Canvas/);
+  // Expansão 7: quem fica de fora aparece agrupado por motivo, com o nome e quantas atividades sem nota.
+  assert.match(strip(html), /Desistente · 1 Alice Saiu 4 sem nota/);
+  assert.match(strip(html), /Sem e-mail no Canvas · 1 Carla Crítica 3 sem nota/);
   const results = withState({ batchPreview: preview, batchError: "", batchResults: [{ id: "1", name: "Ana Ativa", status: "sent" },
     { id: "4", name: "Alice Saiu", status: "skipped", reason: "withdrawn" }] }, () => batchPage());
-  assert.match(strip(results), /Alice Saiu Pulado · Desistente/);
+  assert.match(strip(results), /Ficaram de fora · 1 Desistente · 1 Alice Saiu/);
   for (const out of [html, results]) assert.doesNotMatch(strip(out), /withdrawn/);
 });
 
@@ -221,7 +224,7 @@ test("K: o envio leva só os IDs aprovados na prévia, nunca os selecionados ori
   const preview = batch([recipient("1"), recipient("2", "no-email"), recipient("3"), recipient("4", "already-sent")]);
   const { calls, confirms } = await sendWith(preview, { selected: ["1", "2", "3", "4"] });
   assert.deepEqual(calls, [{ path: "/cohorts/BRSA0267/send-reminders", body: { studentIds: ["1", "3"], expectedPublicationId: "p1" } }]);
-  assert.deepEqual(confirms, ["Enviar lembrete para 2 alunos?"]);
+  assert.deepEqual(confirms, ["Enviar lembrete para 2 alunos da BRSA0267?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota, enviado de i@example.test. O envio começa agora e não pode ser desfeito.\n\n2 alunos selecionados ficam de fora; os motivos estão na lista."]);
 });
 
 // L. Prévia sem aprovados: nenhuma confirmação e nenhuma requisição; a tela não oferece o botão de envio.
@@ -241,11 +244,12 @@ test("M: prévia mista envia exatamente os 6 elegíveis, na ordem da prévia, e 
   const preview = batch(ids.map((id) => recipient(id, skips[id] || null)));
   const { calls, confirms } = await sendWith(preview, { selected: ids });
   assert.deepEqual(calls.map((c) => c.body.studentIds), [["10", "1", "3", "4", "6", "8"]]);
-  assert.deepEqual(confirms, ["Enviar lembrete para 6 alunos?"]);
+  assert.deepEqual(confirms, ["Enviar lembrete para 6 alunos da BRSA0267?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota, enviado de i@example.test. O envio começa agora e não pode ser desfeito.\n\n4 alunos selecionados ficam de fora; os motivos estão na lista."]);
   const html = withState({ batchPreview: preview, batchError: "", batchResults: null }, () => batchPage());
   assert.match(strip(html), /6 de 10 alunos vão receber/);
   assert.match(html, />Enviar para 6 alunos</);
-  assert.equal((strip(html).match(/Desistente/g) || []).length, 2);
+  // Os 2 desistentes ficam no grupo deles (um título com a contagem e os dois nomes).
+  assert.match(strip(html), /Desistente · 2 Bruno Atenção 1 sem nota Caio Saiu 1 sem nota/);
 });
 
 // N. Desistente na prévia e reativado antes do envio: o frontend não amplia o lote (vale para qualquer motivo).
@@ -262,8 +266,8 @@ test("O: aprovado que vira desistente depois da prévia segue no envio e o resul
     results: [{ id: "1", name: "Ana Ativa", status: "sent" }, { id: "4", name: "Alice Saiu", status: "skipped", reason: "withdrawn" }] });
   assert.deepEqual(calls.map((c) => c.body.studentIds), [["1", "4"]]);
   const html = withState({ batchPreview: null, batchError: "", batchResults }, () => batchPage());
-  assert.match(strip(html), /1 enviado · 1 pulado · 0 com falha\./);
-  assert.match(strip(html), /Alice Saiu Pulado · Desistente/);
+  assert.match(strip(html), /1 aceito pelo serviço de envio · 1 ficou de fora\./);
+  assert.match(strip(html), /Ficaram de fora · 1 Desistente · 1 Alice Saiu/);
 });
 
 // Prévia nova substitui a anterior: o envio usa os aprovados da prévia exibida, nunca os de uma prévia antiga.

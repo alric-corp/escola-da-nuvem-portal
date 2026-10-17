@@ -190,7 +190,9 @@ try {
       const { context, page, api } = await open("admin", width);
       await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
       await page.locator(".fb-open").first().waitFor();
-      assert.match(await page.locator(".fb-open").first().innerText(), /2 anexos/);
+      // Expansão 9: o botão é o título; a contagem fica na linha do feedback.
+      assert.equal(await page.locator(".afb-row").count(), 1, "a linha do feedback (afb-row)");
+      assert.match(await page.locator(".afb-row").first().innerText(), /2 anexos/);
       await page.locator(".fb-open").first().click();
       await page.locator(".fb-detail .fb-thumb img").nth(1).waitFor();
       const gallery = page.locator(".fb-detail-attachments");
@@ -264,7 +266,8 @@ try {
     // Só cabe mais uma: a quarta é recusada, sem URL local, e as já aceitas continuam.
     await pick(page, addButton(page), [image("c.webp", "image/webp"), image("d.png", "image/png")]);
     await page.getByText("Você pode anexar até 3 imagens por feedback.").waitFor();
-    assert.deepEqual(await noticeTexts(page), [{ error: true, text: "Você pode anexar até 3 imagens por feedback." }]);
+    // Consolidação da Expansão 3: no Feedback do aluno o motivo fica junto das imagens, sem aviso temporário.
+    assert.deepEqual([await page.evaluate(() => document.querySelector(".fb-attachments #fb-files-error")?.textContent ?? null), await noticeTexts(page)], ["Você pode anexar até 3 imagens por feedback.", []]);
     await fileCount(page, 3);
     let files = await snapshot(page, "feedbackFiles");
     let u = await urls(page);

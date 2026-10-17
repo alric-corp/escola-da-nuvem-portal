@@ -2,7 +2,7 @@
 // de erro (busy), o boot e a navegação depois de publicar continuam em app.js.
 import * as api from "../api.js";
 import { state } from "../state.js";
-import { notice } from "../ui.js";
+import { current, date, nextCanvasSync, notice, plural } from "../ui.js";
 
 let render = null;
 
@@ -117,17 +117,34 @@ export async function previewImport() {
   notice("Prévia pronta. Confira as atividades e os resultados.");
 }
 
+// Pergunta da publicação (Expansão 6): a turma, quantos alunos, o arquivo, o que sai de vigor e, com a sincronização
+// ligada, o que a próxima verificação faz. A mesma confirmação de antes, no mesmo ponto (depois das conferências locais e
+// antes do pedido); só o texto diz mais.
+function publishQuestion(preview, code) {
+  const inForce = state.report?.publication;
+  const replaces = inForce ? `A publicação substitui a versão em vigor, de ${date(inForce.publishedAt)}.`
+    : state.report ? "Esta será a primeira publicação da turma." : "A publicação substitui a versão em vigor.";
+  const sync = current()?.autoSync && current()?.canvasCourseId
+    ? [`A atualização automática pelo Canvas continua ligada: se os dados do Canvas forem diferentes desta versão, a próxima verificação (${nextCanvasSync()}) publica uma nova versão.`] : [];
+  return [`Publicar as notas para ${plural(preview.count, "aluno", "alunos")} da ${code}?`, `Arquivo: ${preview.draft?.filename || state.filename}`,
+    `${replaces} Os alunos passam a ver as notas deste arquivo.`, ...sync].join("\n\n");
+}
+
 // true só quando a publicação terminou na turma que continua aberta: aí app.js leva ao painel,
-// recarrega e avisa. Nos outros casos não há mais nada a fazer.
-export async function publish() {
-  const code = state.code, preview = state.preview;
+// recarrega e avisa. Nos outros casos não há mais nada a fazer. started: chamado depois da confirmação e
+// antes do pedido (app.js mostra o andamento).
+export async function publish(started = () => {}) {
+  const code = state.code, preview = state.preview, owner = draftOwner;
   if (!preview || state.dirty) return false;
   if (blockedByIntegrity(preview))
     throw new Error("Publicação bloqueada pelas validações de integridade. Confira os itens críticos da prévia.");
   if (preview.changes?.studentsRemoved.length && !state.acknowledgeRemoved)
     throw new Error("Confira e confirme os alunos removidos antes de publicar.");
-  if (!confirm(`Publicar as notas para ${state.preview.count} alunos da ${state.code}?`)) return false;
+  if (!confirm(publishQuestion(preview, code))) return false;
+  started();
   await api.cohorts.publish(code, { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved });
+  // Outra pessoa entrou na aba durante a publicação: os rascunhos e o arquivo na tela já são dela; nada muda nem é avisado.
+  if (draftOwner !== owner) return false;
   drafts.delete(code);
   if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return false; }
   state.preview = null;

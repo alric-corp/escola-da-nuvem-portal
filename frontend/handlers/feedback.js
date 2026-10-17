@@ -1,6 +1,8 @@
 // Feedback próprio: "Meus feedbacks", envio do formulário, imagens escolhidas (prévias locais),
 // envio dos anexos direto ao S3 e galeria de anexos. O seletor de arquivos, os listeners, o busy,
 // a navegação, a inicialização e "visualizar como aluno" continuam em app.js.
+// `inline` (envio, imagens escolhidas e nova tentativa): a tela mostra o resultado nela mesma (Feedback do aluno), então
+// nada vai para o aviso temporário; os arquivos recusados voltam para quem chamou. Sem ele, os avisos de sempre.
 import * as api from "../api.js";
 import { state } from "../state.js";
 import { notice } from "../ui.js";
@@ -18,10 +20,14 @@ export function configure(options) {
 // não ficam. A geração faz um envio em andamento do usuário anterior parar de escrever no estado do novo.
 let draftOwner = null;
 let userEpoch = 0;
+// Resposta do último envio: "duplicate" quando o backend devolveu um feedback que já existia (o mesmo texto em 10
+// minutos), senão true. state.feedbackSent recebe esse valor quando o envio termina (imagens anexadas ou deixadas de lado).
+let sentAs = true;
 export function resetForUser(email) {
   if (draftOwner === email) return;
   draftOwner = email;
   userEpoch++;
+  sentAs = true;
   releaseFiles(state.feedbackFiles);
   state.feedbackDraft = { type: "", title: "", description: "" };
   state.feedbackOrigin = "";
@@ -65,7 +71,7 @@ export async function loadMine(more = false) {
   }
 }
 
-export async function submit() {
+export async function submit(inline = false) {
   const d = state.feedbackDraft;
   const title = d.title.trim(), description = d.description.trim();
   if (!d.type) throw new Error("Escolha o tipo do feedback.");
@@ -84,13 +90,14 @@ export async function submit() {
     state.feedbackDraft = { type: "", title: "", description: "" };
     // Duplicado (mesmo texto em 10 minutos): as imagens complementam o feedback existente.
     state.feedbackUpload = { feedbackId: result.feedback.id, progress: "", failed: false };
+    sentAs = result.duplicate ? "duplicate" : true;
     const attached = !state.feedbackFiles.length || await sendFormImages();
     if (epoch !== userEpoch) return;
     if (attached) {
       state.feedbackUpload = { feedbackId: null, progress: "", failed: false };
-      state.feedbackSent = true;
-      notice(result.duplicate ? "Este feedback já tinha sido enviado." : "Feedback enviado com sucesso.");
-    } else notice("Feedback enviado, mas não foi possível anexar uma das imagens.", true);
+      state.feedbackSent = sentAs;
+      if (!inline) notice(result.duplicate ? "Este feedback já tinha sido enviado." : "Feedback enviado com sucesso.");
+    } else if (!inline) notice("Feedback enviado, mas não foi possível anexar uma das imagens.", true);
   } finally {
     if (epoch === userEpoch) {
       state.feedbackSending = false;
@@ -102,7 +109,7 @@ export async function submit() {
 
 // Anexos do feedback. Validação local só para avisar cedo: o backend e a política do presigned POST
 // recusam de novo tipo, tamanho e quantidade, e a conclusão confere os bytes do arquivo.
-function pickImages(fileList, room) {
+function pickImages(fileList, room, inline) {
   const accepted = [], problems = new Set();
   for (const file of fileList) {
     if (accepted.length >= room) problems.add(`Você pode anexar até ${ATTACHMENT_SLOTS} imagens por feedback.`);
@@ -110,30 +117,32 @@ function pickImages(fileList, room) {
     else if (!file.size || file.size > ATTACHMENT_MAX_BYTES) problems.add("Cada imagem deve ter até 5 MB.");
     else accepted.push({ id: crypto.randomUUID(), file, name: file.name, size: file.size, type: file.type, previewUrl: URL.createObjectURL(file), status: "ready" });
   }
-  if (problems.size) notice([...problems].join(" "), true);
-  return accepted;
+  const message = [...problems].join(" ");
+  if (message && !inline) notice(message, true);
+  return { accepted, refused: inline ? message : "" };
 }
 
 // Imagens escolhidas no seletor do app.js: "form" guarda para enviar junto com o feedback; o id de
-// um feedback já enviado recebe a imagem na hora.
-export async function addPickedImages(target, files) {
+// um feedback já enviado recebe a imagem na hora. Com `inline`, devolve o motivo dos arquivos recusados ("" sem recusa).
+export async function addPickedImages(target, files, inline = false) {
   if (target === "form") {
-    state.feedbackFiles.push(...pickImages(files, ATTACHMENT_SLOTS - state.feedbackFiles.length));
+    const { accepted, refused } = pickImages(files, ATTACHMENT_SLOTS - state.feedbackFiles.length, inline);
+    state.feedbackFiles.push(...accepted);
     state.feedbackSent = false;
     render();
-    return;
+    return refused;
   }
   // Imagem nova num feedback já enviado (NEW ou IN_REVIEW, menos de 3): envia na hora.
   const item = state.myFeedback.items.find((f) => f.id === target);
-  const entries = pickImages(files, ATTACHMENT_SLOTS - (item?.attachments || 0));
-  if (!entries.length) return;
+  const { accepted: entries, refused } = pickImages(files, ATTACHMENT_SLOTS - (item?.attachments || 0), inline);
+  if (!entries.length) return refused;
   const epoch = userEpoch;
   const card = state.feedbackCardUpload[target] = { busy: true, message: "" };
   try {
     const failed = await uploadImages(target, entries, (text) => { card.message = text; render(); });
     if (epoch !== userEpoch) return;
     card.message = failed ? "Não foi possível anexar a imagem. Tente de novo." : "";
-    if (!failed) notice("Imagem anexada ao feedback.");
+    if (!failed && !inline) notice("Imagem anexada ao feedback.");
   } finally {
     card.busy = false;
     releaseFiles(entries);
@@ -142,6 +151,7 @@ export async function addPickedImages(target, files) {
       if (state.feedbackAttachments[target]?.open) await loadAttachments(target);
     }
   }
+  return refused;
 }
 
 function releaseFiles(files) {
@@ -202,19 +212,19 @@ export function removeFile(id) {
   state.feedbackFiles = state.feedbackFiles.filter((f) => f.id !== id);
   if (state.feedbackUpload.feedbackId && !state.feedbackFiles.some((f) => f.status !== "done")) {
     state.feedbackUpload = { feedbackId: null, progress: "", failed: false };
-    state.feedbackSent = true;
+    state.feedbackSent = sentAs;
   }
   render();
 }
 
-export async function retryUploads() {
+export async function retryUploads(inline = false) {
   state.feedbackSending = true;
   state.feedbackUpload.failed = false;
   render();
   try {
     if (await sendFormImages()) {
-      state.feedbackSent = true;
-      notice("Imagens anexadas ao feedback.");
+      state.feedbackSent = sentAs;
+      if (!inline) notice("Imagens anexadas ao feedback.");
     }
   } finally {
     state.feedbackSending = false;

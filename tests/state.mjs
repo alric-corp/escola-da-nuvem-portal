@@ -78,9 +78,9 @@ test("ui.js observa na hora uma alteração feita via state.js", () => {
 });
 
 test("uma página observa alterações feitas via state.js", () => {
-  assert.doesNotMatch(historyPage(), /history-table/);
+  assert.doesNotMatch(historyPage(), /history-list|1 de setembro de 2026/);
   const report = { history: [{ publishedAt: "2026-09-01T12:00:00Z", total: 50, kc: 40, lab: 60 }] };
-  withState({ report }, () => assert.match(historyPage(), /history-table/));
+  withState({ report }, () => assert.match(historyPage(), /class="history-list"[\s\S]*1 de setembro de 2026/));
   assert.equal(direct.report, null);
 });
 
