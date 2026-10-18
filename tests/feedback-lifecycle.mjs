@@ -103,14 +103,24 @@ test("A: item que sai do filtro depois do 409 volta para a lista", () => scenari
 }));
 
 // ---- B: "Carregar mais" ----
-for (const [name, setup, page, listOf, cursorOf] of [
-  ["admin", () => Object.assign(state.adminFeedback, { items: [item("a"), item("b")], nextCursor: "c1", summary: { NEW: 2, IN_REVIEW: 0, RESOLVED: 0, ARCHIVED: 0 } }),
+// Desde a Expansão 3 o aluno tem a própria lista (pages/feedback.js::studentFeedbackList); instrutor e admin, que chegam pelo
+// rodapé, continuam com a de antes (myFeedbackList). O cenário entra como admin: o caso do aluno troca o papel, e cada caso
+// confere que a tela desenhada é a do papel. Antes, o caso "aluno" desenhava a tela do rodapé, e as mutações da C7.5 da
+// lista do aluno caíam na função do instrutor e do admin.
+const asStudent = () => { state.me = { ...state.me, roles: ["student"] }; state.view = "feedback"; };
+const asFooter = () => { state.view = "feedback"; };
+const screenOf = (html) => html.includes('<div class="student-feedback">') ? "aluno" : "rodapé";
+const twoMine = () => Object.assign(state.myFeedback, { items: [item("a"), item("b")], nextCursor: "c1" });
+for (const [name, enter, setup, page, listOf, cursorOf] of [
+  ["admin", () => {}, () => Object.assign(state.adminFeedback, { items: [item("a"), item("b")], nextCursor: "c1", summary: { NEW: 2, IN_REVIEW: 0, RESOLVED: 0, ARCHIVED: 0 } }),
     adminFeedbackPage, () => state.adminFeedback, () => state.adminFeedback.nextCursor],
-  ["aluno", () => { state.view = "feedback"; Object.assign(state.myFeedback, { items: [item("a"), item("b")], nextCursor: "c1" }); },
-    feedbackPage, () => state.myFeedback, () => state.myFeedback.nextCursor],
+  ["aluno", asStudent, twoMine, feedbackPage, () => state.myFeedback, () => state.myFeedback.nextCursor],
+  ["rodapé", asFooter, twoMine, feedbackPage, () => state.myFeedback, () => state.myFeedback.nextCursor],
 ]) {
   test(`B ${name}: falha em Carregar mais mantém itens visíveis, cursor e oferece nova tentativa sem duplicar`, () => scenario(async ({ calls }) => {
+    enter();
     setup();
+    if (name !== "admin") assert.equal(screenOf(page()), name, `a tela desenhada é a do ${name}`);
     const more = name === "admin" ? () => adminFeedback.load(false) : () => feedback.loadMine(true);
     const first = more();
     assert.match(calls.at(-1).path, /cursor=c1/);
@@ -131,11 +141,12 @@ for (const [name, setup, page, listOf, cursorOf] of [
     assert.equal(listOf().error, "");
   }));
   test(`B ${name}: erro na primeira página continua mostrando só o erro com recomeço`, () => scenario(async ({ calls }) => {
-    if (name === "aluno") state.view = "feedback";
+    enter();
     const first = name === "admin" ? adminFeedback.load(true) : feedback.loadMine(false);
     calls.at(-1).reject(new Error("Falha inicial"));
     await first;
     const html = page();
+    if (name !== "admin") assert.equal(screenOf(html), name, `a tela desenhada é a do ${name}`);
     assert.ok(html.includes("Falha inicial"));
     assert.match(html, name === "admin" ? /data-action="admin-feedback-retry"/ : /data-action="feedback-retry"/);
   }));

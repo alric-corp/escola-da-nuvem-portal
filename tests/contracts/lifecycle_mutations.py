@@ -49,9 +49,13 @@ MUTATIONS = [
     ("urls-sem-revogar-ao-descartar", FEEDBACK, "discardUploads", "  releaseFiles(state.feedbackFiles);\n", ""),
     ("urls-sem-revogar-apos-envio", FEEDBACK, "sendFormImages", "  releaseFiles(state.feedbackFiles);\n", ""),
     ("urls-sem-revogar-no-cartao", FEEDBACK, "addPickedImages", "    releaseFiles(entries);\n", ""),
-    ("pagina-aluno-esconde-itens-no-erro", PAGE_MINE, "myFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
+    # A lista do aluno (studentFeedbackList, Expansão 3) e a do instrutor ou admin pelo rodapé (myFeedbackList) são funções
+    # diferentes: as duas levam as mesmas mutações.
+    ("pagina-aluno-esconde-itens-no-erro", PAGE_MINE, "studentFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
+    ("pagina-rodape-esconde-itens-no-erro", PAGE_MINE, "myFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
     ("pagina-admin-esconde-itens-no-erro", PAGE_ADMIN, "inbox", "if (a.error && !a.items.length)", "if (a.error)"),
-    ("pagina-aluno-retry-recomeca", PAGE_MINE, "myFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
+    ("pagina-aluno-retry-recomeca", PAGE_MINE, "studentFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
+    ("pagina-rodape-retry-recomeca", PAGE_MINE, "myFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
     ("pagina-admin-retry-recomeca", PAGE_ADMIN, "inbox", 'data-action="admin-feedback-more">Tentar novamente', 'data-action="admin-feedback-retry">Tentar novamente'),
     ("rascunho-obsoleto-no-map", IMPORT, "restoreDraft", "  drafts.delete(state.code);\n", ""),
     ("boot-sem-reset-do-feedback", APP, "boot", "    feedbackHandlers.resetForUser(state.me.email);\n", ""),
