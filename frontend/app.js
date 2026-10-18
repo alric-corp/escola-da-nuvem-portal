@@ -319,6 +319,9 @@ async function submitFeedback() {
   try {
     await feedbackHandlers.submit(true);
   } catch (err) {
+    // Sessão encerrada durante o envio (expirada antes de sair, ou 401): a tela já é a entrada pública, e o aviso do portal
+    // diz o motivo (busy), como antes do piloto. Sem isso o erro ficava preso ao rascunho, fora da vista, e nada era dito.
+    if (!state.me) throw err;
     // Preso ao rascunho que saiu: se outra pessoa entrou na aba durante o envio, o de B é outro e o erro de A não aparece.
     feedbackFailure = { draft, ...sendFailure(err) };
     render();
@@ -491,11 +494,14 @@ async function saveFocus() {
 // feita ali trazer o relatório, outra restauração da turma começar ou a sessão mudar; navegar não a encerra. Longe dali, o
 // aviso do portal é curto (a operação, a turma, a dúvida e onde ver) e já anuncia; por isso ela aparece em Publicações sem se
 // anunciar de novo. Vista na hora (Publicações da turma, ou o mesmo relatório, como na E5), é um alerta, sem aviso.
-let restoreOutcome = null;
+// PR #3: o andamento e o resultado ficam guardados por turma. Numa variável só, a restauração de outra turma tomava o lugar
+// da desta: a trava "Restaurando…" sumia e um segundo Restaurar saía. A recusa (nada mudou) não fica guardada como a
+// dúvida: fora de Publicações (no Painel, mesmo da turma e do relatório) vai ao aviso do portal, como o sucesso.
+const restoreOutcomes = new Map();
 const restoreDoubts = new Map();
 function publicationsView() {
-  const o = restoreOutcome;
-  if (o && o.code === state.code && o.session === sessionGeneration) {
+  const o = restoreOutcomes.get(state.code);
+  if (o && o.session === sessionGeneration) {
     if (o.kind === "restoring") return { restoring: o.publicationId };
     if (o.report === state.report) return { [o.kind]: o };
   }
@@ -504,47 +510,55 @@ function publicationsView() {
 }
 async function restorePublication(publicationId) {
   const code = state.code, report = state.report, session = sessionGeneration;
-  if (restoreOutcome?.kind === "restoring" && restoreOutcome.code === code && restoreOutcome.session === session) return;
+  const running = restoreOutcomes.get(code);
+  if (running?.kind === "restoring" && running.session === session) return;
   if (!confirm(restoreQuestion(publicationId))) return;
   restoreDoubts.delete(code);
   const mine = { code, publicationId, kind: "restoring", session };
-  restoreOutcome = mine;
+  restoreOutcomes.set(code, mine);
+  // Só a própria restauração troca ou apaga o que está guardado para a turma.
+  const settle = (next) => {
+    if (restoreOutcomes.get(code) !== mine) return;
+    if (next) restoreOutcomes.set(code, next);
+    else restoreOutcomes.delete(code);
+  };
   ownFocus();
   render();
   restoreFocus("#tpub-restore-status");
   const gone = () => {
     if (session === sessionGeneration) return false;
-    if (restoreOutcome === mine) restoreOutcome = null;
+    settle(null);
     return true;
   };
   try {
     await api.cohorts.restore(code, { publicationId, expectedCurrent: report.publication.id });
   } catch (err) {
     if (gone()) return;
-    const here = restoreOutcome === mine && state.code === code && state.report === report;
+    const sameReport = restoreOutcomes.get(code) === mine && state.code === code && state.report === report;
     const failure = restoreError(err);
     if (failure.unsure) {
-      const watching = here || (state.code === code && state.view === "history");
-      if (restoreOutcome === mine) restoreOutcome = null;
+      const watching = sameReport || (state.code === code && state.view === "history");
+      settle(null);
       restoreDoubts.set(code, { session, publicationId, ...failure, quiet: !watching });
       if (state.me) render();
       if (!watching) throw new Error(unsureRestore(code));
       return;
     }
-    if (restoreOutcome === mine) restoreOutcome = here ? { code, report, publicationId, kind: "error", session, ...failure } : null;
+    const here = sameReport && state.view === "history";
+    settle(here ? { code, report, publicationId, kind: "error", session, ...failure } : null);
     // O erro tem o mesmo id do andamento: o render devolve o foco a ele (foco que a pessoa levou a outro lugar fica).
     if (state.me) render();
-    if (!here) throw state.code === code ? err : new Error(`A publicação da ${code} não foi restaurada. ${err.message || ""}`.trim());
+    if (!here) throw new Error(`A publicação${state.code === code ? "" : ` da ${code}`} não foi restaurada. ${err.message || ""}`.trim());
     return;
   }
   if (gone()) return;
   await boot();
   if (gone()) return;
   const here = state.code === code && state.view === "history" && state.report?.publication?.id === publicationId;
-  if (restoreOutcome === mine) restoreOutcome = here ? { code, report: state.report, publicationId, kind: "restored", session } : null;
+  settle(here ? { code, report: state.report, publicationId, kind: "restored", session } : null);
   // O resultado também tem o id do andamento, que a recarga manteve com o foco na publicação restaurada.
   if (state.me) render();
-  if (!here || restoreOutcome?.kind !== "restored") notice(state.code === code ? "Publicação restaurada." : `Publicação da ${code} restaurada.`);
+  if (!here || restoreOutcomes.get(code)?.kind !== "restored") notice(state.code === code ? "Publicação restaurada." : `Publicação da ${code} restaurada.`);
 }
 // Sem resposta (rede) ou com erro do servidor (5xx), a restauração pode ter acontecido; com 4xx (409, 403, 404) ou antes de
 // sair (sessão expirada), não. A mensagem do servidor é a de sempre.
@@ -1302,6 +1316,7 @@ document.addEventListener("change", (event) => {
       state.studentQuery = "";
       state.studentResults = null;
       state.studentSearchError = "";
+      state.studentSearchLoading = false;
       state.editingStudentId = null;
       if (state.view === "access" && admin()) await accessHandlers.loadAccess();
       else {

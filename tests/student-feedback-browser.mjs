@@ -119,6 +119,7 @@ async function open({ width = 1440, height = 900, text = 1, items = FEW, role = 
       if (api.post === "409") return route.fulfill({ status: 409, json: { error: "Não foi possível enviar agora. Tente novamente." } });
       if (api.post === "500") return route.fulfill({ status: 500, json: { error: "Erro interno. Tente novamente em instantes." } });
       if (api.post === "network") return route.abort("failed");
+      if (api.post === "401") return route.fulfill({ status: 401, json: { error: "Sua sessão expirou. Entre novamente." } });
       // Mesmo texto em 10 minutos: o backend devolve o feedback que já existe (o primeiro da lista), sem criar outro.
       if (api.post === "duplicate") return route.fulfill({ json: { feedback: api.items[0], duplicate: true } });
       const created = { id: `20261011T18000000000${api.posts.length}-bbbbbbbb`, ...body, status: "NEW", createdAt: "2026-10-11T18:00:00Z", updatedAt: "2026-10-11T18:00:00Z", attachments: 0 };
@@ -1171,4 +1172,28 @@ test("C10: o foco que um render perde não volta a um controle antigo — Ver an
   assert.equal(await page.evaluate(() => document.activeElement.id), "fb-send-error");
   assert.deepEqual(api.errors, []);
   await context.close();
+});
+
+// PR #3 (fechamento, B2): a sessão acaba durante o envio do aluno — expirada antes de o pedido sair (o api.js recusa sem
+// enviar) ou com 401 do servidor. O portal volta à entrada pública e o aviso diz o motivo, como antes do piloto (busy);
+// nada de "enviado", nenhum POST repetido, nenhum resto do rascunho ou do motivo na tela. Antes, o erro ficava preso ao
+// rascunho, fora da vista, e a pessoa caía na entrada sem saber por quê.
+test("PR3-B2: sessão encerrada durante o envio do Feedback do aluno — entrada pública com o aviso do motivo, sem sucesso nem repetição", async () => {
+  for (const mode of ["expirada antes de sair", "401"]) {
+    const { context, page, api } = await open();
+    await fill(page);
+    if (mode === "401") api.post = "401";
+    else await page.evaluate(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() - 1000 })));
+    await submit(page).click();
+    await page.getByRole("button", { name: "Entrar no meu portal" }).waitFor();
+    await page.waitForFunction(() => document.querySelectorAll("#notices .notice").length > 0, null, { timeout: 5000 }).catch(() => {});
+    assert.deepEqual(await notices(page), [{ error: true, text: "Sua sessão expirou. Entre novamente." }], `${mode}: o aviso diz o motivo`);
+    await page.waitForTimeout(400);
+    assert.equal(api.posts.length, mode === "401" ? 1 : 0, `${mode}: nenhum envio repetido (e nenhum quando a sessão já tinha expirado)`);
+    const main = await page.locator("#app").innerText();
+    assert.doesNotMatch(main, /Feedback enviado|enviado com sucesso|já tinha sido enviado|KC de redes aparece sem nota/, `${mode}: nada de sucesso nem do rascunho na entrada`);
+    assert.equal(await page.locator("#fb-send-error, #fb-sent, .student-feedback").count(), 0, `${mode}: nada do formulário na entrada`);
+    assert.deepEqual(api.errors, [], mode);
+    await context.close();
+  }
 });

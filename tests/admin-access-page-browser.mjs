@@ -834,3 +834,84 @@ test("AB15: atalho Criar turma (Expansão 8.1) — leva o foco e a vista ao tít
     await context.close();
   }
 });
+
+// ---------------------------------------------------------------- PR #3 (fechamento, B3)
+
+// A busca de alunos guardava a pessoa pelo objeto state.me, que todo boot() troca (salvar configurações, criar turma,
+// "Consultar de novo"): a resposta que chegava depois era descartada e "Buscando…" ficava para sempre, com o Buscar parado.
+// A troca de turma também deixava o andamento da busca da turma anterior na turma nova. A resposta de outra turma continua
+// descartada.
+test("PR3-B3: busca de alunos com recarga do portal ou troca de turma no meio — nunca fica em 'Buscando…'; a resposta vale para a mesma pessoa e turma e é descartada em outra turma", async () => {
+  // Recarga do portal (salvar configurações) com a mesma pessoa e a mesma turma: a resposta continua valendo.
+  let { context, page, errors, control, holdNext } = await open();
+  let h = holdNext("search");
+  await page.locator("#student-query").fill("li");
+  await page.locator("#student-search-form button").click();
+  await h.arrived.promise;
+  const saved = done(page, "/settings");
+  await page.locator("#cohort-settings-form button[type=submit]").click();
+  await saved;
+  await noticed(page);
+  assert.deepEqual(await notices(page), ["Configurações da turma atualizadas."], "recarga: as configurações foram salvas no meio da busca");
+  let answered = done(page, "/students-search");
+  h.gate.resolve();
+  await answered; await grace(page);
+  assert.equal(await page.locator(".aa-students .aa-loading").count(), 0, "recarga: 'Buscando…' termina");
+  assert.equal(await text(page.locator("#aa-students-count")), "3 alunos encontrados para “li”.", "recarga: o resultado da mesma pessoa e da mesma turma aparece");
+  assert.equal(await page.locator("#student-search-form button").isDisabled(), false, "recarga: Buscar livre");
+  assert.equal(control.requests.filter((r) => r.endsWith("/students-search")).length, 1, "recarga: nenhuma busca repetida");
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Troca de turma no meio: a turma nova não fica em "Buscando…", e a resposta da BRSA0267 não aparece nela.
+  ({ context, page, errors, control, holdNext } = await open());
+  h = holdNext("search");
+  await page.locator("#student-query").fill("li");
+  await page.locator("#student-search-form button").click();
+  await h.arrived.promise;
+  await page.locator("#cohort").selectOption("BRSA0268");
+  await until(page, () => /BRSA0268/.test(document.querySelector(".admin-access")?.textContent || "") && !document.querySelector("#aa-load-status"));
+  assert.equal(await page.locator(".aa-students .aa-loading").count(), 0, "troca de turma: nada de 'Buscando…' na turma nova");
+  answered = done(page, "/students-search");
+  h.gate.resolve();
+  await answered; await grace(page);
+  assert.equal(await page.locator(".aa-students .aa-loading, .aa-student-list, #aa-students-count").count(), 0, "troca de turma: a resposta da BRSA0267 é descartada");
+  assert.equal(await page.locator("#student-search-form button").isDisabled(), false, "troca de turma: Buscar livre");
+  assert.equal(await page.locator("#student-query").inputValue(), "", "troca de turma: a busca começa vazia na turma nova");
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Recarga do portal e busca recusada: a recusa aparece na seção, sem ficar em "Buscando…".
+  ({ context, page, errors, control, holdNext } = await open());
+  control.modes.search = 403;
+  h = holdNext("search");
+  await page.locator("#student-query").fill("li");
+  await page.locator("#student-search-form button").click();
+  await h.arrived.promise;
+  await page.locator("#cohort-settings-form button[type=submit]").click();
+  await noticed(page);
+  answered = done(page, "/students-search");
+  h.gate.resolve();
+  await answered; await grace(page);
+  assert.equal(await page.locator(".aa-students .aa-loading").count(), 0, "recusa: 'Buscando…' termina");
+  assert.equal(await text(page.locator("#aa-students-count")), ERRORS[403][1], "recusa: o motivo aparece na seção");
+  assert.equal(await page.locator("#student-search-form button").isDisabled(), false, "recusa: Buscar livre");
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Outra pessoa entra na aba durante a busca (o boot depois de salvar responde com outra pessoa): a resposta é descartada e a
+  // seção não fica em "Buscando…".
+  ({ context, page, errors, control, holdNext } = await open({ people: ["admin@example.test", "outra.admin@example.test"] }));
+  h = holdNext("search");
+  await page.locator("#student-query").fill("li");
+  await page.locator("#student-search-form button").click();
+  await h.arrived.promise;
+  await page.locator("#cohort-settings-form button[type=submit]").click();
+  await until(page, () => document.querySelector(".topline")?.innerText.includes("outra.admin@example.test"));
+  answered = done(page, "/students-search");
+  h.gate.resolve();
+  await answered; await grace(page);
+  assert.match(await text(page.locator(".topline")), /outra\.admin@example\.test/, "outra pessoa: a sessão é a da pessoa nova");
+  assert.equal(await page.locator(".aa-students .aa-loading").count(), 0, "outra pessoa: 'Buscando…' termina");
+  assert.equal(await page.locator(".aa-student-list, #aa-students-count").count(), 0, "outra pessoa: a resposta da busca anterior é descartada");
+  assert.equal(await page.locator("#student-search-form button").isDisabled(), false, "outra pessoa: Buscar livre");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

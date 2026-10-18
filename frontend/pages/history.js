@@ -213,7 +213,7 @@ function publication(r, i, inForce) {
   const status = r.current
     ? `Em vigor${state.report.updateKind === "restore" ? " · versão restaurada" : ""}`
     : inForce > i ? "Não está em vigor" : "";
-  const items = c ? [...(c.activities || []).map((a) => ({ ...a, kind: changeKind(a) })), ...(c.removed || []).map((name) => ({ name, kind: "removed" }))] : [];
+  const items = c ? [...(c.activities || []).filter(visibleChange).map((a) => ({ ...a, kind: changeKind(a) })), ...(c.removed || []).map((name) => ({ name, kind: "removed" }))] : [];
   const unchanged = c && !items.length && !c.kc && !c.lab && c.pendingBefore === c.pendingAfter;
   // A regra que explica a queda vem junto da publicação em que uma média caiu e houve atividade liberada sem nota.
   const why = c && (c.kc < 0 || c.lab < 0) && items.some((a) => ["released", "added"].includes(a.kind) && a.state === "pending");
@@ -266,6 +266,10 @@ const KINDS = {
 
 // backend/changes.py::student_changes lista a atividade quando ela é nova, ou quando muda a situação, a nota ou a
 // pontuação máxima: com situação e nota iguais, só a pontuação mudou.
+// PR #3: a atividade que continua não liberada nas duas publicações fica fora. Para o aluno ela é só "Não liberada" (nem nota
+// nem pontuação aparecem, e ela não conta na média), mas o backend calcula a nota oculta e a lista quando essa nota ou a
+// pontuação mudam: "Pontuação alterada" dizia que algo mudou numa nota que o aluno não vê.
+const visibleChange = (a) => !(a.previousState === "unreleased" && a.state === "unreleased");
 function changeKind(a) {
   const from = a.previousState, to = a.state;
   if (!from) return "added";

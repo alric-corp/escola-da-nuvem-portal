@@ -46,9 +46,12 @@ export async function loadAccess() {
     }
   }
 }
+// PR #3: o resultado vale para a pessoa (o e-mail), não para o objeto state.me, que todo boot() troca (salvar configurações,
+// criar turma, "Consultar de novo"): a busca respondida depois disso era descartada. E a busca mais recente sempre encerra o
+// próprio andamento, mesmo com o resultado descartado (outra turma): "Buscando…" e o Buscar parado não ficam para sempre.
 export async function searchStudents(query) {
-  const code = state.code, owner = state.me, request = ++searchRequest;
-  const current = () => request === searchRequest && state.code === code && state.me === owner;
+  const code = state.code, owner = state.me?.email, request = ++searchRequest;
+  const current = () => request === searchRequest && state.code === code && state.me?.email === owner;
   state.studentQuery = query;
   state.studentSearchError = "";
   state.studentSearchLoading = true;
@@ -65,9 +68,9 @@ export async function searchStudents(query) {
       state.studentResults = null;
     }
   } finally {
-    if (current()) {
+    if (request === searchRequest) {
       state.studentSearchLoading = false;
-      render();
+      if (state.me) render();
     }
   }
 }

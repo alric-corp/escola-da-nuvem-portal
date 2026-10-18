@@ -480,3 +480,27 @@ test("H8: teclado na ordem visual e contorno de foco inteiro (pixels); no celula
     await context.close();
   }
 });
+
+// PR #3 (fechamento, B4): para o aluno, uma atividade que continua não liberada nas duas publicações é só "Não liberada" (nem
+// nota nem pontuação aparecem, e ela não conta na média). O backend calcula a nota oculta dela e a lista em changes quando essa
+// nota (ou a pontuação) muda (backend/changes.py::student_changes), e a tela anunciava "Pontuação alterada". Ela fica fora da
+// lista e do resumo; a pontuação alterada de uma atividade com nota continua.
+test("PR3-B4: mudança só na nota oculta de atividade não liberada não entra no histórico do aluno nem no resumo; nenhuma nota oculta aparece", async () => {
+  const OCULTA = report([
+    pub("2026-10-09T21:03:00Z", 53.75, 96.38, ch(-2.5, 0, 1, 1, [a(CERT, "unreleased", 40, "unreleased", 85), a(NET, "unreleased", null, "unreleased", null),
+      a(S3, "completed", 90, "completed", 80), a(EC2LAB, "completed", 100, "completed", 100)]), true),
+    pub("2026-10-02T21:02:00Z", 56.25, 96.38, ch(0, 0, 1, 1, [a(CERT, "unreleased", 35, "unreleased", 40)])),
+    pub("2026-09-25T21:01:00Z", 56.25, 96.38, null),
+  ]);
+  const { context, page, errors } = await open({ data: OCULTA });
+  const [cur, prev] = await read(page);
+  assert.equal(cur.summary, "2 mudanças nas atividades 1 nota caiu · 1 pontuação alterada", "o resumo conta só o que o aluno vê");
+  assert.deepEqual(cur.items.map(({ kind, name, change }) => [kind, name, change]), [["Nota caiu", S3, "90% → 80%"], ["Pontuação alterada", EC2LAB, "100%, nota mantida"]]);
+  assert.equal(prev.note, "Nenhuma mudança nas suas notas.", "só a nota oculta mudou: nada a anunciar");
+  assert.deepEqual(prev.items, []);
+  const shown = await page.locator(".student-history").innerText();
+  assert.doesNotMatch(shown, /195-CERT|254-NF/, "as atividades não liberadas não aparecem nas mudanças");
+  assert.doesNotMatch(shown, /(^|[^\d,])(35|40|85)(,\d+)?\s?%/, "nenhuma nota oculta na tela");
+  assert.deepEqual(errors, []);
+  await context.close();
+});

@@ -658,3 +658,72 @@ test("C1-D05e: B salva o foco enquanto o salvamento de A está pendente — a re
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+// ---------------------------------------------------------------- PR #3 (fechamento, B1)
+
+// A recusa (nada mudou no servidor) com a pessoa no Painel da mesma turma, com o mesmo relatório: antes, ela ficava guardada
+// para Publicações sem nenhum aviso (o sucesso, no mesmo lugar, avisava). Agora vai ao aviso do portal, como o sucesso e
+// como a recusa vista de outra turma (docs/design-visual.md, Publicações da turma), e não reaparece em Publicações.
+// A dúvida no mesmo lugar continua esperando em Publicações, sem aviso (C1-D04c).
+test("PR3-B1a: recusa da restauração (409, 403, integridade) com a pessoa no Painel da mesma turma — aviso de que não restaurou; nada reaparece em Publicações; nada se repete", async () => {
+  for (const mode of [409, 403, "integrity"]) {
+    const { context, page, errors, control, holdNext } = await open();
+    control.restoreMode = mode;
+    const h = holdNext("restore");
+    await restoreButton(page, "p12").click();
+    await h.arrived.promise;
+    await openPanel(page);
+    const done = settled(page, "/restore");
+    h.gate.resolve();
+    await done();
+    await until(page, () => document.querySelectorAll("#notices .notice").length > 0);
+    assert.deepEqual(await notices(page), [`A publicação não foi restaurada. ${MESSAGES.restore[mode]}`], `${mode}: o aviso diz que não restaurou e o motivo`);
+    await openPublications(page);
+    assert.equal(await page.locator(".tpub-op").count(), 0, `${mode}: a recusa já avisada não reaparece em Publicações`);
+    assert.deepEqual(await page.locator("[data-restore]").evaluateAll((bs) => bs.map((b) => b.disabled)), [false, false], `${mode}: Restaurar livre de novo`);
+    assert.equal(control.restores.length, 1, `${mode}: nenhuma repetição`);
+    assert.deepEqual(errors, [], String(mode));
+    await context.close();
+  }
+});
+
+// Duas restaurações pendentes, uma em cada turma: o andamento era uma variável só, e o da segunda turma tomava o lugar do da
+// primeira. De volta à primeira, "Restaurando…" sumia, os Restaurar dela voltavam e um segundo pedido saía. A trava é da turma.
+test("PR3-B1b: restaurações pendentes em duas turmas — de volta à primeira, o andamento dela continua e nenhum Restaurar pergunta ou envia; cada resultado vai para a sua turma", async () => {
+  const { context, page, errors, control, holdNext } = await open();
+  const hA = holdNext("restore");
+  await restoreButton(page, "p12").click();
+  await hA.arrived.promise;
+  await page.locator("#cohort").selectOption("BRSA0268");
+  await page.locator(".teacher-home h1").waitFor();
+  await openPublications(page);
+  const hB = holdNext("restore");
+  await restoreButton(page, "q1").click();
+  await Promise.race([hB.arrived.promise, page.waitForTimeout(3000)]);
+  assert.deepEqual(control.restores.map((r) => `${r.code} ${r.publicationId}`), ["BRSA0267 p12", "BRSA0268 q1"]);
+  await page.locator("#cohort").selectOption("BRSA0267");
+  await page.locator(".teacher-home h1").waitFor();
+  await openPublications(page);
+  assert.match(await text(page.locator("#tpub-restore-status")) ?? "", /^Restaurando a publicação de 9 de outubro de 2026, 18:04…$/, "o andamento da BRSA0267 continua na tela");
+  assert.deepEqual(await page.locator("[data-restore]").evaluateAll((bs) => bs.map((b) => b.disabled)), [true, true], "Restaurar da BRSA0267 parado");
+  // Um clique forçado num Restaurar sem o disabled (como em C1-D03e) também não pergunta nem envia.
+  await restoreButton(page, "p11").evaluate((b) => { b.disabled = false; b.click(); });
+  await quiet(page);
+  assert.equal(control.dialogs.length, 2, "nenhuma pergunta a mais");
+  assert.equal(control.restores.length, 2, "nenhum pedido a mais");
+  // A BRSA0267 conclui com a pessoa na tela dela; a BRSA0268, depois, vai ao aviso com a turma.
+  let done = settled(page, "/report");
+  hA.gate.resolve();
+  await done();
+  await until(page, () => !!document.querySelector("#tpub-restore-status.is-done"));
+  assert.equal(await text(page.locator("#tpub-restore-status")), "Publicação restaurada.");
+  done = settled(page, "/report");
+  hB.gate.resolve();
+  await done();
+  await until(page, () => document.querySelectorAll("#notices .notice").length > 0);
+  assert.deepEqual(await notices(page), ["Publicação da BRSA0268 restaurada."]);
+  assert.equal(control.restores.length, 2, "nenhuma repetição");
+  assert.deepEqual([control.server.BRSA0267.current, control.server.BRSA0268.current], ["p12", "q1"]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
