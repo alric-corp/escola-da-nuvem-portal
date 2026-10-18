@@ -35,7 +35,7 @@ const ROSTER = [
   row("5", "Elisa Esteves", { kc: 98.13 }), row("6", "Felipe Figueiredo", { kc: 36.75, lab: 14.13, status: "critical", pending: 3, completed: 5, progress: 62.5, portalLinked: false }),
   row("7", "Gabriela Gonçalves", { kc: null, status: "insufficient", pending: 2 }), row("8", "Heitor Holanda", { status: "graduated" }),
 ];
-const LONG = [row("1", "Allysson Borges - Allysson Roberto Borges Lima De Moraes", { email: "allysson.roberto.borges.lima.de.moraes.turma.manha@exemplo-instituicao-parceira.example.test", portalLinked: false }),
+const LONG = [row("1", "Exemplar Testes - Exemplar Fictino Testes Nome Do Modelo", { email: "exemplar.fictino.testes.nome.do.modelo.turma.manha@exemplo-instituicao-parceira.example.test", portalLinked: false }),
   row("2", "Maria Aparecida dos Santos Oliveira Albuquerque Cavalcanti de Figueiredo", { email: null, kc: 69.96, lab: 94.95, status: "critical", participationStatus: "WITHDRAWN" }), ...ROSTER.slice(2)];
 const MANY = Array.from({ length: 40 }, (_, i) => ({ ...ROSTER[i % ROSTER.length], id: `m${i}`, name: `${ROSTER[i % ROSTER.length].name} ${String(i).padStart(2, "0")}` }));
 const ACTIVITIES = [
@@ -520,7 +520,7 @@ test("P9: o admin vê o mesmo painel; o aluno não tem .teacher-home", async () 
 // barra; no desktop a conta continua numa linha, como antes (o nome encolhe antes de a linha quebrar).
 test("P10: o clique no Sair da conta chega ao Sair no tablet e no desktop estreito com texto ampliado; o filtro Crítico não é acionado", async () => {
   for (const o of [{ width: 768, height: 1024, text: 2 }, { width: 1024, height: 768, text: 1.75 }, { width: 1279, height: 800, text: 2 },
-    { width: 800, height: 1024, text: 2.5 }, { width: 1024, height: 768, email: "allysson.roberto.borges.lima@example.test" },
+    { width: 800, height: 1024, text: 2.5 }, { width: 1024, height: 768, email: "exemplar.fictino.testes.nome@example.test" },
     { width: 1024, height: 768, role: "admin" }, { width: 1280, height: 800, role: "admin", oneLine: true }, { width: 1440, height: 900, role: "admin", oneLine: true }]) {
     const { context, page, errors } = await open(o);
     const id = `${o.width}×${o.height}${o.text ? ` texto ${o.text * 100}%` : ""}${o.email ? " nome longo" : ""}${o.role ? ` ${o.role}` : ""}`;
