@@ -1995,6 +1995,58 @@ passavam 13–15 px do botão: a coluna tem 208 px, e "atividades" (205 px na De
   25–27 px do botão mesmo com o ícone na linha de baixo.
 - Pendências do aluno, Feedback pelo rodapé e Entrada pública (herdados da `main`).
 
+## Fechamento do PR #3 (M1 e correções residuais)
+
+**Origem.** Revisão final do PR #3 (`242f834`): 1 MAJOR (M1, barra lateral com texto ampliado) e MINORs de confiabilidade,
+apresentação e cobertura. Cada correção tem um teste que falha no `242f834` pelo motivo do defeito e passa depois, com API
+simulada e dados sintéticos.
+
+**M1 — barra lateral com texto ampliado.** De 761 a 1279 px a barra tinha largura fixa em px (210 px no tablet, 244 px até
+1279 px), e logo, turma e menu crescem com o texto. Com texto a partir de 150%, os rótulos passavam da barra; como o
+`.nav-item` é posicionado, eram pintados sobre o conteúdo. A 200%, "Painel do instrutor" ficava sobre o título "Situação
+da turma", e o clique na borda de controles chegava ao menu. O código da turma era cortado, o logo saía da barra e os
+ícones do menu encolhiam até 0 px.
+- Correção, só de 761 a 1279 px: a barra tem a largura do próprio conteúdo (`width: min-content`), com o piso de antes
+  (210 e 244 px); os rótulos quebram em linhas, como já faziam no tablet, e o ícone não encolhe; o seletor tem pelo menos
+  a largura do código (`min-width: max-content`), também para códigos longos; os espaçamentos laterais da barra, dos
+  itens e do seletor ficam em px, com os valores do texto normal, para a barra crescer só o que o texto pede. O `<main>`
+  fica com o resto pelo `flex-shrink` que ele já tinha.
+- Com texto normal a barra continua com 210 e 244 px. Para o instrutor e o admin de 1101 a 1279 px, "Publicações da
+  turma" passa a ocupar duas linhas, com o ícone inteiro (antes, o ícone encolhia para caber numa linha). A partir de
+  1280 px nada muda.
+- O item do menu com foco fica por cima dos vizinhos (`z-index: 1`): com o mouse sobre o item de baixo, o fundo do hover
+  dele cobria a parte de baixo do contorno de foco.
+- Teste: PR3-M1, de 768 a 1440 px, com texto de 100% a 250%, nos três papéis, com a fonte do sistema e uma fonte larga.
+  Verifica rótulos, ícones, código da turma e logo inteiros dentro da barra; nada da barra pintado fora dela; centro e
+  cantos de cada controle da barra e do conteúdo junto dela; clique real; ordem do Tab; contorno de foco nos pixels;
+  larguras com texto normal; nenhuma rolagem lateral de 1024 a 1279 px; um código de turma longo inteiro no seletor.
+- Limitação: de 768 a 900 px com texto a 250%, e a 768 px com 200% e fonte larga em "Meu desempenho", barra e conteúdo
+  juntos não cabem na janela. A página passa a rolar de lado (4 a 107 px) em vez de a barra cobrir o conteúdo. Medido:
+  a 768 px com 250% e fonte larga, o conteúdo de "Meu desempenho" sozinho pede 621 px.
+
+**Correções residuais.**
+- **Restauração (Publicações):** a recusa (409, 403, 404) com a pessoa no Painel da mesma turma vai ao aviso do portal ("A
+  publicação não foi restaurada." com o motivo), como o sucesso; antes ficava guardada para Publicações sem aviso. O
+  andamento e o resultado ficam guardados por turma: numa variável só, a restauração de outra turma soltava a trava desta,
+  e um segundo pedido saía. A dúvida continua como na C2. Testes PR3-B1a e PR3-B1b.
+- **Feedback do aluno:** se a sessão acaba durante o envio (expirada antes de o pedido sair, ou 401), a entrada pública
+  mostra o aviso do motivo, como antes do piloto; nada é declarado enviado nem repetido. Teste PR3-B2.
+- **Turmas e acessos:** a busca de alunos guarda a pessoa pelo e-mail, e não pelo objeto que todo `boot()` troca. A busca
+  mais recente sempre encerra o próprio andamento, e a troca de turma o zera. "Buscando…" não fica para sempre depois de
+  uma recarga, de uma recusa, da troca de turma ou da troca de pessoa, e a resposta de outra turma ou pessoa continua
+  descartada. Teste PR3-B3.
+- **Meu histórico:** a atividade que continua não liberada nas duas publicações não entra nas mudanças nem no resumo. Para o
+  aluno ela é só "Não liberada", e o backend a lista quando a nota oculta (ou a pontuação) muda. Antes aparecia
+  "Pontuação alterada". O contrato da API não muda. Teste PR3-B4.
+- **Mutações da C7.5:** o caso "aluno" do teste unitário do Feedback desenhava a tela do rodapé, porque o cenário entra
+  como admin, e as mutações "pagina-aluno-*" caíam na lista do instrutor e do admin. O caso do aluno troca o papel, um caso
+  do rodapé foi acrescentado, e cada um confere a tela desenhada. As mutações da lista do aluno passam a mirar
+  `studentFeedbackList`, e as da lista do rodapé ficam com o nome dela (39 mutações).
+
+**Fora do escopo (registrado, sem mudança).**
+- Nome e papel da conta com o limite de 112 px herdado da `main`: com texto ampliado, palavras como "Administrador" são
+  cortadas com reticências dentro da barra, em todas as larguras de desktop. O papel e o e-mail continuam no topo.
+
 ## Decisões da Expansão 9
 
 1. Caixa de entrada, não painel: linhas finas, o título como o alvo, o status por texto e forma, o começo da mensagem; nenhuma
