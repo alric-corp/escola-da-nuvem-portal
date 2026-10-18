@@ -1,12 +1,18 @@
 # Escola da Nuvem · Portal AWS re/Start
 
-Portal estático em HTML, CSS e JavaScript modular, com API Python em Lambda. A ferramenta anterior permanece na raiz; este diretório contém a nova aplicação.
+Portal estático em HTML, CSS e JavaScript modular (ES modules servidos sem bundler), com API Python em Lambda. Módulos e responsabilidades: [docs/arquitetura.md](../docs/arquitetura.md#frontend-módulos-e-responsabilidades).
 
 ## Identidade visual
 
-O portal usa o padrão técnico escuro da Escola da Nuvem. Os tokens estão no início de `styles.css`: fundo `#001633`, sidebar `#0A3157`, superfícies `#08284A` e `#0B2E54`, texto branco e secundário `#B9CBDA`, bordas `#1C557A`. Ciano `#00AFE8` identifica ações e links; turquesa `#00CBDD` aparece em hover e detalhes; verde-água `#00EBD2` fica reservado a estados positivos e destaques pontuais.
+A direção visual em vigor, o "Instrumento de referência", está em [docs/design-visual.md](../docs/design-visual.md): cor por papel, tipografia, tokens, componentes e a casca global. As telas que o redesign já cobriu são estas: painel, Minhas atividades, histórico e Feedback do aluno; painel do instrutor, Publicações da turma, Atualizar notas e Lembretes; Turmas e acessos; e Feedbacks administrativos, além da casca global. Têm CSS próprio nas seções 28 a 39 de `styles.css`. As demais telas ainda usam o estilo anterior, sobre a mesma paleta.
 
-Warning (`#F2B84B`) e danger (`#D96B78`) usam fundos escuros, sempre acompanhados por rótulos. A composição usa tipografia sem serifa, números/metadados monoespaçados e conexões geométricas em SVG/CSS. A logo fornecida pela Escola da Nuvem está em `frontend/logo.png`, preservada sem alterações, e aparece na entrada, no menu e no ícone da aba. O build inclui esse arquivo explicitamente.
+O portal usa o padrão técnico escuro da Escola da Nuvem. A paleta base está no início de `styles.css`: fundo `#001633`, sidebar `#0A3157`, superfícies `#08284A` e `#0B2E54`, texto branco e secundário `#B9CBDA`, bordas `#1C557A`, ciano `#00AFE8` (hover `#00CBDD`), verde-água `#00EBD2`, warning `#F2B84B` e danger `#D96B78`, sempre acompanhados por rótulos. Sobre ela, os tokens semânticos (`--color-*`) atribuem os papéis:
+
+- o ciano fica reservado a ações, links e foco;
+- as séries acadêmicas têm cor própria: KC em branco e LAB em violeta `#B49CFF`, a única cor nova;
+- a situação usa âmbar (revisar) e verde-água (atingida), sempre com texto e forma.
+
+As telas redesenhadas usam a família `system-ui` (`--font-ui`) e números tabulares; a monoespaçada fica só para códigos. A logo fornecida pela Escola da Nuvem está em `frontend/logo.png`, preservada sem alterações, e aparece na entrada, no menu e no ícone da aba. O build inclui esse arquivo explicitamente.
 
 O Cognito usa Managed Login (versão 2), tema escuro e a mesma logo. As cores são definidas em `infra/terraform/cognito-branding.json`, aplicadas pelo Terraform. A autorização inclui `lang=pt-BR` para exibir o login em português. O user pool usa Essentials, plano já presente antes dessa personalização.
 
@@ -40,7 +46,7 @@ terraform -chdir=infra/terraform output -json frontend_config > portal-config.js
 python3 -B scripts/build_frontend.py --config portal-config.json
 ```
 
-Publique `frontend/dist` no bucket web e invalide o cache conforme o guia. O login local é apenas a demonstração; o callback Cognito configurado é o endereço HTTPS do CloudFront. A primeira conta administradora deve ser confirmada e adicionada manualmente ao grupo `admin` do Cognito.
+Publique `frontend/dist` no bucket web e invalide o cache conforme o guia; `scripts/deploy_frontend.sh` faz o build com os outputs do Terraform, publica e invalida. Antes de publicar, leia [Cache e ES modules](../docs/arquitetura.md#cache-e-es-modules) e [Deploy seguro de módulos](../docs/arquitetura.md#deploy-seguro-de-módulos): enquanto o cache não expira, o navegador pode combinar módulos novos e antigos. O login local é apenas a demonstração; o callback Cognito configurado é o endereço HTTPS do CloudFront. A primeira conta administradora deve ser confirmada e adicionada manualmente ao grupo `admin` do Cognito.
 
 ## Fluxos implementados
 
@@ -103,11 +109,11 @@ O teste de navegador usa API simulada com as anotações do backend. Ele verific
 
 ## Atividades sem nota e lembretes individuais
 
-A retomada dos lembretes foi implementada localmente em 24/09/2026, junto das melhorias de jornada. O Terraform usa `reminders_enabled` (padrão `true`) para configurar `REMINDERS_ENABLED`; `false` bloqueia o envio e permite consultar atividades sem chamar o SES. Essa alteração exige implantação da infraestrutura e do frontend; não foi aplicada à produção durante a implementação.
+Os lembretes individuais foram implementados em 24/09/2026, junto das melhorias de jornada. O Terraform usa `reminders_enabled` (padrão `true`) para configurar `REMINDERS_ENABLED`; `false` bloqueia o envio e permite consultar atividades sem chamar o SES. Além do envio individual descrito nesta seção, existem os **Lembretes em lote** do instrutor ([TODO 08](../docs/todo/concluido/08-lembretes-em-lote.md)) e os lembretes automáticos agendados por turma ([AUTO-5](../docs/historico/automacoes/auto-5.md)).
 
 O instrutor abre **Lembretes**, solicita a confirmação do próprio e-mail institucional e verifica novamente depois de confirmar no SES. Aprovar um instrutor não envia mais confirmação automaticamente. `GET /cohorts/{code}/reminder-settings` e `POST /cohorts/{code}/verify-sender` exigem autorização na turma e domínio institucional. O cliente não escolhe outro remetente.
 
-No painel, **Ver detalhes** abre as atividades sem nota e a prévia do lembrete. Remetente, destinatário, assunto e texto ficam visíveis antes de **Enviar e-mail para este aluno**, seguido da confirmação do destinatário. Publicar notas ou abrir a prévia nunca envia e-mail. Alunos sem e-mail e remetentes não confirmados ficam bloqueados.
+No painel, **Ver pendências** abre as atividades sem nota e a prévia do lembrete. Remetente, destinatário, assunto e texto ficam visíveis antes de **Enviar e-mail para este aluno**, seguido da confirmação do destinatário. Publicar notas ou abrir a prévia nunca envia e-mail. Alunos sem e-mail e remetentes não confirmados ficam bloqueados.
 
 O backend monta a mensagem e confere novamente publicação, aluno e hash da prévia. Uma reserva transacional evita envios concorrentes ou repetidos por aluno/publicação. Falhas confirmadas permitem tentativa manual; resultados incertos ficam bloqueados para evitar duplicação. Zero registrado, dispensa e atividades não liberadas não entram na mensagem.
 
@@ -144,7 +150,12 @@ Os alunos continuam vendo a versão anterior até a publicação terminar. Se ou
 
 | Local | Conteúdo |
 | --- | --- |
-| `frontend/app.js` | Telas, navegação e chamadas à API |
+| `frontend/app.js` | Raiz da composição: `render()`, `actions`, sessão, navegação e troca de turma |
+| `frontend/pages/` | HTML de cada tela a partir do `state`, sem rede |
+| `frontend/handlers/` | Regras de cada domínio: chamam a API, alteram o `state` e pedem `render()` |
+| `frontend/api.js` | Chamadas à API, retentativa de GET, expiração da sessão e envio de anexos ao S3 |
+| `frontend/state.js` | Estado compartilhado entre os módulos |
+| `frontend/ui.js` | Markup compartilhado, helpers de apresentação e `notice()` |
 | `frontend/auth.js` | Authorization code, PKCE, state/nonce e sessão |
 | `frontend/demo.js` | Dados fictícios, sem chamadas ao backend |
 | `backend/portal.py` | Autorização por turma e operações do portal |
@@ -158,47 +169,26 @@ O backend lê os snapshots e filtra o aluno antes de responder. O relatório pes
 
 ## Testes
 
-Sem dependências adicionais:
+O índice completo das suítes, com contratos, mutações e verificações manuais, está em [tests/README.md](../tests/README.md). A partir da raiz do repositório:
 
 ```sh
-python3 -B -m unittest discover -s backend -v
-node --check frontend/app.js
-node --check frontend/auth.js
-node --test tests/auth-refresh.mjs tests/canvas-links.mjs
-terraform -chdir=infra/terraform validate
-terraform -chdir=infra/terraform test
+npm ci
+npx playwright install chromium
+npm test                  # unitários Node, inclusive a arquitetura do frontend
+npm run test:browser      # gera o build e roda as suítes Playwright com API simulada
+pip install -r requirements-dev.txt
+python -m unittest discover -s backend
+python -m unittest discover -s tests/integration   # Moto, nenhum recurso real
 ```
 
-Persistência com boto3/Moto (nenhum recurso real):
+Para rodar uma suíte isolada, use `node --test tests/<arquivo>.mjs`. No caso das suítes de navegador, rode `npm run build` antes. Algumas suítes de navegador gravam capturas em `avanca-preview/`, no diretório temporário do sistema. O fluxo real Cognito → API Gateway e as permissões IAM precisam ser verificados após o deploy, pelas verificações manuais descritas em `tests/README.md`.
 
-```sh
-python3 -m venv /private/tmp/avanca-aws-tests
-/private/tmp/avanca-aws-tests/bin/pip install 'moto[s3,dynamodb]==5.1.22' 'boto3==1.42.97'
-/private/tmp/avanca-aws-tests/bin/python -B -m unittest discover -s tests/integration -v
-```
+## Limites conhecidos
 
-Interface com Playwright (instalação temporária, sem dependência no build):
-
-```sh
-npm install --prefix /private/tmp/avanca-browser --no-audit --no-fund playwright
-PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
-  node /private/tmp/avanca-browser/node_modules/playwright/cli.js install chromium --only-shell
-python3 -B scripts/build_frontend.py
-PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
-PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
-  node tests/browser.mjs
-PLAYWRIGHT_MODULE=/private/tmp/avanca-browser/node_modules/playwright \
-PLAYWRIGHT_BROWSERS_PATH=/private/tmp/avanca-browser/browsers \
-  node tests/journey-browser.mjs
-```
-
-O teste de browser cobre navegação, filtros, celular, prévia/publicação com API simulada e tentativa de injeção HTML. Capturas são gravadas em `/private/tmp/avanca-preview/`. O fluxo real Cognito → API Gateway e as permissões IAM precisam ser verificados após o deploy.
-
-## Limites conhecidos desta primeira versão
-
-- Ainda não houve validação com um CSV real anonimizado da sua turma. Cabeçalhos adicionais ou regras específicas do seu Canvas podem exigir ajustes.
-- A descoberta de turmas do aluno faz leitura de metadados e snapshots no servidor. É adequada ao escopo inicial; muitas turmas/publicações exigirão índices de matrícula e consultas mais específicas.
-- CSVs, prévias e snapshots permanecem guardados; não existe expiração automática. A política de retenção precisa ser definida antes de acumular dados de muitas turmas.
-- Ainda não há tela para corrigir manualmente uma matrícula vinculada à conta errada. E-mails diferentes antes do primeiro vínculo devem ser corrigidos no Canvas e reimportados; correções de vínculos persistidos exigem intervenção administrativa nos registros.
+- O importador foi validado com o CSV real de uma turma em 14/09/2026 ([registro](../infra/DEPLOYMENT.md#compatibilidade-com-o-csv-real-do-canvas)). Cabeçalhos ou regras específicas de outros cursos do Canvas podem exigir ajustes.
+- A descoberta de turmas usa os vínculos do aluno e do instrutor, mas `GET /cohorts` ainda faz scan da tabela ([TODO 05](../docs/todo/05-descoberta-de-turmas-por-vinculo.md)).
+- Rascunhos e arquivos novos recebem tags e expiração; os dados anteriores, sem tags/TTL, não foram limpos ([TODO 13](../docs/todo/concluido/13-retencao-de-dados.md)).
+- Vínculos persistidos são corrigidos em **Turmas e acessos**, que permite buscar, desvincular e editar o nome ([TODO 11](../docs/todo/concluido/11-admin-vinculos-e-nomes.md)). E-mails diferentes antes do primeiro vínculo continuam sendo corrigidos no Canvas e reimportados.
 - Cadastro e recuperação usam o Cognito com SES e remetente noreply; lembretes usam o endereço institucional confirmado do instrutor.
-- Lembretes são individuais e dependem da confirmação explícita do instrutor; o portal não busca notas automaticamente no Canvas. A atualização é manual, pelo instrutor, e a data da publicação fica visível aos alunos.
+- Além da importação manual do CSV, a integração com a API do Canvas atualiza as notas por agendamento (`canvas-sync`, [TODO 17](../docs/todo/concluido/17-integracao-api-canvas.md)). A data da publicação fica visível aos alunos.
+- O aluno não recebe aviso quando novas notas são publicadas ([TODO 15](../docs/todo/15-aviso-de-nova-publicacao.md), pendente de decisão).

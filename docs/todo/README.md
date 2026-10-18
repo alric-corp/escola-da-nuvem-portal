@@ -14,9 +14,9 @@ com seu histórico e evidências de implementação.
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
 | 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Guardado / evolução futura |
-| 23 | [Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Pendente — C7.3 concluída e deploy confirmado; C7.4 commitada, CI verde, deploy pendente; C7.5/C7.6 não iniciadas |
-| 24 | [Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | Pendente — não iniciado |
-| 25 | [Higiene do backend](25-higiene-do-backend.md) | Pendente — não iniciado |
+| 23 | [Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Pendente — C7.3 concluída e deploy confirmado; C7.4 implementada e integrada à `main` (`cdb5e36`), CI verde, implantação não confirmada; revisão transversal pendente |
+| 24 | [Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | Pendente — C7.5 implementada e integrada à `main` (`b289b82`), CI verde, implantação não confirmada |
+| 25 | [Higiene do backend](25-higiene-do-backend.md) | Pendente — C7.6 implementada e integrada à `main` (`0db040d`, `8f6a2b2`), CI verde, implantação não confirmada |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
@@ -36,7 +36,7 @@ Não são TODOs numerados: acompanham uma operação em produção e não recebe
 
 ### AUTO-5 — lembretes automáticos
 
-[Evidências e checkpoints](../auto-5.md). Estado verificado em
+[Evidências e checkpoints](../historico/automacoes/auto-5.md). Estado verificado em
 **CONCLUÍDA em 15/10/2026, 01h17**: ambos pilotos naturais **PASS**. BRSA0267 em 13/10:
 32 enviados / 32 deliveries; BRSA0257 em 14/10: **14 enviados / 14 deliveries**,
 sem falhas, duplicidade ou envio WITHDRAWN. Recorrência das duas turmas
@@ -74,6 +74,9 @@ API-1 e API-2 estão concluídas e commitadas; os registros ficam em
 não as reabre.
 
 A C7.2 foi concluída e ativada em produção. A C7.3 foi concluída e o deploy
-foi confirmado. A C7.4 está commitada (`cdb5e36`) com CI verde; o deploy está
-pendente de aprovação própria. Os itens do backlog não reabrem
-participação/desistentes nem autorizam implementação ou deploy.
+foi confirmado. A C7.4, a C7.5 e a C7.6 estão implementadas e integradas à
+`main`, com CI verde; a implantação delas não foi confirmada. O registro da
+[AUTO-5](../historico/automacoes/auto-5.md) informa que as três ficaram fora
+daquele deploy. Os TODOs 23, 24 e 25 seguem no backlog até que a implantação
+e as demais condições de encerramento sejam confirmadas. Os itens do backlog
+não reabrem participação/desistentes nem autorizam implementação ou deploy.
