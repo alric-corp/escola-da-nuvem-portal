@@ -1,7 +1,8 @@
 # 24 — Melhorias de UX e lifecycle
 
-**Status:** em andamento — C7.5 commitada com CI verde; deploy do frontend
-pendente de aprovação. Permanece pendente até o fechamento e a validação da entrega.
+**Status:** em andamento — C7.5 implementada e integrada à `main` (`b289b82`),
+com CI verde; implantação do frontend não confirmada. Permanece pendente até o
+fechamento e a validação da entrega.
 
 ## Contexto
 

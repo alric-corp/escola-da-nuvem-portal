@@ -1,9 +1,10 @@
 # 23 — Concorrência e respostas stale
 
-**Status:** em andamento — C7.4 commitada (fix(frontend): proteger respostas
-assíncronas obsoletas), com as mutações no CI; deploy pendente de aprovação.
-C7.5 e C7.6 não iniciadas. **Origem:** roadmap técnico C7 posterior
-à C7.2. O TODO 23 não está concluído.
+**Status:** em andamento — C7.4 implementada e integrada à `main` (`cdb5e36`,
+fix(frontend): proteger respostas assíncronas obsoletas), com as mutações no
+CI; implantação não confirmada. C7.5 e C7.6 seguem nos TODOs
+[24](24-melhorias-ux-e-lifecycle.md) e [25](25-higiene-do-backend.md).
+**Origem:** roadmap técnico C7 posterior à C7.2. O TODO 23 não está concluído.
 
 ## Contexto
 

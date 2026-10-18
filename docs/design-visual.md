@@ -1,6 +1,12 @@
 # Direção visual do portal
 
-**Status:** piloto local, sem commit e sem deploy (branch local `visual/piloto-aluno`).
+**Status:** redesign integrado à `main` pelo PR #3 (merge commit `4126c94`, 18/10/2026), com a CI pós-merge verde
+(run `39098456702`: Backend, Frontend e Terraform). A implantação do frontend **não foi confirmada**. A publicação
+continua condicionada à resolução do risco P2, de cache misto de módulos: com `max-age=300` e arquivos sem hash no nome, o
+navegador pode combinar módulos novos e antigos, e o portal não abre. Ver [Cache e ES modules](arquitetura.md#cache-e-es-modules).
+
+A tabela abaixo e as seções seguintes registram cada etapa como foi aprovada na época. Aprovação técnica ou visual não
+significa implantação.
 
 | Etapa | Situação |
 |---|---|

@@ -1,6 +1,6 @@
 # 25 — Higiene do backend
 
-**Status:** implementada, commitada e com deploy pendente (C7.6). Não está em `concluido/`: falta o deploy, que só será revisado depois do encerramento da AUTO-5.
+**Status:** C7.6 implementada e integrada à `main` (`0db040d`, `8f6a2b2`; teste `779ee7e`), com CI verde; implantação não confirmada. Não está em `concluido/`: falta a implantação. O registro da [AUTO-5](../historico/automacoes/auto-5.md), já encerrada, informa que a C7.6 ficou fora daquele deploy; a implantação depende de revisão própria.
 
 ## Pendências conhecidas
 
