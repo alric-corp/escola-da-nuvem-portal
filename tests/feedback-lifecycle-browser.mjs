@@ -108,16 +108,19 @@ try {
     await page.locator(".fb-detail").waitFor();
     api.items[0].status = "IN_REVIEW";                      // outra pessoa mudou
     await page.locator("#fb-status-select").selectOption("RESOLVED");
+    const answered = page.waitForResponse((r) => r.url().includes("/status"));
     await page.getByRole("button", { name: "Salvar status" }).click();
-    await page.locator("#notices .notice.error").waitFor();
-    const texts = await noticeTexts(page);
-    assert.equal(texts.length, 1);
-    assert.match(texts[0].text, /alterado por outra pessoa/);
+    await answered;
+    // Expansão 9: o erro fica junto da ação (role=alert), não num aviso solto.
+    await page.waitForFunction(() => !!document.querySelector("#afb-op-status.is-error, #notices .notice"), null, { timeout: 5000 }).catch(() => {});
+    assert.equal(await page.locator("#afb-op-status.is-error").count(), 1, "o erro junto da ação");
+    assert.deepEqual(await noticeTexts(page), []);
+    assert.match(await page.locator("#afb-op-status").innerText(), /^O status não foi alterado\. .*alterado por outra pessoa/);
     assert.ok(!(await page.getByText("Status do feedback atualizado.").count()), "409 não vira confirmação");
     assert.equal(await page.locator(".fb-detail").count(), 1, "o detalhe continua aberto");
     assert.match(await page.locator(".fb-detail .fb-status").innerText(), /Em análise/, "o badge mostra o status real");
     assert.equal(await page.locator("#fb-status-select").inputValue(), "IN_REVIEW", "o select concorda com o badge");
-    assert.deepEqual(await focused(page), { tag: "SELECT", id: "fb-status-select", text: (await focused(page)).text, data: "" }, "o foco fica no campo em conflito");
+    assert.deepEqual(await focused(page), { tag: "DIV", id: "afb-op-status", text: (await focused(page)).text, data: "" }, "o foco vai ao erro, junto do campo em conflito");
     await page.locator("#fb-status-select").selectOption("RESOLVED");
     await page.getByRole("button", { name: "Salvar status" }).click();
     await page.getByText("Status do feedback atualizado.").waitFor();
@@ -226,7 +229,8 @@ try {
     assert.deepEqual(await page.evaluate(() => [window.__urls.created.length, window.__urls.revoked.length]), [1, 0], "prévia em uso: nada liberado");
     await page.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
     await page.getByRole("button", { name: "Salvar configurações", exact: true }).click();
-    await page.getByText("Configurações da turma atualizadas.", { exact: true }).waitFor();
+    // Expansão 8: o aviso de quem salvou não aparece para quem entrou; a espera é pela pessoa nova no topo (o boot terminou).
+    await page.locator(".session-context small").filter({ hasText: "b-admin@example.test" }).waitFor();
     assert.equal(api.meCalls, 2, "o boot consultou o /me de novo");
     assert.equal(await page.evaluate(() => window.__state.adminFeedback.items.length), 0, "a fila de A não passa para B");
     await page.locator(".footer-feedback").click();

@@ -66,7 +66,7 @@ export function goalIndicator(label, value, reference, pending, unit) {
         : `${shown < 2 ? "Falta" : "Faltam"} ${shown.toLocaleString("pt-BR")} ${shown < 2 ? "ponto" : "pontos"} para a referência`;
   const tone = value == null ? "neutral" : reached ? "reached" : "below";
   const fill = Math.max(0, Math.min(100, Number(value) || 0));
-  return `<article class="goal goal-${tone}"><span class="goal-label">${label}</span><strong>${percentStudent(value)}</strong>
+  return `<article class="goal goal-${tone} goal-${unit.toLowerCase()}"><span class="goal-label">${label}</span><strong>${percentStudent(value)}</strong>
   <div class="goal-bar" aria-hidden="true"><i style="width:${fill}%"></i><b style="left:${reference}%"></b></div>
   <p class="goal-reference">Referência: ${reference}%</p><p class="goal-status">${status}</p>${pending ? `<p class="goal-note">${plural(pending, `${unit} sem nota conta`, `${unit}s sem nota contam`)} como 0%</p>` : ""}</article>`;
 }
@@ -184,9 +184,9 @@ export function roleLabel() {
 }
 export function sessionContext() {
   if (state.me && state.studentView)
-    return `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>Admin: ${e(state.me.email)}</small><small class="viewing-as">Visualizando: ${e(state.studentView.name || "carregando…")}</small></div>`;
+    return `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>Admin: ${e(state.me.email).replace("@", "@<wbr>")}</small><small class="viewing-as">Visualizando: ${e(state.studentView.name || "carregando…")}</small></div>`;
   return state.me
-    ? `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>${e(state.me.email)}</small></div>`
+    ? `<div class="session-context"><span class="role-chip">${e(roleLabel())}</span><small>${e(state.me.email).replace("@", "@<wbr>")}</small></div>`
     : "";
 }
 // Faixa fixa enquanto o admin visualiza a conta de um aluno: deixa claro quem é quem e como sair.
@@ -225,12 +225,6 @@ export function heading(kicker, title, subtitle, action = "") {
 export function metric(label, value, caption, kind = "") {
   return `<article class="metric ${kind}"><span>${label}</span><strong>${value}</strong><small>${caption}</small></article>`;
 }
-// Cartão que também filtra a lista (painel do instrutor): mesmo visual do metric(), como botão.
-export function filterMetric(label, value, caption, kind, filter) {
-  const active = state.filter === filter;
-  return `<button type="button" class="metric metric-filter ${kind} ${active ? "active" : ""}" data-filter="${filter}" data-scroll-to="students-heading" aria-pressed="${active}"><span>${label}</span><strong>${value}</strong><small>${caption}</small></button>`;
-}
-
 export function personalChanges(changes) {
   if (!changes) return '<p class="small">Primeira publicação disponível para comparação.</p>';
   const delta = (n) => n == null ? "sem comparação" : `${n > 0 ? "+" : ""}${Number(n).toLocaleString("pt-BR")} pontos percentuais`;

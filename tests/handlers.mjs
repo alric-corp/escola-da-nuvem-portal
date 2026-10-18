@@ -158,8 +158,11 @@ test("C7.3: envio atual preserva aprovados, resultado withdrawn, render e aviso"
   assert.equal(direct.batchPreview, preview);
   assert.equal(direct.batchResults, results);
   assert.equal(h.renders(), renders + 1);
-  assert.deepEqual(h.notices, [{ message: "Envio em lote concluído. Confira o resultado por aluno.", error: false }]);
-  assert.deepEqual(h.confirms, ["Enviar lembrete para 2 alunos?"]);
+  // Sem quem diga se o resultado recebe o foco (só o handler), o aviso anuncia a resposta, sem afirmar o desfecho (fechamento da E7):
+  // o lote pode ter sido aceito, ficado sem confirmação ou interrompido por conflito.
+  assert.deepEqual(h.notices, [{ message: "Chegou a resposta do envio em lote. Confira o resultado por aluno.", error: false }]);
+  // A pergunta (Expansão 7) diz a turma, quantos aprovados e quantos ficam de fora; sem exemplo na prévia, sem remetente.
+  assert.deepEqual(h.confirms, ["Enviar lembrete para 2 alunos da BRSA0001?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota. O envio começa agora e não pode ser desfeito.\n\n1 aluno selecionado fica de fora; os motivos estão na lista."]);
 }));
 
 test("C7.3: erro atual permanece visível e libera o botão sem apagar a prévia", async () => batchScenario(async (h) => {

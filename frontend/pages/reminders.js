@@ -3,13 +3,44 @@ import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
 import { activityCard, activityGroups } from "./student.js";
 
-export function senderPage() {
-  const title = heading("", "Lembretes por e-mail", "Confirme seu remetente e revise cada mensagem antes de enviar.");
-  if (state.senderLoading) return title + '<section class="panel" role="status">Consultando seu remetente…</section>';
-  if (state.senderError) return title + errorPanel(state.senderError, "refresh-sender");
+// Lembretes (Expansão 7; docs/design-visual.md): "Lembretes" (o remetente) e "Lembretes em lote", sob .teacher-reminders. As
+// operações são as do handler, com as mesmas chamadas, a mesma confirmação e as mesmas guardas; a tela só mostra o que o
+// contrato traz (backend/portal.py::_reminder_settings e _reminder_batch) e não decide quem recebe: elegíveis e motivos vêm do
+// servidor. view (app.js): verifying e failure (verificação do remetente); sending e failure (envio do lote). A prévia e o
+// envio individuais continuam no detalhe do aluno (pendingPage), como antes.
+
+// Situação do remetente pelo contrato: envio ligado na instalação (enabled) e e-mail pronto no serviço de envio (ready); o
+// motivo é sempre o do servidor.
+const senderState = (s) => (!s.enabled ? { kind: "is-off", label: "" } : s.ready ? { kind: "is-ok", label: "Pronto para enviar." }
+  : { kind: "is-attention", label: "Ainda não é possível enviar." });
+
+function senderBlock(view) {
+  const head = '<h2 id="trem-sender-title">Seu remetente</h2>';
+  if (state.senderLoading) return '<p class="trem-loading" id="trem-sender-loading" role="status" tabindex="-1">Consultando seu remetente…</p>';
+  if (state.senderError) return errorPanel(state.senderError, "refresh-sender");
   const s = state.sender;
-  if (!s) return title + '<button class="button primary" data-action="refresh-sender">Consultar remetente</button>';
-  return `${title}<section class="panel"><h2>Seu remetente</h2><p><strong>${e(s.sender)}</strong></p><p role="status">${e(s.reason)}</p>${s.enabled && !s.ready ? '<button class="button primary" data-action="verify-sender">Solicitar confirmação do meu e-mail</button>' : ""}<button class="button secondary" data-action="refresh-sender">Já confirmei · verificar novamente</button><p>A confirmação é individual. Procure a mensagem de verificação da Amazon Web Services no seu e-mail institucional, incluindo a pasta de spam.</p><p>Para enviar, abra um aluno no painel e confira a prévia. Publicar notas nunca dispara lembretes automaticamente.</p><button class="button secondary" data-view="overview">Ir ao painel da turma</button></section>`;
+  if (!s) return `<section class="trem-sender is-action" aria-labelledby="trem-sender-title">${head}<p class="trem-note">A situação do seu e-mail no serviço de envio ainda não foi consultada.</p><div class="trem-actions"><button class="button primary" data-action="refresh-sender">Consultar remetente</button></div></section>`;
+  const st = senderState(s), verify = s.enabled && !s.ready, busy = !!view.verifying, f = view.failure;
+  // Andamento e erro da verificação, junto da ação (o mesmo id nos dois: o render devolve o foco a ele).
+  const op = busy ? '<p class="trem-op is-busy" id="trem-verify-status" role="status" tabindex="-1">Solicitando a confirmação do seu e-mail…</p>'
+    : f ? `<div class="trem-op is-error" id="trem-verify-status" role="alert" tabindex="-1"><p><strong>${f.unsure ? "Não foi possível confirmar o pedido." : "A confirmação não foi solicitada."}</strong> <span>${e(f.message)}</span>${f.unsure ? " <span>Ele pode ter chegado: verifique de novo para ver a situação do seu e-mail.</span>" : ""}</p></div>` : "";
+  return `<section class="trem-sender is-action" aria-labelledby="trem-sender-title">${head}
+  <p class="trem-address"><strong>${e(s.sender)}</strong></p>${s.enabled ? '<p class="trem-note">Os lembretes saem deste e-mail, e as respostas dos alunos chegam nele.</p>' : ""}
+  <p class="trem-state ${st.kind}" id="trem-sender-status" role="status" tabindex="-1"><span>${st.label ? `<strong>${st.label}</strong> ` : ""}<span>${e(s.reason)}</span></span></p>
+  ${verify ? '<p class="trem-hint">A confirmação é individual e vale para todas as suas turmas. Ao solicitar pela primeira vez, a Amazon Web Services envia uma mensagem de verificação para esse e-mail: abra o link dela (procure também na pasta de spam) e depois verifique de novo. Solicitar outra vez não reenvia a mensagem.</p>' : ""}
+  <div class="trem-actions">${verify ? `<button class="button primary" data-action="verify-sender"${busy ? " disabled" : ""}>Solicitar confirmação do meu e-mail</button>` : ""}<button class="button secondary" data-action="refresh-sender"${busy ? " disabled" : ""}>${verify ? "Já confirmei · verificar novamente" : "Verificar novamente"}</button></div>${op}</section>`;
+}
+
+// Os dois caminhos de envio que existem (pelo detalhe do aluno e pelo lote do painel) e as regras do servidor que valem para
+// os dois. O atalho leva ao painel com o filtro "Com atividades sem nota", o mesmo do painel.
+const howToSend = () => `<section class="trem-how" aria-labelledby="trem-how-title"><h2 id="trem-how-title">Como enviar</h2>
+  <ul class="trem-paths"><li><h3>Para um aluno</h3><p>No painel, “Ver pendências” do aluno mostra a mensagem dele, o envio e a situação da entrega.</p></li><li><h3>Para vários alunos</h3><p>No painel, o filtro “Com atividades sem nota” oferece “Enviar lembrete para…”: a lista diz quem recebe e quem fica de fora, com o motivo.</p><button type="button" class="text-link" data-view="overview" data-pending="1">Ver alunos com atividades sem nota</button></li></ul>
+  <div class="trem-actions"><button class="button secondary" data-view="overview">Ir ao painel da turma</button></div></section>`;
+const sendingRules = () => `<section class="trem-rules" aria-labelledby="trem-rules-title"><h2 id="trem-rules-title">O que vale para todo envio</h2>
+  <ul class="trem-rule-list"><li>Cada aluno recebe no máximo um lembrete por publicação de notas: quem já tem lembrete registrado nesta publicação fica de fora.</li><li>Também ficam de fora desistentes, alunos sem e-mail no Canvas e alunos sem atividades sem nota.</li><li>A mensagem é montada pelo portal com as atividades sem nota da publicação em vigor, e você a revisa antes de enviar.</li><li>“Aceito pelo serviço de envio” ainda não é a entrega: a situação de cada aluno aparece nas pendências dele.</li><li>Publicar notas nunca dispara lembretes automaticamente.</li></ul></section>`;
+
+export function senderPage(view = {}) {
+  return `<div class="teacher-reminders">${heading("", "Lembretes por e-mail", "Confirme seu remetente e revise cada mensagem antes de enviar.")}${senderBlock(view)}${howToSend()}${sendingRules()}</div>`;
 }
 
 export function pendingPage() {
@@ -54,32 +85,94 @@ function studentDetail(p) {
   ${p.history?.length ? `<section class="panel"><h2>Histórico do aluno</h2><div class="table-scroll"><table><thead><tr><th>Publicação</th><th>KCs</th><th>Labs</th><th>Média geral</th></tr></thead><tbody>${p.history.map((h) => `<tr><td>${date(h.publishedAt)}${h.current ? " · atual" : ""}</td><td>${percent(h.kc)}</td><td>${percent(h.lab)}</td><td>${percent(h.total)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
 }
 
+// Quem fica de fora e por quê (backend/reminders.py::evaluate_recipient e o envio em lote), na ordem em que os grupos
+// aparecem; um motivo que o contrato ainda não tem aparece por último, com o código.
 const skipLabels = {
+  "already-sent": "Lembrete já registrado nesta publicação",
   withdrawn: "Desistente",
   "no-email": "Sem e-mail no Canvas",
   "no-pending": "Sem atividades sem nota",
-  "already-sent": "Já contatado nesta publicação",
   "not-found": "Não encontrado nesta publicação",
-  "publication-changed": "Notas atualizadas durante o envio",
+  // Qualquer conflito na reserva (backend/portal.py::_reminder_batch), repetido para todos os seguintes: não prova a causa.
+  "publication-changed": "Envio interrompido por conflito",
 };
-const resultLabels = { sent: "Enviado", failed: "Falhou", skipped: "Pulado" };
+const byReason = (rows, key) => [...new Set([...Object.keys(skipLabels), ...rows.map((r) => r[key])])]
+  .map((reason) => [reason, rows.filter((r) => r[key] === reason)]).filter(([, list]) => list.length);
+const names = (rows, pending) => `<ul class="trem-names">${rows.map((r) => `<li><span class="trem-name">${r.name ? e(r.name) : `Canvas ID ${e(r.id)}`}</span>${pending ? ` <span class="trem-pending">${e(r.pending)} sem nota</span>` : ""}</li>`).join("")}</ul>`;
+const reasonGroups = (rows, key, pending) => byReason(rows, key)
+  .map(([reason, list]) => `<div class="trem-group"><h4>${e(skipLabels[reason] || reason || "Outro motivo")} · ${list.length}</h4>${names(list, pending)}</div>`).join("");
 
-export function batchPage() {
-  const title = heading(
+// Quem recebe: a contagem (o texto de antes), a publicação a que o lote se refere e, por motivo, quem fica de fora.
+function batchSummary(p, eligible, out) {
+  return `<section class="trem-summary" aria-labelledby="trem-summary-title"><h2 id="trem-summary-title" tabindex="-1">Quem recebe</h2>
+  <p class="trem-count">${eligible.length} de ${plural(p.recipients.length, "aluno", "alunos")} ${eligible.length === 1 ? "vai" : "vão"} receber um lembrete agora.</p>${p.publishedAt ? `<p class="trem-note">A mensagem usa as notas da publicação de ${e(date(p.publishedAt))}.</p>` : ""}
+  ${out.length ? `<div class="trem-out"><h3>Ficam de fora · ${out.length}</h3>${reasonGroups(out, "skip", true)}</div>` : ""}</section>`;
+}
+const sampleMessage = (m) => `<section class="trem-message" aria-labelledby="trem-message-title"><h2 id="trem-message-title">Exemplo de mensagem</h2>
+  <p class="trem-note">Cada aluno recebe uma versão com as próprias atividades sem nota; esta é a do primeiro aluno da lista.</p>
+  <dl class="trem-envelope"><div><dt>De</dt><dd>${e(m.from)}</dd></div><div><dt>Para</dt><dd>o e-mail de cada aluno no Canvas</dd></div><div><dt>Assunto</dt><dd>${e(m.subject)}</dd></div></dl>
+  <pre class="trem-text">${e(m.text)}</pre></section>`;
+
+// Erro do envio, junto da ação (o mesmo id do andamento: o render devolve o foco a ele). Com 4xx nada saiu: o backend valida
+// tudo (acesso, publicação da prévia, remetente) antes do primeiro aluno e não tem 4xx depois dele, e o 429 vem do limite do
+// API Gateway, antes da Lambda. Sem resposta ou com 5xx (unsure), parte pode ter saído. Na dúvida e no conflito (409), a nova
+// consulta vem antes de enviar de novo.
+function sendFailure(f) {
+  const head = f.unsure ? "Não foi possível confirmar o envio." : "Nenhum lembrete foi enviado.";
+  const unsure = f.unsure ? " <span>Parte dos lembretes pode ter sido enviada, e o envio pode continuar no servidor. Antes de enviar de novo, consulte os destinatários: quem já tem lembrete registrado nesta publicação fica de fora e não recebe outro.</span>" : "";
+  return `<div class="trem-op is-error" id="trem-send-status" role="alert" tabindex="-1"><p><strong>${head}</strong> <span>${e(f.message)}</span>${unsure}</p>${f.unsure || f.conflict ? '<button type="button" class="button primary" data-action="retry-batch-preview">Consultar destinatários de novo</button>' : ""}</div>`;
+}
+
+// Envio: a única superfície da tela. O remetente e a prontidão vêm da prévia; Enviar fica parado sem remetente pronto (como
+// antes, com o motivo ligado ao botão) e durante o envio, mesmo que a tela seja redesenhada.
+function sendBlock(p, n, view) {
+  const ready = !!p.ses?.ready, sending = !!view.sending, f = view.failure, again = !!f && (f.unsure || f.conflict);
+  const who = n === 1 ? "o aluno da lista" : `cada um dos ${n} alunos da lista`;
+  return `<section class="trem-send is-action" aria-labelledby="trem-send-title"><h2 id="trem-send-title">Envio</h2>
+  <p class="trem-state ${ready ? "is-ok" : "is-attention"}"><span>${e(p.ses?.reason || "")}</span></p>
+  <p class="trem-address"><span class="trem-label">De</span> <strong>${e(p.sample.from)}</strong></p>
+  <p class="trem-consequence">Ao confirmar, o portal envia agora um e-mail para ${who}. Um e-mail enviado não pode ser desfeito.</p>
+  ${ready ? "" : '<div class="trem-actions"><button class="button secondary" data-view="reminders">Configurar meu remetente</button></div><p class="trem-reason" id="trem-send-reason">O envio fica parado até o remetente ficar pronto.</p>'}
+  <div class="trem-send-action"><button class="button ${again ? "secondary" : "primary"}" data-action="send-reminders-batch"${ready && !sending ? "" : " disabled"}${ready ? "" : ' aria-describedby="trem-send-reason"'}>Enviar para ${plural(n, "aluno", "alunos")}</button></div>
+  ${sending ? `<p class="trem-op is-busy" id="trem-send-status" role="status" tabindex="-1">Enviando lembretes para ${plural(n, "aluno", "alunos")}… O resultado aparece aqui. Sair desta tela não cancela o envio.</p>` : f ? sendFailure(f) : ""}</section>`;
+}
+const recipients = (list) => `<section class="trem-recipients" aria-labelledby="trem-recipients-title"><h2 id="trem-recipients-title">Recebem agora · ${list.length}</h2>${names(list, true)}</section>`;
+
+// Resultado por aluno, como o servidor o devolve: "sent" é a mensagem aceita pelo serviço de envio (a entrega aparece no
+// detalhe do aluno); "failed" não diz se a recusa foi certa ou se a resposta não chegou (a próxima consulta diz); "skipped",
+// com o motivo. Só o que não é zero. "publication-changed" é o primeiro conflito na reserva (outra reserva do mesmo aluno —
+// outro lote, o envio individual ou o automático —, outra transação na turma, publicação nova ou outra alteração da turma),
+// repetido para todos os seguintes, mesmo os que ficariam de fora por outro motivo: a tela não afirma a causa. O título,
+// que recebe o foco, descreve as quantidades.
+function batchResult(results) {
+  const of = (status) => results.filter((r) => r.status === status);
+  const sent = of("sent"), failed = of("failed"), skipped = of("skipped"), other = results.filter((r) => !["sent", "failed", "skipped"].includes(r.status));
+  const changed = skipped.filter((r) => r.reason === "publication-changed").length;
+  const facts = [sent.length && `${plural(sent.length, "aceito", "aceitos")} pelo serviço de envio`, failed.length && `${failed.length} sem confirmação do envio`,
+    skipped.length && `${plural(skipped.length, "ficou", "ficaram")} de fora`, other.length && `${other.length} com outro resultado`].filter(Boolean);
+  const group = (title, list, body = names(list, false)) => (list.length ? `<div class="trem-group"><h3>${title} · ${list.length}</h3>${body}</div>` : "");
+  return `<section class="trem-result" aria-labelledby="trem-result-title"><h2 id="trem-result-title" tabindex="-1" aria-describedby="trem-result-count">Resultado do envio</h2>
+  <p class="trem-count" id="trem-result-count">${facts.join(" · ")}.</p>
+  <p class="trem-note">“Aceito pelo serviço de envio” ainda não é a entrega na caixa do aluno: a situação de cada um aparece em “Ver pendências”, no painel.</p>
+  ${failed.length ? `<div class="trem-alert"><p><strong>${plural(failed.length, "aluno ficou", "alunos ficaram")} sem confirmação do envio.</strong> O serviço de envio recusou a mensagem ou não respondeu. Na nova consulta, quem teve a recusa confirmada volta a aparecer para envio; quem ficou sem resposta continua com o lembrete registrado e não recebe outro, para não haver duplicação.</p></div>` : ""}
+  ${changed ? `<div class="trem-alert"><p><strong>Envio interrompido por conflito.</strong> O servidor encontrou um conflito ao registrar um lembrete e parou o envio; este envio não mandou lembrete para ${plural(changed, "aluno", "alunos")} (em “Envio interrompido por conflito”). A causa pode ser outro envio para a turma ao mesmo tempo, inclusive o automático, uma publicação nova das notas ou outra alteração na turma; o portal não sabe qual. Antes de enviar de novo, consulte os destinatários: a nova consulta mostra quem já tem lembrete registrado, inclusive por outro envio, e quem ainda pode receber. Se as notas mudaram, ela já é da publicação nova, em que quem recebeu agora pode aparecer de novo.</p></div>` : ""}
+  ${failed.length || changed ? '<div class="trem-actions"><button type="button" class="button secondary" data-action="retry-batch-preview">Consultar destinatários de novo</button></div>' : ""}
+  ${group("Aceitos pelo serviço de envio", sent)}${group("Sem confirmação do envio", failed)}${group("Ficaram de fora", skipped, reasonGroups(skipped, "reason", false))}${group("Outro resultado", other)}</section>`;
+}
+
+export function batchPage(view = {}) {
+  const page = (html) => `<div class="teacher-reminders">${heading(
     "",
     "Lembretes em lote",
     "Revise a lista e a prévia antes de enviar. Cada aluno recebe uma mensagem individual, com suas próprias pendências.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
-  );
-  if (state.batchError) return title + errorPanel(state.batchError, "retry-batch-preview");
-  if (state.batchResults) {
-    const counts = state.batchResults.reduce((acc, r) => ({ ...acc, [r.status]: (acc[r.status] || 0) + 1 }), {});
-    return `${title}<section class="panel"><h2>Resultado do envio</h2><p>${plural(counts.sent || 0, "enviado", "enviados")} · ${plural(counts.skipped || 0, "pulado", "pulados")} · ${counts.failed || 0} com falha.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Resultado</th></tr></thead><tbody>${state.batchResults.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${resultLabels[r.status] || r.status}${r.reason ? ` · ${e(skipLabels[r.reason] || r.reason)}` : ""}</td></tr>`).join("")}</tbody></table></div></section>`;
-  }
+  )}${html}</div>`;
+  if (state.batchError) return page(errorPanel(state.batchError, "retry-batch-preview"));
+  if (state.batchResults) return page(batchResult(state.batchResults));
   const p = state.batchPreview;
-  if (!p) return `${title}<section class="panel" role="status">Consultando destinatários…</section>`;
-  const eligible = p.recipients.filter((r) => !r.skip);
-  return `${title}<section class="panel"><h2>Destinatários</h2><p>${eligible.length} de ${plural(p.recipients.length, "aluno", "alunos")} ${eligible.length === 1 ? "vai" : "vão"} receber um lembrete agora. Os demais aparecem com o motivo por que serão pulados.</p><div class="table-scroll"><table><thead><tr><th>Aluno</th><th>Sem nota</th><th>Situação</th></tr></thead><tbody>${p.recipients.map((r) => `<tr><td>${e(r.name || r.id)}</td><td>${r.pending}</td><td>${r.skip ? e(skipLabels[r.skip] || r.skip) : "Será enviado"}</td></tr>`).join("")}</tbody></table></div></section>${p.sample ? `<section class="panel reminder-panel"><h2>Exemplo de mensagem</h2><p class="small">Cada aluno recebe uma versão com suas próprias pendências; este é só um exemplo.</p><dl><dt>De</dt><dd>${e(p.sample.from)}</dd><dt>Assunto</dt><dd>${e(p.sample.subject)}</dd></dl><pre class="email-preview">${e(p.sample.text)}</pre><p role="status">${e(p.ses?.reason || "")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminders-batch" ${eligible.length && p.ses?.ready ? "" : "disabled"}>Enviar para ${plural(eligible.length, "aluno", "alunos")}</button></section>` : '<section class="panel"><p>Nenhum aluno elegível para receber o lembrete agora.</p></section>'}`;
+  if (!p) return page('<p class="trem-loading" id="trem-batch-loading" role="status" tabindex="-1">Consultando destinatários…</p>');
+  const eligible = p.recipients.filter((r) => !r.skip), out = p.recipients.filter((r) => r.skip);
+  return page(`${batchSummary(p, eligible, out)}${p.sample ? `${sampleMessage(p.sample)}${sendBlock(p, eligible.length, view)}` : '<p class="trem-none">Nenhum aluno elegível para receber o lembrete agora.</p>'}${eligible.length ? recipients(eligible) : ""}`);
 }
 
 export function reminderPreview(p) {

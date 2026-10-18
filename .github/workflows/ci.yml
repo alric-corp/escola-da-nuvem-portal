@@ -35,7 +35,10 @@ jobs:
 
   node:
     name: Frontend (Node + Playwright)
-    runs-on: ubuntu-latest
+    # Temporário: as suítes de navegador medem layout com as fontes do sistema (DejaVu Sans no Linux), e a evidência verde
+    # é do Ubuntu 24.04. O rótulo ubuntu-latest passa ao Ubuntu 26 a partir de 19/10/2026. Antes de voltar a ubuntu-latest,
+    # validar e recalibrar estas suítes no Ubuntu 26.04 numa execução própria. Os outros jobs não medem layout.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

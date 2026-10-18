@@ -28,7 +28,7 @@ SUITES = {  # ordem de tentativa: a primeira que falhar por asserção mata a mu
 # (nome, arquivo, função (None = arquivo todo), trecho original, substituição)
 MUTATIONS = [
     ("409-tratado-como-sucesso", ADMIN, "saveStatus", "    throw err;\n  }", "    return;\n  }"),
-    ("409-sem-atualizar-a-tela", ADMIN, "saveStatus", "    if (err.status === 409) await load(true, { quiet: true });\n", ""),
+    ("409-sem-atualizar-a-tela", ADMIN, "saveStatus", "    if (err.status === 409 && state.adminFeedback === a) await load(true, { quiet: true });\n", ""),
     ("409-refresh-esvazia-a-tela", ADMIN, "load", "  if (!quiet) {\n    Object.assign(a, { loading: true", "  if (true) {\n    Object.assign(a, { loading: true"),
     ("409-item-fora-do-filtro-continua-selecionado", ADMIN, "load", "    if (quiet && !a.items.some((f) => f.id === a.selectedId)) a.selectedId = null;\n", ""),
     ("cursor-avanca-apos-erro", ADMIN, "load", "if (request === adminFeedbackRequest && !quiet) a.error =", "if (request === adminFeedbackRequest && !quiet) a.nextCursor = null, a.error ="),
@@ -49,10 +49,14 @@ MUTATIONS = [
     ("urls-sem-revogar-ao-descartar", FEEDBACK, "discardUploads", "  releaseFiles(state.feedbackFiles);\n", ""),
     ("urls-sem-revogar-apos-envio", FEEDBACK, "sendFormImages", "  releaseFiles(state.feedbackFiles);\n", ""),
     ("urls-sem-revogar-no-cartao", FEEDBACK, "addPickedImages", "    releaseFiles(entries);\n", ""),
-    ("pagina-aluno-esconde-itens-no-erro", PAGE_MINE, "myFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
-    ("pagina-admin-esconde-itens-no-erro", PAGE_ADMIN, "listItems", "if (a.error && !a.items.length)", "if (a.error)"),
-    ("pagina-aluno-retry-recomeca", PAGE_MINE, "myFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
-    ("pagina-admin-retry-recomeca", PAGE_ADMIN, "listItems", 'data-action="admin-feedback-more">Tentar novamente', 'data-action="admin-feedback-retry">Tentar novamente'),
+    # A lista do aluno (studentFeedbackList, Expansão 3) e a do instrutor ou admin pelo rodapé (myFeedbackList) são funções
+    # diferentes: as duas levam as mesmas mutações.
+    ("pagina-aluno-esconde-itens-no-erro", PAGE_MINE, "studentFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
+    ("pagina-rodape-esconde-itens-no-erro", PAGE_MINE, "myFeedbackList", "if (list.error && !list.items.length)", "if (list.error)"),
+    ("pagina-admin-esconde-itens-no-erro", PAGE_ADMIN, "inbox", "if (a.error && !a.items.length)", "if (a.error)"),
+    ("pagina-aluno-retry-recomeca", PAGE_MINE, "studentFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
+    ("pagina-rodape-retry-recomeca", PAGE_MINE, "myFeedbackList", 'data-action="feedback-more">Tentar novamente', 'data-action="feedback-retry">Tentar novamente'),
+    ("pagina-admin-retry-recomeca", PAGE_ADMIN, "inbox", 'data-action="admin-feedback-more">Tentar novamente', 'data-action="admin-feedback-retry">Tentar novamente'),
     ("rascunho-obsoleto-no-map", IMPORT, "restoreDraft", "  drafts.delete(state.code);\n", ""),
     ("boot-sem-reset-do-feedback", APP, "boot", "    feedbackHandlers.resetForUser(state.me.email);\n", ""),
     ("boot-sem-reset-do-admin", APP, "boot", "    adminFeedbackHandlers.resetForUser(state.me.email);\n", ""),

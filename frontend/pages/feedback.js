@@ -77,7 +77,16 @@ function myFeedbackList() {
     : list.nextCursor ? `<button class="button secondary fb-more" data-action="feedback-more" ${list.loading ? "disabled" : ""}>${list.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
 }
 
-export function feedbackPage() {
+// Aluno (Expansão 3): a tela própria, abaixo. Instrutor e admin, que chegam pelo rodapé: a mesma tela de antes.
+// view vem do app.js (o que só a tela do aluno guarda): showProblems depois de uma tentativa de envio com o rascunho
+// atual; failure, o último envio que falhou ({ message, unsure }: unsure quando não houve resposta do servidor ou ele
+// falhou por dentro, e o feedback pode ter chegado); picked, o resultado da última escolha de imagens ({ target: "form"
+// ou o id do feedback, refused, attached }); open, os ids das mensagens abertas em "Meus feedbacks".
+export function feedbackPage(view = {}) {
+  return studentOnly() ? studentFeedbackPage(view) : ownFeedbackPage();
+}
+
+function ownFeedbackPage() {
   const d = state.feedbackDraft;
   const origin = originLabel(state.feedbackOrigin);
   return `${heading("", "Ajude a melhorar a plataforma", "Encontrou um problema ou tem uma sugestão? Conte para nós.")}
@@ -97,4 +106,130 @@ export function feedbackPage() {
   <div class="form-footer"><button class="button primary" type="submit" ${state.feedbackSending || state.feedbackUpload.feedbackId ? "disabled" : ""}>${state.feedbackSending ? "Enviando…" : "Enviar feedback"}</button></div>
   </form></section>
   <section class="panel" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2>${myFeedbackList()}</section>`;
+}
+
+// Expansão 3 (docs/design-visual.md): Feedback do aluno. Escrever é a tarefa principal (formulário numa superfície
+// discreta, à esquerda no desktop); "Meus feedbacks" é o registro do que já foi enviado, sobre o fundo e separado por
+// linhas finas. Mesmos ids, data-* e handlers da tela de antes; o que muda é a apresentação: tipos com explicação,
+// regras e limites junto dos campos, problemas de validação junto do campo (todos de uma vez), o que vai junto com o
+// envio, estado de envio visível e, na lista, a mensagem enviada, a situação (texto e forma) e quando ela mudou.
+// .student-feedback delimita os estilos da tela (seção 33 do CSS).
+const studentOnly = () => !!state.me && !state.me.roles.some((r) => r === "admin" || r === "instructor");
+
+// Problemas do rascunho com as regras e os textos de handlers/feedback.js::submit, que valida de novo antes de enviar e
+// continua sendo a regra (um teste confere que os dois coincidem). Todos de uma vez, na ordem dos campos.
+export function feedbackProblems(d) {
+  const problems = {};
+  if (!d.type) problems.type = "Escolha o tipo do feedback.";
+  if (d.title.trim().length < 3) problems.title = "O título deve ter ao menos 3 caracteres.";
+  if (d.description.trim().length < 10) problems.description = "A descrição deve ter ao menos 10 caracteres.";
+  return problems;
+}
+
+// Uma linha de ajuda por tipo, na ordem do contrato (backend/feedback.py::TYPES).
+const typeHints = { BUG: "Algo não funciona como deveria.", SUGGESTION: "Uma ideia nova para o portal.",
+  IMPROVEMENT: "Algo que já existe pode ficar melhor.", OTHER: "Qualquer outro assunto." };
+// Telas de onde o aluno chega ao Feedback, com o nome do menu dele.
+const studentOrigins = { overview: "Meu desempenho", activities: "Minhas atividades", history: "Meu histórico", onboarding: "Primeiro acesso" };
+const originName = (page) => studentOrigins[page] || originLabel(page, true);
+// Datas por extenso no fuso do navegador, como em Meu histórico.
+const longDate = (d) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+const validDate = (value) => { const d = new Date(value); return value && !Number.isNaN(d.getTime()) ? d : null; };
+
+const problem = (key, text) => text ? `<p class="fb-error" id="fb-${key}-error">${e(text)}</p>` : "";
+const invalid = (text) => text ? ' aria-invalid="true"' : "";
+
+function studentFeedbackPage({ showProblems = false, failure = null, picked = null, open = new Set() }) {
+  const d = state.feedbackDraft, p = showProblems ? feedbackProblems(d) : {};
+  const sending = state.feedbackSending, upload = state.feedbackUpload;
+  const describe = (key) => `fb-${key}-hint fb-${key}-count${p[key] ? ` fb-${key}-error` : ""}`;
+  const progress = upload.progress || (sending ? "Enviando seu feedback…" : "");
+  // O que vai junto com o envio (handlers/feedback.js::submit manda a turma atual e a tela de origem, quando existem).
+  const where = state.feedbackOrigin ? originName(state.feedbackOrigin) : "";
+  const context = [state.code && `a turma <strong>${e(state.code)}</strong>`, where && `a tela de origem, <strong>${e(where)}</strong>`].filter(Boolean);
+  // Com imagens que não foram anexadas, o envio fica parado até a pessoa tentar de novo ou descartar: o botão aponta para
+  // o aviso que diz por quê. Depois de um envio que falhou, aponta para o motivo, que continua junto dele.
+  const blocked = !sending && upload.failed;
+  const reason = blocked ? "fb-partial-text" : failure && !sending ? "fb-send-error-text" : "";
+  const refused = picked?.target === "form" ? picked.refused : "";
+  return `<div class="student-feedback">${heading("", "Ajude a melhorar a plataforma", "Encontrou um problema ou tem uma sugestão? Conte para nós.")}
+  <div class="feedback-layout"><section class="feedback-compose feedback-form-panel" aria-labelledby="fb-new-heading"><h2 id="fb-new-heading">Novo feedback</h2>
+  <form id="feedback-form" novalidate${sending ? ' aria-busy="true"' : ""}><p class="fb-required">Tipo, título e descrição são obrigatórios.</p>
+  <fieldset class="feedback-types"><legend>Tipo</legend><div class="fb-type-options">${Object.entries(feedbackTypes).map(([value, label]) => {
+    const id = `fb-type-${value.toLowerCase()}`;
+    return `<label class="fb-type-option"><input type="radio" name="fb-type" id="${id}" value="${value}" required aria-labelledby="${id}-name" aria-describedby="${id}-hint${p.type ? " fb-type-error" : ""}" ${d.type === value ? "checked" : ""}${invalid(p.type)}><span class="fb-type-text"><span class="fb-type-name" id="${id}-name">${label}</span> <span class="fb-type-hint" id="${id}-hint">${typeHints[value]}</span></span></label>`;
+  }).join("")}</div>${problem("type", p.type)}</fieldset>
+  <div class="fb-field-group"><label class="fb-field" for="fb-title">Título</label><p class="fb-hint" id="fb-title-hint">Em poucas palavras, de 3 a ${TITLE_MAX} caracteres.</p>
+  <input id="fb-title" name="title" maxlength="${TITLE_MAX}" autocomplete="off" required value="${e(d.title)}" aria-describedby="${describe("title")}"${invalid(p.title)}>
+  <div class="fb-field-foot">${problem("title", p.title)}<small class="fb-count" id="fb-title-count">${d.title.length}/${TITLE_MAX}</small></div></div>
+  <div class="fb-field-group"><label class="fb-field" for="fb-description">Descrição</label><p class="fb-hint" id="fb-description-hint">O que aconteceu ou o que você sugere, e em qual tela. De 10 a ${DESCRIPTION_MAX.toLocaleString("pt-BR")} caracteres.</p>
+  <textarea id="fb-description" name="description" rows="4" maxlength="${DESCRIPTION_MAX}" required aria-describedby="${describe("description")}"${invalid(p.description)}>${e(d.description)}</textarea>
+  <div class="fb-field-foot">${problem("description", p.description)}<small class="fb-count" id="fb-description-count">${d.description.length}/${DESCRIPTION_MAX}</small></div></div>
+  <fieldset class="fb-attachments"><legend>Anexos (opcional)</legend>
+  <p class="small">Você pode adicionar até 3 imagens PNG, JPEG ou WebP de até 5 MB cada.</p>
+  <p class="small fb-privacy">Evite incluir senhas, documentos ou outras informações sensíveis na imagem.</p>
+  ${selectedFiles()}${refused ? `<p class="fb-error" id="fb-files-error" tabindex="-1">${e(refused)}</p>` : ""}${state.feedbackFiles.length < ATTACHMENT_SLOTS && !sending && !upload.feedbackId ? `<button type="button" class="button secondary fb-add" data-fb-pick="form"${refused ? ' aria-describedby="fb-files-error"' : ""}>+ Adicionar imagem</button>` : ""}
+  </fieldset>
+  ${progress ? `<p class="small fb-progress" role="status">${e(progress)}</p>` : ""}
+  ${upload.failed ? `<div class="fb-partial" role="alert"><p id="fb-partial-text">${partialText()}</p><button type="button" class="button secondary" data-action="feedback-retry-uploads">Tentar novamente</button><button type="button" class="text-link" data-action="feedback-discard-uploads">Descartar imagens</button></div>` : ""}
+  ${state.feedbackSent ? `<p class="feedback-success" id="fb-sent" role="status" tabindex="-1">${state.feedbackSent === "duplicate" ? "Este feedback já tinha sido enviado. Ele não foi registrado de novo e continua em Meus feedbacks." : "Feedback enviado com sucesso."}</p>` : ""}
+  ${failure && !sending ? sendError(failure) : ""}
+  <div class="form-footer">${context.length ? `<p class="feedback-origin">Junto com o feedback ${context.length > 1 ? "vão" : "vai"} ${context.join(" e ")}.</p>` : ""}<button class="button primary" type="submit" ${sending || upload.feedbackId ? "disabled" : ""}${reason ? ` aria-describedby="${reason}"` : ""}>${sending ? "Enviando…" : "Enviar feedback"}</button></div>
+  </form></section>
+  <section class="feedback-history" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2>${studentFeedbackList(open, picked)}</section></div></div>`;
+}
+
+// Envio que falhou: fica junto do botão até a próxima tentativa (recebe o foco; o botão aponta para ele). Com resposta do
+// servidor (4xx), o feedback não entrou; sem resposta ou com erro interno, pode ter entrado, e enviar de novo o mesmo texto
+// devolve o que já existe (backend/feedback.py: envio idêntico em 10 minutos) em vez de registrar outro.
+function sendError({ message, unsure }) {
+  return `<div class="fb-send-error" id="fb-send-error" tabindex="-1"><p id="fb-send-error-text"><strong>${unsure ? "Não foi possível confirmar o envio." : "O feedback não foi enviado."}</strong> ${e(message)}</p>
+  <p>O que você escreveu continua no formulário.${unsure ? " Envie de novo: se ele já tiver chegado, não será registrado duas vezes." : ""}</p></div>`;
+}
+
+// Falha parcial das imagens: o feedback já está registrado; só as imagens que faltaram podem ser enviadas de novo (o
+// mesmo slot, pelo clientToken) ou deixadas de lado. O texto não é enviado outra vez.
+function partialText() {
+  const total = state.feedbackFiles.length, failed = state.feedbackFiles.filter((f) => f.status === "failed").length;
+  const which = failed <= 1 ? (total > 1 ? "uma das imagens" : "a imagem") : failed === total ? "as imagens" : `${failed} das imagens`;
+  return `Feedback enviado, mas não foi possível anexar ${which}. <span class="fb-partial-help">Tente anexar de novo ou descarte ${failed > 1 ? "as que faltaram" : "a que faltou"}: o texto não é enviado outra vez.</span>`;
+}
+
+// "Meus feedbacks" do aluno: os mesmos estados da lista de antes (erro sem itens com recomeço; erro em "Carregar mais"
+// mantendo os itens e repetindo a mesma página; carregando; vazio), com o registro no lugar dos cartões.
+function studentFeedbackList(open, picked) {
+  const list = state.myFeedback;
+  if (list.error && !list.items.length)
+    return `<div class="fb-list-state" role="alert"><p>${e(list.error)}</p><button class="button secondary" data-action="feedback-retry">Tentar novamente</button></div>`;
+  if (!list.items.length)
+    return list.loading ? '<p class="fb-list-state" role="status">Carregando seus feedbacks…</p>' : '<p class="fb-list-state">Você ainda não enviou feedbacks.</p>';
+  return `<p class="fb-list-context">A situação de cada um é atualizada pela equipe do portal.</p>
+  <ul class="feedback-list" role="list">${list.items.map((f) => studentFeedbackEntry(f, open.has(f.id), picked?.target === f.id ? picked : null)).join("")}</ul>${list.error ? `<div class="fb-list-state" role="alert"><p>${e(list.error)}</p><button class="button secondary fb-more" data-action="feedback-more">Tentar novamente</button></div>`
+    : list.nextCursor ? `<button class="button secondary fb-more" data-action="feedback-more" ${list.loading ? "disabled" : ""}>${list.loading ? "Carregando…" : "Carregar mais"}</button>` : ""}`;
+}
+
+// Um feedback: título (o que a pessoa escreveu) e situação por texto e forma, com "desde" quando a equipe a mudou
+// (updatedAt só muda com o status: backend/feedback.py::with_status); tipo, data do envio, tela de origem e anexos; a
+// mensagem enviada (texto puro, com as quebras de linha). Ações de anexos como antes.
+// Mensagem longa: o app.js mede depois de cada render e, com mais de 4 linhas na largura atual, marca .is-long e mostra
+// o botão (sem a medida, a mensagem aparece inteira e sem botão). Recolhida, só as 3 primeiras linhas ficam à vista; o
+// texto inteiro continua no DOM (leitor de tela, busca, seleção). `opened` vem do app.js e sobrevive aos renders.
+function studentFeedbackEntry(f, opened, picked) {
+  const count = f.attachments || 0;
+  const open = !!state.feedbackAttachments[f.id]?.open;
+  const canAdd = OPEN_STATUSES.includes(f.status) && count < ATTACHMENT_SLOTS;
+  const progress = state.feedbackCardUpload[f.id];
+  const sent = validDate(f.createdAt), changed = f.updatedAt && f.updatedAt !== f.createdAt ? validDate(f.updatedAt) : null;
+  const meta = [e(feedbackTypes[f.type] || f.type), sent && `<span class="sr-only">enviado em </span><time datetime="${e(f.createdAt)}">${longDate(sent)}</time>`,
+    f.page && originName(f.page) && `a partir de ${e(originName(f.page))}`, f.cohort && f.cohort !== state.code && `turma ${e(f.cohort)}`,
+    count && plural(count, "anexo", "anexos")].filter(Boolean);
+  // Andamento ou falha do envio pelo item (handler); depois de um envio que deu certo, "Imagem anexada" (app.js).
+  const status = progress?.message || (picked?.attached ? "Imagem anexada ao feedback." : ""), refused = picked?.refused;
+  const progressId = `fb-card-progress-${f.id}`, errorId = `fb-card-error-${f.id}`;
+  const described = [status && progressId, refused && errorId].filter(Boolean).join(" ");
+  const toggle = f.description ? `<button type="button" class="text-link fb-message-toggle" data-fb-message="${e(f.id)}" aria-controls="${e(`fb-text-${f.id}`)}" aria-expanded="${opened}" hidden>${opened ? "Recolher mensagem" : "Ler mensagem completa"}</button>` : "";
+  return `<li class="feedback-card fb-entry"><div class="fb-entry-head"><h3 class="fb-title">${e(f.title)}</h3><p class="fb-state is-${e(String(f.status).toLowerCase())}"><span class="sr-only">Situação: </span><span class="fb-state-name">${e(feedbackStatuses[f.status] || f.status)}</span>${changed ? ` <span class="fb-state-since">desde <time datetime="${e(f.updatedAt)}">${longDate(changed)}</time></span>` : ""}</p></div>
+  <p class="fb-entry-meta">${meta.join(" · ")}</p>${f.description ? `<p class="fb-entry-text${opened ? "" : " is-collapsed"}" id="${e(`fb-text-${f.id}`)}">${e(f.description)}</p>` : ""}
+  ${toggle || count || canAdd ? `<div class="fb-card-actions">${toggle}${count ? `<button type="button" class="text-link" data-fb-toggle-attachments="${e(f.id)}" aria-expanded="${open}">${open ? "Ocultar anexos" : "Ver anexos"}</button>` : ""}${canAdd ? `<button type="button" class="text-link fb-card-add" data-fb-pick="${e(f.id)}" ${progress?.busy ? "disabled" : ""}${described ? ` aria-describedby="${e(described)}"` : ""}>Adicionar imagem</button>` : ""}</div>` : ""}
+  ${refused ? `<p class="fb-error" id="${e(errorId)}" tabindex="-1">${e(refused)}</p>` : ""}${status ? `<p class="small fb-card-progress" id="${e(progressId)}" role="status" tabindex="-1">${e(status)}</p>` : ""}${open ? attachmentGallery(f.id) : ""}</li>`;
 }

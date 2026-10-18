@@ -79,7 +79,8 @@ try {
   await page.getByRole("heading", { name: "Lembretes em lote", exact: true }).waitFor();
   await page.getByText(/1 de 2 alunos vai receber/).waitFor();
   assert.equal(previewCalls, 1);
-  assert.match(await page.locator("tbody").first().innerText(), /Sem e-mail no Canvas/);
+  // Expansão 7: quem fica de fora vem agrupado por motivo.
+  assert.match(await page.locator(".trem-out").innerText(), /Sem e-mail no Canvas · 1\s+Bruna Teste/);
   await page.getByText("Olá, Ana Teste!", { exact: true }).waitFor();
 
   // O envio é assíncrono: espera a resposta do mock (sendCalls já foi incrementado antes do
@@ -88,9 +89,9 @@ try {
   await page.getByRole("button", { name: "Enviar para 1 aluno", exact: true }).click();
   await sent;
   assert.equal(sendCalls, 1);
-  await page.getByText("1 enviado · 0 pulados · 0 com falha.", { exact: true }).waitFor();
-  assert.match(await page.locator("tbody").innerText(), /Ana Teste[\s\S]*Enviado/);
-  assert.doesNotMatch(await page.locator("tbody").innerText(), /Bruna Teste/);
+  await page.getByText("1 aceito pelo serviço de envio.", { exact: true }).waitFor();
+  assert.match(await page.locator(".trem-result").innerText(), /Aceitos pelo serviço de envio · 1\s+Ana Teste/);
+  assert.doesNotMatch(await page.locator(".trem-result").innerText(), /Bruna Teste/);
 
   await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
@@ -582,7 +583,7 @@ try {
     await tab.getByText(/1 de 2 alunos vai receber/).waitFor();
     log.acceptConfirm = false;
     await button(tab, "Enviar para 1 aluno").click();
-    assert.deepEqual(log.dialogs, [{ type: "confirm", message: "Enviar lembrete para 1 aluno?" }]);
+    assert.deepEqual(log.dialogs, [{ type: "confirm", message: "Enviar lembrete para 1 aluno da BRSA0267?\n\nCada aluno recebe um e-mail individual com as próprias atividades sem nota, enviado de instrutor@example.test. O envio começa agora e não pode ser desfeito.\n\n1 aluno selecionado fica de fora; os motivos estão na lista." }]);
     assert.equal(calls(log, "send-reminders").length, 0);
     assert.deepEqual(await noticeTexts(tab), []);
     assert.equal((await snapshot(tab, "batchResults")).batchResults, null);
@@ -594,10 +595,12 @@ try {
     await send.click({ force: true });
     assert.deepEqual([calls(log, "send-reminders").length, log.dialogs.length], [1, 2]);
     gate.resolve();
-    await tab.getByText("0 enviados · 0 pulados · 1 com falha.", { exact: true }).waitFor();
+    await tab.getByText("1 sem confirmação do envio.", { exact: true }).waitFor();
     assert.deepEqual(calls(log, "send-reminders"), [{ method: "POST", path: "/cohorts/BRSA0267/send-reminders", query: "", body: { studentIds: ["1"], expectedPublicationId: "pub-BRSA0267" } }]);
-    assert.match(await tab.locator("tbody").innerText(), /Ana Teste\s+Falhou/);
-    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Envio em lote concluído. Confira o resultado por aluno." }]);
+    assert.match(await tab.locator(".trem-result").innerText(), /Sem confirmação do envio · 1\s+Ana Teste/);
+    // O clique no botão parado levou o foco ao <main>: o resultado não o recebe, e o aviso anuncia a resposta, sem afirmar o
+    // desfecho (fechamento da E7; com o foco no andamento, o resultado recebe o foco e não há aviso).
+    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Chegou a resposta do envio em lote. Confira o resultado por aluno." }]);
     assert.equal((await snapshot(tab, "view")).view, "reminders-batch");
     // Um novo lote zera o resultado anterior enquanto a prévia carrega.
     await button(tab, "Voltar ao painel").click();
@@ -618,7 +621,8 @@ try {
     await context.close();
   }
 
-  // Lote: erro no envio vira aviso; a prévia continua e o botão volta a ficar disponível.
+  // Lote: erro no envio fica na tela, junto do botão (Expansão 7: não vira aviso); a prévia continua e o botão volta a ficar
+  // disponível.
   {
     const { context, tab, log } = await open();
     log.handle = ({ route, entry }) => {
@@ -629,8 +633,9 @@ try {
     await button(tab, "Enviar lembrete para 2 alunos").click();
     await tab.getByText(/1 de 2 alunos vai receber/).waitFor();
     await button(tab, "Enviar para 1 aluno").click();
-    await tab.locator("#notices .notice.error").waitFor();
-    assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Falha fictícia no envio em lote." }]);
+    await tab.locator('#trem-send-status[role="alert"]').waitFor();
+    assert.match(await tab.locator("#trem-send-status").innerText(), /^Não foi possível confirmar o envio\. Falha fictícia no envio em lote\./);
+    assert.deepEqual(await noticeTexts(tab), []);
     assert.equal((await snapshot(tab, "batchResults")).batchResults, null);
     assert.equal(await tab.getByText(/1 de 2 alunos vai receber/).count(), 1);
     assert.ok(await button(tab, "Enviar para 1 aluno").isEnabled());
@@ -717,8 +722,10 @@ try {
           { studentIds: ["1"], expectedPublicationId: "pub-BRSA0267" },
         ]);
         gateB.resolve();
-        await tab.locator("#notices .notice.error").waitFor();
-        assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Erro do envio atual B." }]);
+        // O erro do envio atual fica na tela, junto do botão (Expansão 7), sem aviso temporário.
+        await tab.locator('#trem-send-status[role="alert"]').waitFor();
+        assert.match(await tab.locator("#trem-send-status").innerText(), /Erro do envio atual B\./);
+        assert.deepEqual(await noticeTexts(tab), []);
         assert.ok(await sendB.isEnabled(), "erro atual libera o botão");
         assert.deepEqual(await snapshot(tab, ...keys), before);
       } else assert.equal(calls(log, "send-reminders").length, 1);
@@ -803,12 +810,16 @@ try {
     await tab.getByText("Confirmação solicitada.", { exact: true }).waitFor();
     assert.deepEqual(calls(log, "verify-sender"), [{ method: "POST", path: "/cohorts/BRSA0267/verify-sender", query: "", body: {} }]);
     assert.equal((await snapshot(tab, "sender")).sender.reason, "Confirmação solicitada.");
-    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Confira a mensagem de verificação no seu e-mail institucional e depois verifique novamente." }]);
+    // Foco no <main> (clique no botão parado): a situação nova não o recebe, e o aviso anuncia a resposta sem afirmar o desfecho.
+    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Chegou a resposta do pedido de confirmação. Confira a situação do seu remetente." }]);
     assert.equal(calls(log, "reminder-settings").length, 1);
     log.handle = ({ route, entry }) => entry.path.endsWith("/verify-sender") ? route.fulfill({ status: 500, json: { error: "Falha fictícia na verificação." } }) : undefined;
+    await tab.getByRole("button", { name: "Fechar aviso" }).click();
     await button(tab, "Solicitar confirmação do meu e-mail").click();
-    await tab.locator("#notices .notice.error").waitFor();
-    assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Falha fictícia na verificação." }]);
+    // O erro da verificação fica na tela, junto da ação (Expansão 7), sem aviso temporário.
+    await tab.locator('#trem-verify-status[role="alert"]').waitFor();
+    assert.match(await tab.locator("#trem-verify-status").innerText(), /^Não foi possível confirmar o pedido\. Falha fictícia na verificação\./);
+    assert.deepEqual(await noticeTexts(tab), []);
     assert.equal((await snapshot(tab, "sender")).sender.reason, "Confirmação solicitada.");
     assert.ok(await button(tab, "Solicitar confirmação do meu e-mail").isEnabled());
     assert.deepEqual([log.errors, log.dialogs], [[], []]);

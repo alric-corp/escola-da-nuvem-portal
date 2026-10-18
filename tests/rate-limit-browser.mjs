@@ -55,8 +55,8 @@ try {
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
   assert.equal(reportAttempts, 3);
 
-  // POST não é repetido automaticamente: a mensagem amigável aparece já na primeira 429.
-  await page.locator(".focus-editor summary").click();
+  // POST não é repetido automaticamente: a mensagem amigável aparece já na primeira 429 (desde a Expansão 4, no próprio
+  // Foco da turma, que fica sempre aberto no painel).
   await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
   await page.getByText("O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.", { exact: true }).waitFor();
   assert.equal(focusAttempts, 1);

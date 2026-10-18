@@ -65,18 +65,22 @@ export function back() {
   render();
 }
 
-export async function saveStatus(id, status) {
-  const item = state.adminFeedback.items.find((f) => f.id === id);
+// started (Expansão 9): chamado logo antes do pedido, só quando ele vai sair (o app.js mostra o andamento a partir dali).
+export async function saveStatus(id, status, started) {
+  const a = state.adminFeedback, item = a.items.find((f) => f.id === id);
   if (!item || status === item.status) return;
+  started?.();
   let result;
   try {
     result = await api.adminFeedback.setStatus(item.id, { status, expectedStatus: item.status });
   } catch (err) {
     // 409: outra pessoa mudou o status. O expectedStatus local ficou velho (toda nova tentativa daria 409 de novo),
-    // então a tela é atualizada com o servidor antes de o erro chegar ao usuário.
-    if (err.status === 409) await load(true, { quiet: true });
+    // então a tela é atualizada com o servidor antes de o erro chegar ao usuário — se a fila ainda é a de quem pediu.
+    if (err.status === 409 && state.adminFeedback === a) await load(true, { quiet: true });
     throw err;
   }
+  // Outra pessoa entrou na aba durante o pedido (a fila é outra): a resposta de quem saiu não mexe na tela nem avisa.
+  if (state.adminFeedback !== a) return;
   Object.assign(item, result.feedback);
   render();
   notice("Status do feedback atualizado.");

@@ -81,11 +81,14 @@ try {
   await page.goto(origin);
   await page.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
   await page.getByRole("heading", { name: "Solicitações de acesso", exact: true }).waitFor();
+  // Expansão 8: o título aparece já durante a carga; a lista, quando o aviso de carregamento sai.
+  await page.locator("#aa-load-status").waitFor({ state: "detached" });
 
-  // Filtro de solicitações: só a pendente aparece por padrão.
-  assert.equal(await page.locator(".approve-form").count(), 1);
+  // Filtro de solicitações: só a pendente aparece por padrão. (Expansão 8: uma linha por solicitação, .aa-request; a classe
+  // approve-form fica só no formulário do pedido pendente.)
+  assert.equal(await page.locator(".aa-request").count(), 1);
   await page.locator("#requests-filter").selectOption("all");
-  assert.equal(await page.locator(".approve-form").count(), 2);
+  assert.equal(await page.locator(".aa-request").count(), 2);
   await page.getByText("Aprovada", { exact: true }).waitFor();
   await page.locator("#requests-filter").selectOption("pending");
 
@@ -95,7 +98,8 @@ try {
   await page.locator('[data-reject="t1"]').click();
   await rejected;
   assert.equal(rejectCalls, 1);
-  await page.locator("#notices").getByText("Solicitação recusada.", { exact: true }).waitFor();
+  // Expansão 8: o aviso diz de quem era a solicitação.
+  await page.locator("#notices").getByText("Solicitação de prof1@escoladanuvem.org recusada.", { exact: true }).waitFor();
   await page.locator("#requests-filter").selectOption("all");
   await page.getByText("Recusada", { exact: true }).waitFor();
 
@@ -107,14 +111,15 @@ try {
   await page.locator('[data-unlink="101"]').click();
   await unlinked;
   assert.equal(unlinkCalls, 1);
-  await page.getByText("Sem vínculo", { exact: true }).waitFor();
-  await page.locator("#notices").getByText("Aluno desvinculado.", { exact: true }).waitFor();
+  // Expansão 8: "Sem conta vinculada" (a conta do portal, separada do e-mail do Canvas) e o aviso com o aluno.
+  await page.getByText("Sem conta vinculada", { exact: true }).waitFor();
+  await page.locator("#notices").getByText("A conta de Ana Teste foi desvinculada.", { exact: true }).waitFor();
 
   // Editar nome de exibição.
   await page.locator('[data-start-edit-name="101"]').click();
   await page.locator('input[name="displayName"]').fill("Ana Apelido");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
-  await page.getByText("Nome atualizado.", { exact: true }).waitFor();
+  await page.getByText("“Ana Apelido” é o novo nome de exibição.", { exact: true }).waitFor();
   assert.equal(renameCalls, 1);
 
   // Configurações da turma: limites e ID do curso Canvas, sem editar código.
@@ -195,7 +200,11 @@ try {
     let mark = log.calls.length;
     await tab.locator("#approve-t9").selectOption("BRSA0268");
     await tab.getByRole("button", { name: "Vincular à turma", exact: true }).click();
-    await notices.getByText("Instrutor vinculado à turma.", { exact: true }).waitFor();
+    // Expansão 8: o aviso diz a turma e a pessoa.
+    await notices.getByText("Acesso à BRSA0268 concedido a novo.prof@example.test.", { exact: true }).waitFor();
+    // Expansão 8.1: Vincular pergunta antes, com a pessoa e a turma que vão no pedido.
+    const approveQuestion = "Vincular novo.prof@example.test à turma BRSA0268?\n\nA pessoa passa a acompanhar a BRSA0268 com as permissões de instrutor: ver as notas de todos os alunos, publicar e restaurar notas, marcar desistências e enviar lembretes por e-mail aos alunos dessa turma. O acesso a outras turmas não muda.";
+    assert.deepEqual(log.dialogs, [approveQuestion]);
     assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts/BRSA0268/instructors", body: { userId: "t9" } });
     assert.deepEqual(since(mark + 1).sort(), ["GET /cohorts/BRSA0267/instructors", "GET /requests"]);
     await tab.locator('form[data-user="t9"]').waitFor({ state: "detached" });
@@ -207,17 +216,19 @@ try {
     log.acceptDialogs = false;
     await revoke.click();
     await tab.evaluate(() => {});
-    assert.deepEqual(log.dialogs, ["Remover o acesso deste instrutor à turma selecionada?"]);
+    // Expansão 8: a pergunta diz a pessoa, a turma e as consequências (a mesma confirmação, no mesmo ponto).
+    assert.deepEqual(log.dialogs, [approveQuestion, "Remover o acesso de prof.a@example.test à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nEsta tela não tem como devolver o acesso depois."]);
     assert.deepEqual(since(mark), []);
     assert.ok(await revoke.isEnabled());
     assert.doesNotMatch(await notices.innerText(), /Acesso removido/);
     log.acceptDialogs = true;
 
-    // Remover acesso com 403: a mensagem do backend vira aviso de erro; nada é recarregado.
+    // Remover acesso com 403: a mensagem do backend fica junto da pessoa (Expansão 8: na tela, não no aviso); nada é recarregado.
     revokeReply = { status: 403, json: { error: "Sem permissão para alterar esta turma." } };
     mark = log.calls.length;
     await revoke.click();
-    await notices.locator(".notice.error", { hasText: "Sem permissão para alterar esta turma." }).waitFor();
+    await tab.locator("#aa-op-status", { hasText: "O acesso não foi removido por este pedido. Sem permissão para alterar esta turma." }).waitFor();
+    assert.equal(await notices.locator(".notice.error").count(), 0);
     assert.deepEqual(since(mark), ["POST /cohorts/BRSA0267/revoke-instructor"]);
     assert.ok(await revoke.isEnabled());
     await tab.getByText("prof.a@example.test", { exact: true }).waitFor();
@@ -234,7 +245,7 @@ try {
     assert.ok(await revoke.isDisabled());
     await revoke.click({ force: true });
     revokeGate.resolve();
-    await notices.getByText("Acesso removido.", { exact: true }).waitFor();
+    await notices.getByText("Acesso de prof.a@example.test à BRSA0267 removido.", { exact: true }).waitFor();
     await revoke.waitFor({ state: "detached" });
     assert.equal(log.dialogs.length - dialogsBefore, 1);
     assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts/BRSA0267/revoke-instructor", body: { userId: "i1" } });
@@ -242,7 +253,7 @@ try {
     assert.equal(await revokeHandle.evaluate((el) => el.isConnected), false);
     revokeGate = null;
 
-    // Desvincular com 409: aviso de erro com a mensagem do backend, resultado da busca preservado.
+    // Desvincular com 409: a mensagem do backend junto do aluno (Expansão 8: na tela, com a nova busca), resultado da busca preservado.
     await tab.locator("#student-query").fill("aluno");
     await tab.getByRole("button", { name: "Buscar", exact: true }).click();
     const unlink = tab.locator('[data-unlink="101"]');
@@ -250,7 +261,8 @@ try {
     unlinkReply = { status: 409, json: { error: "O vínculo deste aluno mudou. Busque novamente." } };
     mark = log.calls.length;
     await unlink.click();
-    await notices.locator(".notice.error", { hasText: "O vínculo deste aluno mudou. Busque novamente." }).waitFor();
+    await tab.locator("#aa-op-status", { hasText: "A conta não foi desvinculada por este pedido. O vínculo deste aluno mudou. Busque novamente." }).waitFor();
+    assert.equal(await notices.locator(".notice.error").count(), 0);
     assert.deepEqual(log.calls.slice(mark), [{ method: "POST", endpoint: "/cohorts/BRSA0267/unlink-student", body: { canvasId: "101" } }]);
     assert.ok(await unlink.isEnabled());
     assert.doesNotMatch(await notices.innerText(), /Aluno desvinculado/);
@@ -261,7 +273,7 @@ try {
     await tab.getByLabel("Código da turma").fill("BRSA0299");
     await tab.getByLabel("Nome da turma").fill("Turma de teste");
     await tab.getByRole("button", { name: "Criar turma" }).click();
-    await notices.getByText("Turma criada.", { exact: true }).waitFor();
+    await notices.getByText("Turma BRSA0299 criada.", { exact: true }).waitFor();
     assert.deepEqual(log.calls[mark], { method: "POST", endpoint: "/cohorts", body: { code: "BRSA0299", name: "Turma de teste" } });
     const reload = since(mark + 1);
     assert.deepEqual(reload.slice(0, 2), ["GET /me", "GET /cohorts"]);

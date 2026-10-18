@@ -90,7 +90,8 @@ try {
   await page.getByText("Como interpretar minhas notas?", { exact: true }).click();
   assert.match(await page.locator(".grading-help").innerText(), /sem nota contam como zero/);
   await page.getByRole("button", { name: "Meu histórico", exact: true }).click();
-  assert.match(await page.locator("tbody").innerText(), /10 pontos percentuais/);
+  // Expansão 2: registro cronológico em vez de tabela; a variação do contrato continua dita em pontos percentuais.
+  assert.match(await page.locator(".student-history .history-list").innerText(), /subiu 10 pontos percentuais/);
   await page.locator("#cohort").selectOption("BRSA0257");
   await page.getByRole("button", { name: "Minhas atividades", exact: true }).click();
   await page.reload();

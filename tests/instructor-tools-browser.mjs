@@ -103,21 +103,23 @@ try {
   assert.match(csv, /Carla Souza/);
   await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
 
-  // Quem ainda não entrou no portal: coluna, filtro e contagem no cartão.
-  assert.match(await page.locator('.metric-filter[data-filter="no-portal"]').innerText(), /Ainda não entraram\n1/);
-  // Cartões do painel filtram a lista e levam o foco até ela.
-  await page.locator('.metric-filter[data-filter="critical"]').click();
-  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["Carla Souza"]);
-  assert.equal(await page.locator('.metric-filter[data-filter="critical"]').getAttribute("aria-pressed"), "true");
+  // Quem ainda não entrou no portal: marcação na linha, filtro e contagem no atalho da Situação da turma (Expansão 4).
+  assert.match(await page.locator('.tp-filter[data-filter="no-portal"]').innerText(), /Ainda não entraram\n1/);
+  // Os atalhos filtram a lista e levam o foco até ela.
+  await page.locator('.tp-filter[data-filter="critical"]').click();
+  assert.deepEqual(await page.locator("tbody tr .tp-student").allInnerTexts(), ["Carla Souza"]);
+  assert.equal(await page.locator('.tp-filter[data-filter="critical"]').getAttribute("aria-pressed"), "true");
   assert.equal(await page.locator("#status-filter").inputValue(), "critical");
   assert.equal(await page.evaluate(() => document.activeElement.id), "students-heading");
-  await page.locator('.metric-filter[data-filter="no-portal"]').click();
-  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["João Silva"]);
-  await page.locator('.metric-filter[data-filter="all"]').click();
+  await page.locator('.tp-filter[data-filter="no-portal"]').click();
+  assert.deepEqual(await page.locator("tbody tr .tp-student").allInnerTexts(), ["João Silva"]);
+  await page.locator('.tp-filter[data-filter="all"]').click();
   assert.equal(await page.locator("tbody tr").count(), 3);
-  assert.deepEqual((await page.locator("tbody tr td.cell-portal").allInnerTexts()).sort(), ["Entrou", "Entrou", "Não entrou"]);
+  // Só quem não entrou ganha a marcação; quem entrou não precisa de texto na linha.
+  assert.deepEqual(await page.locator("tbody tr").evaluateAll((rows) => rows.map((tr) => [tr.querySelector(".tp-student").textContent, tr.querySelector(".tp-tag.is-portal")?.textContent ?? null])),
+    [["=HYPERLINK(\"x\")", null], ["Carla Souza", null], ["João Silva", "Não entrou no portal"]]);
   await page.locator("#status-filter").selectOption("no-portal");
-  assert.deepEqual(await page.locator("tbody tr td:first-child strong").allInnerTexts(), ["João Silva"]);
+  assert.deepEqual(await page.locator("tbody tr .tp-student").allInnerTexts(), ["João Silva"]);
   await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
 
   // 10: detalhe completo do aluno.
