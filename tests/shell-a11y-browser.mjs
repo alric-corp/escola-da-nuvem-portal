@@ -54,7 +54,7 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-async function open({ role = "student", width = 390, height = 844, text = 1 } = {}) {
+async function open({ role = "student", width = 390, height = 844, text = 1, codes = ["BRSA0267"] } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors = [];
@@ -62,7 +62,7 @@ async function open({ role = "student", width = 390, height = 844, text = 1 } = 
   if (text !== 1) {
     const cdp = await context.newCDPSession(page);
     await cdp.send("Page.enable");
-    await cdp.send("Page.setFontSizes", { fontSizes: { standard: 16 * text, fixed: 13 * text } });
+    await cdp.send("Page.setFontSizes", { fontSizes: { standard: Math.round(16 * text), fixed: Math.round(13 * text) } });
   }
   await page.addInitScript(() => localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "test", expires: Date.now() + 3600000 })));
   await context.route("**/*", async (route) => {
@@ -72,7 +72,7 @@ async function open({ role = "student", width = 390, height = 844, text = 1 } = 
     if (!url.pathname.startsWith("/api/")) return route.continue();
     const endpoint = url.pathname.slice(4);
     if (endpoint === "/me") return route.fulfill({ json: { roles: ROLES[role], email: role === "student" ? student.email : `${role}@example.test` } });
-    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: [{ code: "BRSA0267", canTeach: role !== "student", autoSync: true }] } });
+    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: codes.map((code) => ({ code, canTeach: role !== "student", autoSync: true })) } });
     if (endpoint.endsWith("/report")) return route.fulfill({ json: role === "student" ? report : { ...report, students: [student], activities } });
     if (endpoint === "/feedback") return route.fulfill({ json: { items: [], nextCursor: null } });
     throw new Error("endpoint não simulado: " + endpoint);
@@ -331,4 +331,218 @@ test("A10: com texto a 200% e zoom, nenhum controle do painel do aluno fica reco
     assert.deepEqual(cut, [], `${label(o)}: controles recortados`);
     await context.close();
   }
+});
+
+// PR #3 (fechamento, M1): de 761 a 1279 px a barra lateral tinha largura fixa em px (210 e 244 px), e logo, turma e menu crescem
+// com o texto. Com texto a partir de 150%, os rótulos passavam da barra e eram pintados sobre o conteúdo (a 200%, sobre o
+// título "Situação da turma" e a borda de controles; um clique na borda de "Como interpretar minhas notas?" abria "Meu
+// desempenho"), o código da turma era cortado e o logo saía da barra. Em 768, 1024, 1100, 1101, 1200, 1279, 1280 e 1440 px,
+// com texto de 100% a 250%, nos três papéis, com a fonte do sistema (DejaVu Sans no Linux) e com uma fonte larga (Verdana;
+// no Linux, DejaVu Sans):
+// 1. rótulos do menu inteiros, dentro da barra, e ícones sem encolher;
+// 2. o código da turma inteiro (o seletor tem pelo menos a largura intrínseca dele);
+// 3. o logo dentro da barra;
+// 4. nada da barra pintado fora dela, e o conteúdo começa depois dela;
+// 5. nenhum controle coberto: o centro e os cantos de cada controle da barra e do conteúdo junto dela são do próprio controle;
+// 6–7. clique real do mouse no centro de cada item do menu e do Sair, e na borda esquerda de cada controle do conteúdo junto
+//    da barra, chega ao próprio controle (registrado na captura e cancelado: nada navega);
+// 8. o Tab percorre a barra na ordem visual: logo, turma, menu e Sair;
+// 9. o contorno de foco do menu e do Sair aparece inteiro (pixels), em parte da matriz;
+// 10. de 1024 a 1279 px, a barra mais larga não empurra o conteúdo para uma rolagem lateral da página. Abaixo disso, com
+//    texto a 250% (e a 768 px com 200% e a fonte larga), barra e conteúdo juntos não cabem na janela: a página rola de lado
+//    em vez de a barra cobrir o conteúdo (limitação registrada no fechamento do PR #3).
+// Com texto normal, a barra continua com 210 px (tablet) e 244 px (até 1279 px); a partir de 1280 px, 15,25rem.
+const WIDE_FONT = ':root { --font-ui: Verdana, "DejaVu Sans", sans-serif; }';
+const BAND = 240;   // o transbordamento medido no 242f834 chegava a 217 px além da barra
+
+// Contorno de foco lido nos pixels, como em ringOnScreen, mas no meio de cada lado e atravessando a faixa inteira do contorno:
+// com texto ampliado a posição é fracionária, e o pixel do meio da faixa pode sair só meio coberto (antialiasing); no canto,
+// o contorno acompanha o arredondamento. Basta um pixel com a cor do contorno em cada lado.
+async function ringAcross(page) {
+  const box = await page.evaluate(() => {
+    const a = document.activeElement, r = a.getBoundingClientRect(), s = getComputedStyle(a);
+    return { r: { left: r.left, top: r.top, right: r.right, bottom: r.bottom }, o: parseFloat(s.outlineOffset), w: parseFloat(s.outlineWidth), style: s.outlineStyle };
+  });
+  const { r, o, w } = box, cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+  const band = (from) => Array.from({ length: Math.ceil(w) + 2 }, (_, k) => from - 1 + k);
+  const sides = { cima: band(r.top - o - w).map((y) => [cx, y]), baixo: band(r.bottom + o).map((y) => [cx, y]),
+    esquerda: band(r.left - o - w).map((x) => [x, cy]), direita: band(r.right + o).map((x) => [x, cy]) };
+  const shot = (await page.screenshot()).toString("base64");
+  const colors = await page.evaluate(async ({ shot, sides }) => {
+    const img = new Image(); img.src = "data:image/png;base64," + shot; await img.decode();
+    const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
+    const ctx = c.getContext("2d"); ctx.drawImage(img, 0, 0);
+    return Object.fromEntries(Object.entries(sides).map(([k, pts]) => [k, pts.map(([x, y]) => (x < 0 || y < 0 || x >= img.width || y >= img.height ? null : [...ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data.slice(0, 3)]))]));
+  }, { shot, sides });
+  const bad = Object.entries(colors).filter(([, cs]) => !cs.some((c) => c && c.every((v, i) => Math.abs(v - RING[i]) <= 45))).map(([k, cs]) => `${k}: ${cs.map((c) => (c ? `rgb(${c})` : "fora da tela")).join(" ")}`);
+  return { style: box.style, bad };
+}
+
+async function sidebarCheck(page) {
+  return page.evaluate((BAND) => {
+    const r1 = (x) => Math.round(x * 10) / 10, problems = [];
+    const sb = document.querySelector(".sidebar"), s = sb.getBoundingClientRect(), ss = getComputedStyle(sb);
+    const inner = { left: s.left + parseFloat(ss.paddingLeft), right: s.right - parseFloat(ss.paddingRight) };
+    const main = document.querySelector("#main-content").getBoundingClientRect();
+    const name = (el) => (el.getAttribute("aria-label") || el.querySelector?.(".nav-label")?.textContent || el.textContent || el.id || el.tagName).trim().replace(/\s+/g, " ").slice(0, 40);
+    // Caixa visível: recortada pelos ancestrais com overflow, como o navegador pinta.
+    // Para um fragmento de texto, el é o próprio elemento que o contém (o overflow dele recorta o texto).
+    const visible = (el, r, self = false) => {
+      let { left, right } = r;
+      for (let p = self ? el : el.parentElement; p && p !== document.documentElement; p = p.parentElement) {
+        if (getComputedStyle(p).overflowX !== "visible") { const c = p.getBoundingClientRect(); left = Math.max(left, c.left); right = Math.min(right, c.right); }
+      }
+      return { left, right };
+    };
+    // 1. Rótulos e ícones.
+    for (const item of sb.querySelectorAll("nav .nav-item")) {
+      if (!item.getClientRects().length) continue;
+      const label = item.querySelector(".nav-label"), g = document.createRange();
+      g.selectNodeContents(label);
+      const frags = [...g.getClientRects()].filter((x) => x.width > 0.5), ir = item.getBoundingClientRect();
+      const right = Math.max(...frags.map((x) => x.right)), left = Math.min(...frags.map((x) => x.left));
+      if (right > Math.min(ir.right, inner.right) + 0.5 || left < inner.left - 0.5) problems.push(`rótulo "${label.textContent}" passa ${r1(right - Math.min(ir.right, inner.right))} px do item ou da barra`);
+      const icon = item.querySelector("svg").getBoundingClientRect();
+      if (icon.width < icon.height - 0.5) problems.push(`ícone de "${label.textContent}" encolhido (${r1(icon.width)}×${r1(icon.height)} px)`);
+    }
+    // 2. Código da turma: um clone do seletor com largura automática mede texto, preenchimento e seta.
+    const sel = sb.querySelector("#cohort"), cs = getComputedStyle(sel), clone = sel.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.style.cssText = "position:absolute;visibility:hidden;width:auto;min-width:0;max-width:none;flex:none";
+    for (const p of ["font-family", "font-size", "font-weight", "letter-spacing", "padding-left", "padding-right", "border-left-width", "border-right-width"]) clone.style.setProperty(p, cs.getPropertyValue(p));
+    sel.parentNode.append(clone);
+    const need = clone.getBoundingClientRect().width, have = sel.getBoundingClientRect().width;
+    clone.remove();
+    if (have < need - 0.5) problems.push(`código da turma cortado: o seletor tem ${r1(have)} px e o código pede ${r1(need)} px`);
+    const sr = sel.getBoundingClientRect();
+    if (sr.left < inner.left - 0.5 || sr.right > inner.right + 0.5) problems.push(`seletor da turma fora da barra (${r1(sr.left)}–${r1(sr.right)} px; barra ${r1(inner.left)}–${r1(inner.right)} px)`);
+    // 3. Logo.
+    const logo = sb.querySelector(".brand-logo").getBoundingClientRect();
+    if (logo.left < inner.left - 0.5 || logo.right > inner.right + 0.5) problems.push(`logo fora da barra (${r1(logo.left)}–${r1(logo.right)} px; barra ${r1(inner.left)}–${r1(inner.right)} px)`);
+    // 4. Nada da barra pintado fora dela (caixas e fragmentos de texto), e o conteúdo começa depois dela.
+    let reach = s.right, who = "";
+    for (const el of sb.querySelectorAll("*")) for (const r of el.getClientRects()) {
+      const v = visible(el, r);
+      if (v.right - v.left > 0.5 && v.right > reach + 0.5) { reach = v.right; who = name(el); }
+    }
+    const walker = document.createTreeWalker(sb, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (!n.data.trim()) continue;
+      const g = document.createRange(); g.selectNodeContents(n);
+      for (const r of g.getClientRects()) { const v = visible(n.parentElement, r, true); if (v.right - v.left > 0.5 && v.right > reach + 0.5) { reach = v.right; who = `texto "${n.data.trim().slice(0, 30)}"`; } }
+    }
+    if (reach > s.right + 0.5) problems.push(`${who} pintado ${r1(reach - s.right)} px além da barra`);
+    if (main.left < s.right - 0.5) problems.push(`o conteúdo começa ${r1(s.right - main.left)} px antes do fim da barra`);
+    // 5. Malha 3×3 de cada controle da barra e do conteúdo junto dela, na primeira tela: 2 px para dentro, ou mais nos cantos
+    //    arredondados (um ponto fora do arco é do pai, não de outro controle); num link que quebra em linhas, a primeira linha.
+    const controls = [...sb.querySelectorAll("a[href], select, button")].filter((el) => el.getClientRects().length && !el.closest(".support-card"));
+    const near = [...document.querySelectorAll("#main-content :is(a[href], button, select, input:not([type=hidden]), textarea, summary)")].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width >= 1 && r.height >= 1 && r.top >= 0 && r.bottom <= innerHeight && r.left < s.right + BAND;
+    });
+    for (const el of [...controls, ...near]) {
+      const r = el.getClientRects()[0];
+      if (!r || r.bottom < 0 || r.top > innerHeight) continue;
+      const radius = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, r.width / 2, r.height / 2), d = Math.max(2, Math.ceil(radius * 0.3) + 1);
+      const xs = [r.left + d, (r.left + r.right) / 2, r.right - d], ys = [r.top + d, (r.top + r.bottom) / 2, r.bottom - d];
+      const byBar = [], byOther = [];
+      for (const x of xs) for (const y of ys) {
+        if (y < 0 || y > innerHeight - 1 || x < 0 || x > innerWidth - 1) continue;
+        const hit = document.elementFromPoint(x, y);
+        if (hit && (hit === el || el.contains(hit))) continue;
+        if (hit && !sb.contains(el) && sb.contains(hit)) byBar.push(name(hit.closest(".nav-item, a, select, button") || hit));
+        else if (!hit || hit.closest("a[href], button, select, input, textarea, summary") || !el.contains(hit) && !hit.contains(el)) byOther.push(hit ? name(hit.closest("a[href], button, select, input, textarea, summary, h1, h2, h3, p") || hit) : "nada");
+      }
+      if (byBar.length) problems.push(`"${name(el)}" coberto pela barra em ${byBar.length} de 9 pontos (${[...new Set(byBar)].join(", ")})`);
+      if (byOther.length) problems.push(`"${name(el)}" coberto em ${byOther.length} de 9 pontos (por ${[...new Set(byOther)].join(", ")})`);
+    }
+    // Pontos para o clique real (6–7): centro dos itens do menu e do Sair; borda esquerda dos controles do conteúdo junto da barra.
+    document.querySelectorAll("[data-pr3-alvo]").forEach((el) => el.removeAttribute("data-pr3-alvo"));
+    const clicks = [];
+    [...sb.querySelectorAll("nav .nav-item"), sb.querySelector('[data-action="logout"]')].filter((el) => el.getClientRects().length).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > innerHeight - 1) return;
+      el.dataset.pr3Alvo = `barra ${clicks.length}`; clicks.push({ id: el.dataset.pr3Alvo, name: name(el), x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 });
+    });
+    near.filter((el) => el.tagName !== "SELECT" && !el.disabled).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      el.dataset.pr3Alvo = `conteúdo ${clicks.length}`; clicks.push({ id: el.dataset.pr3Alvo, name: name(el), x: r.left + 2, y: (r.top + r.bottom) / 2 });
+    });
+    // 8. Ordem visual da barra (de cima para baixo; na mesma linha, da esquerda para a direita) = ordem do DOM.
+    const order = controls.map((el) => ({ el, r: el.getBoundingClientRect() }));
+    const visual = [...order].sort((a, b) => (Math.abs(a.r.top - b.r.top) > Math.min(a.r.height, b.r.height) / 2 ? a.r.top - b.r.top : a.r.left - b.r.left));
+    if (visual.some((v, i) => v.el !== order[i].el)) problems.push(`ordem visual da barra diferente da ordem do teclado: ${visual.map((v) => name(v.el)).join(" › ")}`);
+    return { problems, clicks, dom: controls.map(name), width: r1(s.width), root: parseFloat(getComputedStyle(document.documentElement).fontSize),
+      scroll: document.documentElement.scrollWidth - innerWidth };
+  }, BAND);
+}
+
+test("PR3-M1: barra lateral com texto ampliado (768–1440 px, 100–250%, três papéis, fonte do sistema e fonte larga) — rótulos, turma e logo inteiros dentro da barra, nada sobre o conteúdo, cliques e Tab no alvo certo, contorno de foco inteiro", async () => {
+  const problems = [];
+  const widths = [768, 1024, 1100, 1101, 1200, 1279, 1280, 1440], rings = new Set(["1100-2.5", "1101-2", "1200-1.75", "1279-2.5", "1280-2"]);
+  for (const role of ["student", "instructor", "admin"]) for (const font of ["sistema", "larga"]) for (const text of [1, 1.5, 1.75, 2, 2.5]) {
+    const { context, page, errors } = await open({ role, width: widths[0], height: 900, text });
+    if (font === "larga") await page.addStyleTag({ content: WIDE_FONT });
+    await page.evaluate(() => {
+      window.__pr3 = [];
+      window.addEventListener("click", (e) => { window.__pr3.push(e.target.closest?.("[data-pr3-alvo]")?.dataset.pr3Alvo ?? e.target.tagName.toLowerCase()); e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    });
+    for (const width of widths) {
+      const id = `${role} ${width}×900 texto ${text * 100}% fonte ${font}`;
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.waitForTimeout(60);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const m = await sidebarCheck(page);
+      problems.push(...m.problems.map((p) => `${id}: ${p}`));
+      if (width >= 1024 && width <= 1279 && m.scroll > 0) problems.push(`${id}: rolagem lateral da página de ${m.scroll} px`);
+      if (text === 1) {
+        const expected = width >= 1280 ? 15.25 * m.root : width > 1100 ? 244 : 210;
+        if (Math.abs(m.width - expected) > 0.5) problems.push(`${id}: com texto normal a barra tem ${m.width} px (esperado ${expected} px)`);
+      }
+      // 6–7. Clique real: cada um registrado na captura e cancelado.
+      for (const c of m.clicks) {
+        await page.evaluate(() => { window.__pr3 = []; });
+        await page.mouse.click(c.x, c.y);
+        const got = await page.evaluate(() => window.__pr3);
+        if (got.length !== 1 || got[0] !== c.id) problems.push(`${id}: o clique em "${c.name}" foi para ${got.join(", ") || "nada"}`);
+      }
+      // 8. Tab: do "Pular para o conteúdo" até sair da barra, na ordem do DOM (logo, turma, menu, Sair).
+      await page.locator(".skip-link").focus();
+      const tabs = [];
+      for (let i = 0; i < 16; i++) {
+        await page.keyboard.press("Tab");
+        const [at, brand] = await page.evaluate(() => { const a = document.activeElement; return a.closest(".sidebar") ? [(a.getAttribute("aria-label") || a.querySelector?.(".nav-label")?.textContent || a.textContent || a.id || a.tagName).trim().replace(/\s+/g, " ").slice(0, 40), !!a.closest(".brand")] : [null, false]; });
+        if (at === null) { if (tabs.length) break; continue; }
+        tabs.push(at);
+        // 9. Contorno de foco (pixels) da turma, do menu e do Sair, em parte da matriz (o logo fica de fora, como em A4).
+        if (rings.has(`${width}-${text}`) && !brand) {
+          // O pior caso: o mouse parado no item de baixo (o fundo do hover dele não pode esconder o contorno deste).
+          const below = await page.evaluate(() => { const n = document.activeElement.nextElementSibling; if (!n?.matches(".nav-item")) return null; const r = n.getBoundingClientRect(); return [(r.left + r.right) / 2, (r.top + r.bottom) / 2]; });
+          await page.mouse.move(...(below || [0, 0]));
+          const ring = await ringAcross(page);
+          if (ring.bad.length) problems.push(`${id}: contorno de foco de "${at}" incompleto (${ring.bad.join("; ")})`);
+        }
+      }
+      if (tabs.join(" › ") !== m.dom.join(" › ")) problems.push(`${id}: Tab na barra ${tabs.join(" › ")} (esperado ${m.dom.join(" › ")})`);
+    }
+    if (errors.length) problems.push(`${role} texto ${text * 100}% fonte ${font}: erros na página: ${errors.join("; ")}`);
+    await context.close();
+  }
+  // 2. Código de turma longo (o formato aceita até 32 caracteres): o seletor, e com ele a barra, ficam com a largura do código
+  // mais longo da lista, que aparece inteiro.
+  for (const text of [1, 2, 2.5]) {
+    const { context, page, errors } = await open({ role: "admin", width: 1100, height: 900, text, codes: ["BRSA0267", "BRSA0267-NOITE-EXTRA"] });
+    for (const width of [1100, 1101, 1279]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.waitForTimeout(60);
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const m = await sidebarCheck(page);
+      problems.push(...m.problems.map((p) => `admin ${width}×900 texto ${text * 100}% código longo: ${p}`));
+    }
+    if (errors.length) problems.push(`admin texto ${text * 100}% código longo: erros na página: ${errors.join("; ")}`);
+    await context.close();
+  }
+  assert.deepEqual(problems, [], `${problems.length} problema(s):\n${problems.slice(0, 60).join("\n")}`);
 });

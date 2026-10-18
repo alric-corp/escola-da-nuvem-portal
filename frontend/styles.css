@@ -2339,6 +2339,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   border-right: 0;
   transform: translateY(-50%);
 }
+/* PR #3: o item é posicionado (pela marca acima), e o item seguinte, pintado depois dele, com o fundo do hover cobria a parte
+   de baixo do contorno de foco (3 px fora do item, com 2 px entre os itens). O item com foco fica por cima dos vizinhos. */
+.nav-item:focus-visible { z-index: 1; }
 .sidebar-bottom { padding-top: var(--space-6); }
 .support-card { padding: 0; border: 0; background: none; }
 .support-card svg { display: none; }
@@ -2434,6 +2437,27 @@ details ul, .onboarding ol { padding-left: 24px; }
 @media (max-width: 1100px) {
   .sidebar { padding-inline: var(--space-4); }
   .nav-item { gap: var(--space-2); padding: var(--space-2) var(--space-3); font-size: 0.8125rem; line-height: 1.25; white-space: normal; }
+}
+
+/* PR #3 (M1): de 761 a 1279 px a barra tinha largura fixa em px (210 e 244 px), mas logo, turma e menu crescem com o texto.
+   Com texto a partir de 150%, os rótulos passavam da barra e eram pintados sobre o conteúdo (o .nav-item tem position:
+   relative): cobriam títulos e a borda de controles, o código da turma era cortado e o logo saía da barra. Agora a barra
+   tem a largura do próprio conteúdo, com o piso de antes, e o <main> (flex-shrink) fica com o resto:
+   - os rótulos quebram em linhas, como já faziam no tablet, e o ícone não encolhe: a peça mais larga (uma palavra do menu, o
+     logo ou o código da turma) define a barra;
+   - o seletor nunca fica mais estreito que o código da turma (o formato aceita até 32 caracteres);
+   - os espaçamentos laterais da barra, dos itens e do seletor ficam em px, com os valores do texto normal: com texto ampliado
+     a barra cresce só o que o texto pede, e o conteúdo perde o mínimo de largura.
+   Com texto normal a barra continua com 210 e 244 px. A partir de 1280 px nada muda (15,25rem, que acompanha o texto). */
+@media (min-width: 761px) and (max-width: 1279px) {
+  .sidebar { flex: none; width: min-content; min-width: 244px; padding-inline: 24px; }
+  #cohort { min-width: max-content; padding-inline: 12px; }
+  .nav-item { gap: 12px; padding-inline: 12px; white-space: normal; }
+  .nav-item svg { flex-shrink: 0; }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .sidebar { min-width: 210px; padding-inline: 16px; }
+  .nav-item { gap: 8px; }
 }
 
 @media (max-width: 760px) {
