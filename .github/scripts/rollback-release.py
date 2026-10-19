@@ -2,7 +2,8 @@
 
 Exige manifesto íntegro, piso histórico (baseline.json), rotas da API contidas nas da release ativa e, quando os
 contratos OpenAPI diferem, a confirmação explícita do release_id alvo. A inclusão de rotas é condição necessária,
-não prova de compatibilidade de payloads, autenticação ou semântica: a revisão do environment continua obrigatória.
+não prova de compatibilidade de payloads, autenticação ou semântica: a revisão de quem dispara o rollback continua
+necessária.
 """
 import sys
 from pathlib import Path

@@ -81,7 +81,7 @@ Os mutantes rodam em cópias temporárias: o checkout não é alterado. Uma muta
 | `python3 tests/contracts/lifecycle_mutations.py` | C7.5: lifecycle do Feedback e dos rascunhos (unitário, arquitetura e navegador) | Frontend |
 | `python3 ../../tests/contracts/terraform_mutations.py` | OpenAPI como fonte das rotas, avaliado pelo `terraform test` com mocks | Terraform (em `infra/terraform`, depois do `init`) |
 | `python3 ../../tests/contracts/manual_alias_transitions.py` | Transições e mutações do alias manual, com HCL real e mocks | Terraform (em `infra/terraform`, depois do `init`) |
-| `python tests/contracts/release_mutations.py` | Pipeline de release do frontend: publicação, ativação, rollback, gates, revalidação do HEAD da main, workflow e D1 (Moto e Chromium locais, clone temporário) | Frontend (depois do `setup-python`) |
+| `python tests/contracts/release_mutations.py` | Pipeline de release do frontend: publicação, ativação, rollback, gates, deploy automático, revalidação do HEAD da main, workflow e D1 (Moto e Chromium locais, clone temporário) | Frontend (depois do `setup-python`) |
 | `python3 ../../tests/contracts/bootstrap_mutations.py` | Trust e policy da role de deploy do frontend, avaliadas pelo `terraform test` com mocks | Bootstrap do deploy (em `infra/cicd-bootstrap`, depois do `init`) |
 
 As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
@@ -98,8 +98,8 @@ As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
 | `test_hygiene.py` | Higiene do backend (C7.6): compilação sem avisos e `Content-Disposition` |
 | `test_frontend_release_package.py` | Releases do frontend: build determinístico, id, manifesto SHA-256, grafo de imports, MIME, config por release, ponteiro, baseline C7.3 e CLIs num clone temporário |
 | `test_frontend_release_s3.py` | Publicação com `If-None-Match`, ativação com `If-Match`, corrida, upload parcial, falhas antes e depois do `index.html` e rollback, em S3/CloudFront Moto |
-| `test_frontend_release_gate.py` | Gates do workflow (main, SHA, CI, environment protegido, variables, chaves estáticas), claims OIDC sem expor o token e a sonda S3 |
-| `test_frontend_release_head.py` | HEAD atual da main revalidado no gate, depois da aprovação e antes da primeira escrita AWS: API do GitHub simulada (erros HTTP, timeout, JSON, SHA malformado) e simulador do `deploy-frontend.yml` com a main avançando entre os jobs |
+| `test_frontend_release_gate.py` | Gates do workflow (deploy automático só com o CI verde de push na main, main, SHA, CI, environment restrito à main, variables, chaves estáticas, outputs do gate), claims OIDC sem expor o token e a sonda S3 |
+| `test_frontend_release_head.py` | HEAD atual da main revalidado no gate, no início de cada job do environment e antes da primeira escrita AWS: API do GitHub simulada (erros HTTP, timeout, JSON, SHA malformado) e simulador do `deploy-frontend.yml` (disparo manual e deploy automático, outputs do gate, `publish` que só ativa no `deploy`) com a main avançando entre os jobs |
 
 `release_fixtures.py` reúne os builds reais, o bloqueio de rede (só sockets locais) e os simuladores dessas três suítes. Os testes da baseline extraem `1daab31` do Git: o checkout precisa do histórico completo (`fetch-depth: 0` na CI).
 

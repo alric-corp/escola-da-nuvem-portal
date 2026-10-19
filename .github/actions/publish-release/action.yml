@@ -4,7 +4,7 @@ description: >-
   Requer credenciais da role de deploy (OIDC) já configuradas no job.
 inputs:
   expected-main-sha:
-    description: "SHA da main confirmado pelo operador; o HEAD atual da main é revalidado antes da primeira escrita"
+    description: "SHA esperado da main (do gate: confirmado pelo operador ou o commit do CI); o HEAD atual é revalidado antes da primeira escrita"
     required: true
   release-dir:
     description: "Diretório da release preparada e validada"

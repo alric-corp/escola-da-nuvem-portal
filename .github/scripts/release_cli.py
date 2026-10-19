@@ -172,5 +172,6 @@ def run_activation(mode: str, argv=None):
     set_outputs(**{"active-release": record["release_id"], "previous-release": record["previous_release"]})
     summary([f"### {mode}: release ativa `{record['release_id']}`",
              f"- anterior: `{record['previous_release']}`; index reescrito: {record.get('changed')}",
-             f"- invalidação: `{record.get('invalidation_id')}` (/ e /index.html); smoke: {record.get('smoke')}"])
+             f"- invalidação `{record.get('invalidation_id')}` (/ e /index.html): solicitada e concluída",
+             f"- publicação verificada no domínio público (smoke: ponteiro na raiz e arquivos da release): {record.get('smoke')}"])
     return record

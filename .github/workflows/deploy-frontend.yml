@@ -1,24 +1,34 @@
 name: Deploy do frontend
 
 # Pipeline de releases imutáveis do frontend (contrato em .github/scripts/frontend_release.py).
-# Único gatilho: execução manual na main. O padrão é prepare (sem AWS). Nenhum input escolhe commit:
-# main é sempre o commit desta execução, e baseline é a constante revisada em .github/release/baseline.json.
-# Toda operação passa pelo job gate (sem credenciais) e por um job no environment production, cuja aprovação
-# é obrigatória; as operações com AWS usam OIDC (id-token: write só nesses jobs) e nunca chaves permanentes.
-# O HEAD atual da main é relido no GitHub três vezes: no gate (A), no primeiro passo de cada job do environment,
-# depois da aprovação (B), e nos scripts, imediatamente antes da primeira escrita AWS (C). Se a main avançou, a
-# execução é recusada sem alterar nada.
+# Automático: todo push na main, inclusive o merge de um PR, roda o CI (ci.yml). Com o CI verde, este workflow
+# executa a operação deploy no commit: build e validação sem AWS, publicação de releases/<id>/, ativação do
+# index.html, invalidação de / e /index.html e smoke no domínio público. CI vermelho, PR, fork ou outra branch não
+# publicam nada.
+# Manual (workflow_dispatch na main, para recuperação e para a migração inicial da C7.3): prepare (padrão, sem AWS),
+# verify, publish, activate, rollback e deploy. Nenhum input escolhe commit: main é sempre o commit desta execução,
+# e baseline é a constante revisada em .github/release/baseline.json.
+# Toda operação passa pelo job gate (sem credenciais), que decide operation, source e o SHA esperado (outputs usados
+# pelos jobs seguintes), e por jobs no environment production, restrito à main e sem revisor obrigatório. As
+# operações com AWS usam OIDC (id-token: write só nesses jobs) e nunca chaves permanentes.
+# O HEAD atual da main é relido no GitHub três vezes: no gate (A), no primeiro passo de cada job do environment (B)
+# e nos scripts, imediatamente antes da primeira escrita AWS (C). Se a main avançou, a execução é recusada sem
+# alterar nada: o commit mais novo tem o próprio deploy.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       operation:
-        description: "prepare (sem AWS) | verify (leituras; sonda opcional) | publish | activate | rollback"
+        description: "prepare (sem AWS) | verify (leituras; sonda opcional) | publish | activate | rollback | deploy (publish + activate)"
         type: choice
-        options: [prepare, verify, publish, activate, rollback]
+        options: [prepare, verify, publish, activate, rollback, deploy]
         default: prepare
         required: true
       source:
-        description: "prepare/publish: main (commit desta execução) ou baseline (C7.3 fixada em baseline.json)"
+        description: "prepare/publish/deploy: main (commit desta execução) ou baseline (C7.3 fixada em baseline.json)"
         type: choice
         options: [main, baseline]
         default: main
@@ -40,7 +50,7 @@ on:
         type: string
         default: ""
       allow_config_change:
-        description: "prepare/publish: aceitar config diferente da publicada em /config.json"
+        description: "prepare/publish/deploy: aceitar config diferente da publicada em /config.json"
         type: boolean
         default: false
       s3_probe:
@@ -57,12 +67,17 @@ concurrency:
 
 jobs:
   gate:
-    name: Gate (main, SHA, CI, environment)
+    name: Gate (evento, main, SHA, CI, environment)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
       contents: read
       actions: read
+    # Valores validados pelo gate. No automático não há inputs: operation=deploy, source=main e o commit do CI.
+    outputs:
+      operation: ${{ steps.gate.outputs.operation }}
+      source: ${{ steps.gate.outputs.source }}
+      expected-main-sha: ${{ steps.gate.outputs.expected-main-sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,7 +85,8 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Pré-condições do repositório
+      - id: gate
+        name: Pré-condições do repositório
         env:
           GH_TOKEN: ${{ github.token }}
           OPERATION: ${{ inputs.operation }}
@@ -82,11 +98,11 @@ jobs:
           DEPLOY_ENABLED: ${{ vars.FRONTEND_DEPLOY_ENABLED }}
         run: python3 -B .github/scripts/check-deploy-gate.py --stage repository
 
-  # prepare e publish: empacota e valida sem credenciais. No publish, o job publish (outra aprovação) envia o pacote.
+  # prepare, publish e deploy: empacota e valida sem credenciais; publish e deploy seguem no job publish (com OIDC).
   build:
     name: Preparar e validar a release (sem AWS)
     needs: gate
-    if: inputs.operation == 'prepare' || inputs.operation == 'publish'
+    if: needs.gate.outputs.operation == 'prepare' || needs.gate.outputs.operation == 'publish' || needs.gate.outputs.operation == 'deploy'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
@@ -101,9 +117,9 @@ jobs:
           fetch-depth: 0
       - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
-          OPERATION: ${{ inputs.operation }}
-          SOURCE: ${{ inputs.source }}
-          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          OPERATION: ${{ needs.gate.outputs.operation }}
+          SOURCE: ${{ needs.gate.outputs.source }}
+          EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
           GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -118,7 +134,7 @@ jobs:
       - id: build
         uses: ./.github/actions/build-frontend
         with:
-          source: ${{ inputs.source }}
+          source: ${{ needs.gate.outputs.source }}
           public-origin: ${{ vars.PUBLIC_ORIGIN }}
           config-json: ${{ vars.FRONTEND_CONFIG_JSON }}
           out-dir: ${{ runner.temp }}/releases
@@ -134,25 +150,29 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # publish: envia releases/<id>/ e não ativa. deploy: envia e, na mesma sessão OIDC, ativa a release recém-publicada
+  # (ponteiro com If-Match, invalidação de / e /index.html, espera da invalidação e smoke no domínio público).
   publish:
-    name: Publicar releases/<id>/ (não ativa)
+    name: Publicar releases/<id>/ (e ativar, no deploy)
     needs: [gate, build]
-    if: inputs.operation == 'publish'
+    if: needs.gate.outputs.operation == 'publish' || needs.gate.outputs.operation == 'deploy'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: production
     permissions:
       contents: read
       id-token: write
     steps:
+      # Histórico completo: a ativação do deploy confere a ancestralidade da release na main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
-          OPERATION: ${{ inputs.operation }}
-          SOURCE: ${{ inputs.source }}
-          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          OPERATION: ${{ needs.gate.outputs.operation }}
+          SOURCE: ${{ needs.gate.outputs.source }}
+          EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
           GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -189,15 +209,37 @@ jobs:
           mask-aws-account-id: true
       - uses: ./.github/actions/publish-release
         with:
-          expected-main-sha: ${{ inputs.expected_main_sha }}
+          expected-main-sha: ${{ needs.gate.outputs.expected-main-sha }}
           release-dir: ${{ runner.temp }}/release
           bucket: ${{ vars.FRONTEND_BUCKET }}
           region: ${{ vars.AWS_REGION }}
+      # Só no deploy, e só depois da publicação conferida: ativação para frente (nunca para trás, sem rollback
+      # automático), pelo mesmo caminho testado da operação activate.
+      - id: deploy-activate
+        if: needs.gate.outputs.operation == 'deploy'
+        uses: ./.github/actions/activate-release
+        with:
+          expected-main-sha: ${{ needs.gate.outputs.expected-main-sha }}
+          mode: activate
+          release-id: ${{ needs.build.outputs.release-id }}
+          bucket: ${{ vars.FRONTEND_BUCKET }}
+          distribution-id: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          region: ${{ vars.AWS_REGION }}
+          public-origin: ${{ vars.PUBLIC_ORIGIN }}
+          record-out: ${{ runner.temp }}/activation-record.json
+      # Registro da versão ativa, também em caso de falha depois da escrita do index.html.
+      - if: always() && needs.gate.outputs.operation == 'deploy'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: activation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/activation-record.json
+          if-no-files-found: warn
+          retention-days: 90
 
   verify:
     name: Verificar acesso (claims, leituras e sonda opcional)
     needs: gate
-    if: inputs.operation == 'verify'
+    if: needs.gate.outputs.operation == 'verify'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: production
@@ -210,9 +252,9 @@ jobs:
           persist-credentials: false
       - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
-          OPERATION: ${{ inputs.operation }}
-          SOURCE: ${{ inputs.source }}
-          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          OPERATION: ${{ needs.gate.outputs.operation }}
+          SOURCE: ${{ needs.gate.outputs.source }}
+          EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
           GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -240,7 +282,7 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check --no-input "boto3==1.42.97"
       - name: Leituras com a role e, se pedida, a sonda S3
         env:
-          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
           GH_TOKEN: ${{ github.token }}
           S3_PROBE: ${{ inputs.s3_probe }}
           BUCKET: ${{ vars.FRONTEND_BUCKET }}
@@ -252,9 +294,9 @@ jobs:
           python3 -B .github/scripts/verify-access.py "${args[@]}"
 
   activate:
-    name: Ativar (${{ inputs.operation }}) uma release publicada
+    name: Ativar (${{ needs.gate.outputs.operation }}) uma release publicada
     needs: gate
-    if: inputs.operation == 'activate' || inputs.operation == 'rollback'
+    if: needs.gate.outputs.operation == 'activate' || needs.gate.outputs.operation == 'rollback'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
@@ -268,9 +310,9 @@ jobs:
           fetch-depth: 0
       - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
-          OPERATION: ${{ inputs.operation }}
-          SOURCE: ${{ inputs.source }}
-          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          OPERATION: ${{ needs.gate.outputs.operation }}
+          SOURCE: ${{ needs.gate.outputs.source }}
+          EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
           GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -292,8 +334,8 @@ jobs:
       - id: activate
         uses: ./.github/actions/activate-release
         with:
-          expected-main-sha: ${{ inputs.expected_main_sha }}
-          mode: ${{ inputs.operation }}
+          expected-main-sha: ${{ needs.gate.outputs.expected-main-sha }}
+          mode: ${{ needs.gate.outputs.operation }}
           release-id: ${{ inputs.release_id }}
           expected-active: ${{ inputs.expected_active_release }}
           confirm-release-id: ${{ inputs.confirm_release_id }}

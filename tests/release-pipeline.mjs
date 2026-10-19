@@ -22,6 +22,8 @@ const steps = (job) => jobs[job].steps;
 const usesOf = (step) => (step.uses || "").split("@")[0];
 const AWS_ACTION = "aws-actions/configure-aws-credentials";
 const ENV_GATE = "python3 -B .github/scripts/check-deploy-gate.py --stage environment";
+// Depois do gate, operação, origem e SHA esperado vêm só dos outputs do gate (no automático não há inputs).
+const GATE_OUT = (key) => `\${{ needs.gate.outputs.${key} }}`;
 // Argumentos de cada chamada `name(...)`, com parênteses balanceados (o texto Python tem chamadas aninhadas).
 function callArgs(text, name) {
   const found = [];
@@ -34,6 +36,34 @@ function callArgs(text, name) {
 }
 const SCRIPTS = readdirSync(new URL("../.github/scripts/", import.meta.url)).map((name) => `.github/scripts/${name}`);
 
+test("governança: checks obrigatórios cobrem todo PR sem credenciais nem aprovação humana", () => {
+  const ci = yaml(".github/workflows/ci.yml");
+  const ruleset = JSON.parse(read(".github/rulesets/main.json"));
+  assert.deepEqual(ci.on, { push: { branches: ["main"] }, pull_request: null });
+  assert.deepEqual(ci.permissions, { contents: "read" });
+  assert.equal(ruleset.enforcement, "active");
+  assert.deepEqual(ruleset.bypass_actors, []);
+  assert.deepEqual(ruleset.conditions, { ref_name: { include: ["refs/heads/main"], exclude: [] } });
+  assert.deepEqual(ruleset.rules.map((r) => r.type).sort(), ["deletion", "non_fast_forward", "pull_request", "required_status_checks"]);
+  const pr = ruleset.rules.find((r) => r.type === "pull_request").parameters;
+  assert.deepEqual(pr, {
+    required_approving_review_count: 0, dismiss_stale_reviews_on_push: false,
+    require_code_owner_review: false, require_last_push_approval: false, required_review_thread_resolution: false,
+  });
+  const checks = ruleset.rules.find((r) => r.type === "required_status_checks").parameters;
+  assert.equal(checks.strict_required_status_checks_policy, false);
+  assert.equal(checks.do_not_enforce_on_create, false);
+  assert.equal(checks.required_status_checks.length, 4);
+  assert.deepEqual(checks.required_status_checks.map((c) => c.context).sort(), Object.values(ci.jobs).map((j) => j.name).sort());
+  for (const check of checks.required_status_checks) assert.equal(check.integration_id, 15368);
+  for (const job of Object.values(ci.jobs)) {
+    for (const key of ["if", "needs", "strategy", "continue-on-error", "environment", "permissions"])
+      assert.equal(job[key], undefined, `${job.name}: ${key} pode omitir um check ou elevar privilégios no PR`);
+    for (const step of job.steps) assert.equal(step["continue-on-error"], undefined, job.name);
+  }
+  assert.doesNotMatch(read(".github/workflows/ci.yml"), /secrets\.|id-token|configure-aws-credentials|pull_request_target/);
+});
+
 test("D1: app.js carrega config.json relativo ao módulo, sem cache e sem ?v=", () => {
   const app = read("frontend/app.js");
   assert.ok(app.includes('fetch(new URL("./config.json", import.meta.url), { cache: "no-store" })'), "D1: config.json relativa ao módulo");
@@ -41,10 +71,16 @@ test("D1: app.js carrega config.json relativo ao módulo, sem cache e sem ?v=", 
   for (const file of ["frontend/index.html", "frontend/app.js"]) assert.doesNotMatch(read(file), /\?v=/, `${file}: ?v= não resolve o P2`);
 });
 
-test("workflow: só workflow_dispatch, padrão prepare e nenhum input escolhe commit", () => {
-  assert.deepEqual(Object.keys(workflow.on), ["workflow_dispatch"]);
+test("workflow: gatilhos automático (CI verde na main) e manual, padrão prepare e nenhum input escolhe commit", () => {
+  // Automático: o CI concluído na main (todo push, inclusive merge de PR), sem filtro de caminhos; nada de push direto,
+  // pull_request ou workflow_run de outras branches. O gate exige o CI verde de push neste repositório.
+  assert.deepEqual(Object.keys(workflow.on), ["workflow_run", "workflow_dispatch"]);
+  assert.deepEqual(workflow.on.workflow_run, { workflows: ["CI"], types: ["completed"], branches: ["main"] });
+  const ci = yaml(".github/workflows/ci.yml");
+  assert.equal(ci.name, "CI", "o workflow_run segue o CI pelo nome");
+  assert.deepEqual(ci.on.push, { branches: ["main"] }, "o CI roda em todo push na main, sem filtro de caminhos");
   const inputs = workflow.on.workflow_dispatch.inputs;
-  assert.deepEqual(inputs.operation.options, ["prepare", "verify", "publish", "activate", "rollback"]);
+  assert.deepEqual(inputs.operation.options, ["prepare", "verify", "publish", "activate", "rollback", "deploy"]);
   assert.equal(inputs.operation.default, "prepare");
   assert.deepEqual(inputs.source.options, ["main", "baseline"]);
   assert.equal(inputs.source.default, "main");
@@ -61,10 +97,18 @@ test("workflow: só workflow_dispatch, padrão prepare e nenhum input escolhe co
     }
   }
   const text = read(WORKFLOW);
-  // Cada uso alimenta só uma comparação (gates e guarda antes da escrita), nunca um checkout ou ref.
-  const uses = text.split("\n").filter((line) => line.includes("inputs.expected_main_sha"));
-  assert.ok(uses.length >= 5, uses.join("\n"));
-  for (const line of uses) assert.match(line, /^\s+(EXPECTED_MAIN_SHA|expected-main-sha): \$\{\{ inputs\.expected_main_sha \}\}$/, line);
+  // O input só entra no gate; depois dele, o SHA esperado é o output do gate. Cada uso alimenta só uma comparação
+  // (gates e guarda antes da escrita), nunca um checkout ou ref.
+  const input = text.split("\n").filter((line) => line.includes("inputs.expected_main_sha"));
+  assert.deepEqual(input.map((line) => line.trim()), ["EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}"]);
+  const uses = text.split("\n").filter((line) => line.includes("expected-main-sha }}"));
+  assert.ok(uses.length >= 7, uses.join("\n"));
+  for (const line of uses) {
+    assert.match(line, /^\s+(EXPECTED_MAIN_SHA|expected-main-sha): \$\{\{ (needs|steps)\.gate\.outputs\.expected-main-sha \}\}$/, line);
+  }
+  assert.deepEqual(jobs.gate.outputs, { operation: "${{ steps.gate.outputs.operation }}", source: "${{ steps.gate.outputs.source }}",
+    "expected-main-sha": "${{ steps.gate.outputs.expected-main-sha }}" });
+  assert.equal(steps("gate").at(-1).id, "gate");
 });
 
 test("workflow: permissões mínimas, id-token só nos jobs com OIDC e concorrência sem cancelamento", () => {
@@ -79,11 +123,12 @@ test("workflow: permissões mínimas, id-token só nos jobs com OIDC e concorrê
 });
 
 test("workflow: cada operação roda só os seus jobs, sempre depois do gate e no environment production", () => {
-  const ops = { prepare: ["build"], verify: ["verify"], publish: ["build", "publish"], activate: ["activate"], rollback: ["activate"] };
+  const ops = { prepare: ["build"], verify: ["verify"], publish: ["build", "publish"], activate: ["activate"], rollback: ["activate"],
+    deploy: ["build", "publish"] };
   const runs = (job, operation) => {
     const condition = jobs[job].if;
     if (!condition) return true;
-    const alternatives = condition.split("||").map((part) => part.trim().match(/^inputs\.operation == '(\w+)'$/));
+    const alternatives = condition.split("||").map((part) => part.trim().match(/^needs\.gate\.outputs\.operation == '(\w+)'$/));
     assert.ok(alternatives.every(Boolean), `${job}: condição fora do padrão: ${condition}`);
     return alternatives.some((m) => m[1] === operation);
   };
@@ -117,7 +162,9 @@ test("workflow: o gate do environment roda antes de qualquer credencial, artefat
       "SOURCE"]);
     // Verificação B: o HEAD da main é relido depois da aprovação, com o GITHUB_TOKEN do job (contents: read).
     assert.equal(env.GH_TOKEN, "${{ github.token }}", name);
-    assert.equal(env.EXPECTED_MAIN_SHA, "${{ inputs.expected_main_sha }}", name);
+    assert.equal(env.EXPECTED_MAIN_SHA, GATE_OUT("expected-main-sha"), name);
+    assert.equal(env.OPERATION, GATE_OUT("operation"), name);
+    assert.equal(env.SOURCE, GATE_OUT("source"), name);
     for (const key of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]) assert.equal(env[key], `\${{ secrets.${key} }}`);
     const oidc = job.steps.findIndex((s) => usesOf(s) === AWS_ACTION);
     if (oidc >= 0) {
@@ -168,13 +215,14 @@ test("HEAD da main revalidado no gate, depois da aprovação e imediatamente ant
     assert.equal(run.env.GH_TOKEN, "${{ github.token }}", name);
     assert.equal(run.env.EXPECTED_MAIN_SHA, "${{ inputs.expected-main-sha }}", name);
   }
-  for (const [job, uses] of [["publish", "./.github/actions/publish-release"], ["activate", "./.github/actions/activate-release"]]) {
-    assert.equal(steps(job).find((s) => s.uses === uses).with["expected-main-sha"], "${{ inputs.expected_main_sha }}", job);
+  for (const [job, uses] of [["publish", "./.github/actions/publish-release"], ["publish", "./.github/actions/activate-release"],
+    ["activate", "./.github/actions/activate-release"]]) {
+    assert.equal(steps(job).find((s) => s.uses === uses).with["expected-main-sha"], GATE_OUT("expected-main-sha"), `${job} ${uses}`);
   }
   const probe = steps("verify").at(-1);
   assert.match(probe.run, /verify-access\.py/);
   assert.equal(probe.env.GH_TOKEN, "${{ github.token }}");
-  assert.equal(probe.env.EXPECTED_MAIN_SHA, "${{ inputs.expected_main_sha }}");
+  assert.equal(probe.env.EXPECTED_MAIN_SHA, GATE_OUT("expected-main-sha"));
   // Os scripts chamam a guarda antes de escrever: publicação, ativação/rollback e sonda.
   assert.match(read(".github/scripts/publish-release.py"), /publish_release\([^)]*before_write=main_head_guard\(\)\)/);
   assert.match(read(".github/scripts/release_cli.py"), /before_write=main_head_guard\(\)\)/);
@@ -192,7 +240,7 @@ test("workflow: variables lidas são as do contrato e o kill switch fica no repo
   assert.equal(steps("gate").at(-1).env.GH_TOKEN, "${{ github.token }}");
 });
 
-test("publicação e ativação: build sem credencial, pacote revalidado e registro da ativação preservado", () => {
+test("publicação e ativação: build sem credencial, pacote revalidado, deploy ativa só depois de publicar e registro preservado", () => {
   assert.ok(!steps("build").some((s) => usesOf(s) === AWS_ACTION));
   assert.deepEqual(steps("build").map((s) => s.uses || s.run).slice(2), ["./.github/actions/build-frontend", "./.github/actions/validate-release",
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"]);
@@ -202,13 +250,23 @@ test("publicação e ativação: build sem credencial, pacote revalidado e regis
   const revalidate = order((s) => /validate-release\.py/.test(s.run || ""));
   const oidc = order((s) => usesOf(s) === AWS_ACTION);
   const send = order((s) => s.uses === "./.github/actions/publish-release");
-  assert.ok(download < revalidate && revalidate < oidc && oidc < send, "publish: baixar, revalidar, credencial, enviar");
+  const deploy = order((s) => s.uses === "./.github/actions/activate-release");
+  assert.ok(download < revalidate && revalidate < oidc && oidc < send && send < deploy, "publish: baixar, revalidar, credencial, enviar, ativar");
   assert.match(publish[revalidate].run, /BUILT_RELEASE_ID/);
   assert.equal(publish[download].with.name, "release-${{ needs.build.outputs.release-id }}");
+  // Só o deploy ativa no job publish: a release recém-publicada, para frente (sem release ativa esperada nem confirmação).
+  assert.equal(publish[deploy].if, "needs.gate.outputs.operation == 'deploy'");
+  assert.deepEqual(publish[deploy].with, { "expected-main-sha": GATE_OUT("expected-main-sha"), mode: "activate",
+    "release-id": "${{ needs.build.outputs.release-id }}", bucket: "${{ vars.FRONTEND_BUCKET }}",
+    "distribution-id": "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}", region: "${{ vars.AWS_REGION }}", "public-origin": "${{ vars.PUBLIC_ORIGIN }}",
+    "record-out": "${{ runner.temp }}/activation-record.json" });
+  assert.equal(steps("publish")[0].with["fetch-depth"], 0, "a ativação do deploy confere a ancestralidade na main");
+  assert.equal(publish.at(-1).if, "always() && needs.gate.outputs.operation == 'deploy'");
+  assert.equal(usesOf(publish.at(-1)), "actions/upload-artifact");
   const upload = steps("activate").at(-1);
   assert.equal(usesOf(upload), "actions/upload-artifact");
   assert.equal(upload.if, "always()");
-  assert.equal(steps("activate").find((s) => s.uses === "./.github/actions/activate-release").with.mode, "${{ inputs.operation }}");
+  assert.equal(steps("activate").find((s) => s.uses === "./.github/actions/activate-release").with.mode, GATE_OUT("operation"));
   assert.match(actions["activate-release"].runs.steps.at(-1).run, /activate\) script=activate-release\.py ;;\n\s*rollback\) script=rollback-release\.py ;;\n\s*\*\)/);
 });
 

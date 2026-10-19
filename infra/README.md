@@ -122,7 +122,7 @@ aws cloudfront create-invalidation \
   --paths '/*'
 ```
 
-A publicação por releases imutáveis pelo GitHub Actions está implementada, mas só substitui este procedimento depois da migração descrita em [FRONTEND-RELEASES.md](FRONTEND-RELEASES.md). Até lá, este continua sendo o caminho vigente.
+A publicação por releases imutáveis pelo GitHub Actions está implementada, com deploy automático a cada push na `main` depois do CI verde. Ela só substitui este procedimento depois dos pré-requisitos e da migração descritos em [FRONTEND-RELEASES.md](FRONTEND-RELEASES.md). Até lá, este continua sendo o caminho vigente.
 
 O frontend mantém a navegação na raiz, sem necessidade de fallback de erros para `index.html`. A API usa domínio separado e CORS permite somente a origem do portal. Todas as respostas da aplicação usam `Cache-Control: no-store`.
 
