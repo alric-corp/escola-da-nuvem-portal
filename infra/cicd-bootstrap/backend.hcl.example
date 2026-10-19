@@ -1,0 +1,8 @@
+# Copie para backend.hcl (ignorado pelo Git). Mesmo bucket de state, chave PRÓPRIA:
+# a infraestrutura principal usa portal/prod/terraform.tfstate; esta nunca pode repeti-la.
+bucket              = "restart-portal-tfstate-123456789012-us-east-1"
+key                 = "cicd/frontend-deploy/terraform.tfstate"
+region              = "us-east-1"
+encrypt             = true
+use_lockfile        = true
+allowed_account_ids = ["123456789012"]
