@@ -259,7 +259,7 @@ Shims são temporários, e não há nenhum ativo. O build copia só os arquivos 
 
 ### Deploy seguro de módulos
 
-`scripts/deploy_frontend.sh` publica o build inteiro e invalida tudo ([infra/README.md](../infra/README.md#4-gerar-e-publicar-o-frontend)). Para publicar só os módulos alterados:
+`scripts/deploy_frontend.sh` publica o build inteiro e invalida tudo ([infra/README.md](../infra/README.md#4-gerar-e-publicar-o-frontend)). A pipeline de releases imutáveis ([infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md)) elimina a mistura de versões em cache. Ela só passa a valer depois da migração, e até lá esta seção descreve o deploy vigente. Para publicar só os módulos alterados:
 
 1. gerar o build do commit exato que será publicado;
 2. usar a configuração de produção (`frontend_config` do Terraform);

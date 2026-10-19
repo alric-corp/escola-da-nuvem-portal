@@ -26,6 +26,7 @@ Ficam nos diretórios de cada componente:
 - [frontend/README.md](../frontend/README.md): execução local, demonstração e testes do frontend.
 - [tests/README.md](../tests/README.md): índice das suítes, comandos, contratos e mutações.
 - [infra/README.md](../infra/README.md) e [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md): implantação.
+- [infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md): releases do frontend pelo GitHub Actions (publicação, ativação e rollback; ainda não ativa).
 - [infra/SES.md](../infra/SES.md): e-mail e lembretes.
 
 ## Backlog
