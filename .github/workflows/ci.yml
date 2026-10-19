@@ -35,6 +35,11 @@ jobs:
         run: python tests/contracts/claim_mutations.py
       - name: Mutações da autorização manual (Moto, sem AWS real)
         run: python tests/contracts/manual_recovery_mutations.py
+      # P-SC1: instala também o lock real no runner Linux, em venv novo e sem credenciais.
+      # Fica por último para preservar boto3/Moto das suítes anteriores no intérprete de testes.
+      - uses: ./.github/actions/setup-deploy-python
+      - name: Importa o runtime verificado do deploy
+        run: python3 -c 'import boto3, botocore, s3transfer; print("boto3", boto3.__version__)'
 
   node:
     name: Frontend (Node + Playwright)

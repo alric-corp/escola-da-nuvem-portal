@@ -120,6 +120,12 @@ ENVDOC = {
                           "reviewers": [{"type": "User", "reviewer": {"login": "revisor"}}]}],
     "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
 }
+# Modelo de mantenedor único (B.3): environment restrito à main, sem revisor obrigatório e com o bypass padrão do GitHub.
+ENVDOC_SOLO = {
+    "name": "production", "can_admins_bypass": True,
+    "protection_rules": [{"type": "branch_policy"}],
+    "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+}
 _MAIN_REF = object()
 
 
@@ -136,6 +142,22 @@ def repo_env(**overrides):
            "OPERATION": "prepare", "SOURCE": "main", "GITHUB_REPOSITORY": REPO, "DEPLOY_ENABLED": "true"}
     env.update(overrides)
     return {k: v for k, v in env.items() if v is not None}
+
+
+def auto_env(**overrides):
+    """Gate do deploy automático: workflow_run do CI na main, sem inputs (o workflow passa os inputs vazios)."""
+    env = {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": REPO,
+           "DEPLOY_ENABLED": "true"}
+    env.update(overrides)
+    return {k: v for k, v in env.items() if v is not None}
+
+
+def ci_run_event(**overrides):
+    """Payload do workflow_run: o CI (ci.yml) concluído verde por push na main deste repositório."""
+    run = {"id": 1, "name": "CI", "path": ".github/workflows/ci.yml", "event": "push", "head_branch": "main", "head_sha": SHA,
+           "status": "completed", "conclusion": "success", "head_repository": {"full_name": REPO}, "repository": {"full_name": REPO}}
+    run.update(overrides)
+    return {"action": "completed", "workflow_run": {k: v for k, v in run.items() if v is not None}}
 
 
 def environment_env(**overrides):

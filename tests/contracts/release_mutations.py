@@ -23,8 +23,11 @@ CHECK = ".github/scripts/check-deploy-gate.py"
 CLI = ".github/scripts/release_cli.py"
 PUBLISH = ".github/scripts/publish-release.py"
 PUBLISH_ACTION = ".github/actions/publish-release/action.yml"
+SETUP_ACTION = ".github/actions/setup-deploy-python/action.yml"
+DEPLOY_REQUIREMENTS = ".github/requirements-deploy.txt"
 S3, PACKAGE, GATES = "test_frontend_release_s3", "test_frontend_release_package", "test_frontend_release_gate"
 HEAD = "test_frontend_release_head"
+DEPENDENCIES = "test_frontend_release_dependencies"
 PIPELINE, BROWSER = "tests/release-pipeline.mjs", "tests/release-cache-browser.mjs"
 
 # (nome, arquivo, trecho original, substituto, ocorrências, suíte, teste que precisa matar o mutante)
@@ -94,10 +97,14 @@ CASES = [
      GATES, "test_refusals_before_any_api_call"),
     ("gate_sem_ci", GATE, '    if status != 200 or not any(r.get("head_sha") == sha', '    if False and not any(r.get("head_sha") == sha', 1,
      GATES, "test_ci_must_be_green_for_this_exact_commit"),
-    ("gate_bypass_ausente_aceito", GATE, '    if envdoc.get("can_admins_bypass") is not False:', '    if envdoc.get("can_admins_bypass") is True:', 1,
-     GATES, "test_environment_must_exist_with_reviewer_main_only_and_no_admin_bypass"),
+    # B.3 (mantenedor único): revisor e bypass são opcionais; existência e restrição à main continuam obrigatórias.
+    ("gate_environment_ausente_aceito", GATE, "    if status == 404:\n", "    if False:\n", 1,
+     GATES, "test_environment_must_exist_and_deploy_only_from_main"),
+    ("gate_sem_politica_de_branch", GATE,
+     '    if policy.get("custom_branch_policies") is not True or policy.get("protected_branches") is not False:',
+     "    if False:", 1, GATES, "test_environment_must_exist_and_deploy_only_from_main"),
     ("gate_outras_branches", GATE, '        if status != 200 or names != [("main", "branch")]:', '        if status != 200 or ("main", "branch") not in names:', 1,
-     GATES, "test_environment_must_exist_with_reviewer_main_only_and_no_admin_bypass"),
+     GATES, "test_environment_must_exist_and_deploy_only_from_main"),
     ("gate_chaves_estaticas", GATE, "    present = [k for k in STATIC_KEYS if env.get(k)]", "    present = []", 1,
      GATES, "test_fails_closed_without_variables_role_or_with_static_keys"),
     ("gate_qualquer_role", GATE, '    if not re.fullmatch(rf"arn:aws:iam::[0-9]{{12}}:role/{ROLE_NAME}", role):',
@@ -112,11 +119,12 @@ CASES = [
     ("workflow_cancela_em_andamento", WORKFLOW, "  cancel-in-progress: false", "  cancel-in-progress: true", 1,
      PIPELINE, "permissões mínimas"),
     ("workflow_publica_por_padrao", WORKFLOW, "        default: prepare", "        default: publish", 1,
-     PIPELINE, "só workflow_dispatch"),
-    ("workflow_push", WORKFLOW, "on:\n  workflow_dispatch:", "on:\n  push:\n    branches: [main]\n  workflow_dispatch:", 1,
-     PIPELINE, "só workflow_dispatch"),
+     PIPELINE, "gatilhos automático"),
+    # Um push direto publicaria antes do CI terminar.
+    ("workflow_push", WORKFLOW, "on:\n  workflow_run:", "on:\n  push:\n    branches: [main]\n  workflow_run:", 1,
+     PIPELINE, "gatilhos automático"),
     ("workflow_guarda_token", WORKFLOW, "          persist-credentials: false\n          fetch-depth: 0\n      - name: Variables",
-     "          persist-credentials: true\n          fetch-depth: 0\n      - name: Variables", 2, PIPELINE, "só workflow_dispatch"),
+     "          persist-credentials: true\n          fetch-depth: 0\n      - name: Variables", 3, PIPELINE, "gatilhos automático"),
     ("workflow_id_token_sem_oidc", WORKFLOW,
      "      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0\n"
      "        with:\n          role-to-assume: ${{ vars.AWS_ROLE_ARN }}\n          aws-region: ${{ vars.AWS_REGION }}\n"
@@ -164,6 +172,48 @@ CASES = [
      "        except ReleaseError as err:\n            fail(str(err))\n", "", 1, HEAD, "test_s3_probe_revalidates_before_writing"),
     ("composite_publica_sem_sha", PUBLISH_ACTION, "        EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}\n", "", 1,
      PIPELINE, "HEAD da main revalidado"),
+    # B.4: deploy automático depois do CI verde na main (workflow_run), com publicação e ativação no mesmo run.
+    ("workflow_run_qualquer_branch", WORKFLOW, "    branches: [main]\n  workflow_dispatch:", "  workflow_dispatch:", 1,
+     PIPELINE, "gatilhos automático"),
+    ("auto_ci_vermelho_aceito", GATE, '    if run.get("conclusion") != "success":', "    if False:", 1,
+     GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_pull_request_aceito", GATE, '    if run.get("event") != "push" or run.get("head_branch") != "main":',
+     '    if run.get("head_branch") != "main":', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_outro_repositorio_aceito", GATE, '    if head_repository.get("full_name") != env.get("GITHUB_REPOSITORY"):', "    if False:", 1,
+     GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_outro_workflow_aceito", GATE, '    if str(run.get("path", "")).split("@")[0] != CI_WORKFLOW:', "    if False:", 1,
+     GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_commit_do_ci_ignorado", GATE, '    return ("deploy", "main", head if isinstance(head, str) else ""), problems',
+     '    return ("deploy", "main", env.get("GITHUB_SHA", "")), problems', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_inputs_escolhem_operacao", GATE, '    if name == "workflow_dispatch":',
+     '    if name == "workflow_dispatch" or env.get("OPERATION"):', 1, GATES, "test_inputs_never_choose_the_automatic_operation"),
+    ("deploy_sem_config", GATE, "    if operation in BUILDS and source == \"main\":", "    if operation in (\"prepare\", \"publish\") and source == \"main\":", 1,
+     GATES, "test_complete_variables_without_static_keys_pass"),
+    ("gate_sem_outputs", CHECK, '        set_outputs(**{"operation": operation, "source": source, "expected-main-sha": expected})', "        pass", 1,
+     GATES, "test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved"),
+    ("outputs_mesmo_recusado", CHECK, "    if problems:\n        summary([f\"### Gate ({args.stage}) recusou",
+     "    set_outputs(operation=operation)\n    if problems:\n        summary([f\"### Gate ({args.stage}) recusou", 1,
+     GATES, "test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved"),
+    ("publish_ativa_sem_deploy", WORKFLOW, "      - id: deploy-activate\n        if: needs.gate.outputs.operation == 'deploy'\n",
+     "      - id: deploy-activate\n", 1, HEAD, "test_publish_never_activates_and_deploy_activates_only_after_publishing"),
+    # P-SC1: dependências verificadas antes das credenciais, também nas composites chamadas depois do OIDC.
+    ("dependencias_ausentes_na_ativacao", WORKFLOW,
+     "      - uses: ./.github/actions/setup-deploy-python\n      - uses: aws-actions/configure-aws-credentials",
+     "      - uses: aws-actions/configure-aws-credentials", 1, PIPELINE, "P-SC1"),
+    ("erro_de_dependencias_ignorado", WORKFLOW, "      - uses: ./.github/actions/setup-deploy-python\n",
+     "      - uses: ./.github/actions/setup-deploy-python\n        continue-on-error: true\n", 3, PIPELINE, "P-SC1"),
+    ("dependencias_sem_require_hashes", SETUP_ACTION, "--require-hashes ", "", 1, PIPELINE, "P-SC1"),
+    ("dependencias_aceitam_sdist", SETUP_ACTION, "--only-binary=:all: ", "", 1, PIPELINE, "P-SC1"),
+    ("dependencias_herdam_pacotes_do_runner", SETUP_ACTION, 'python3 -m venv "$deploy_venv"',
+     'python3 -m venv --system-site-packages "$deploy_venv"', 1, PIPELINE, "P-SC1"),
+    ("composite_reinstala_depois_do_oidc", PUBLISH_ACTION, "  steps:\n    - id: publish",
+     "  steps:\n    - uses: ./.github/actions/setup-deploy-python\n    - id: publish", 1, PIPELINE, "P-SC1"),
+    ("dependencia_transitiva_sem_hash", DEPLOY_REQUIREMENTS,
+     "urllib3==2.8.0 --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+     "urllib3==2.8.0", 1, PIPELINE, "P-SC1"),
+    ("instalacao_aceita_credencial_existente", SETUP_ACTION,
+     'if [ -n "${AWS_ACCESS_KEY_ID:-}${AWS_SECRET_ACCESS_KEY:-}${AWS_SESSION_TOKEN:-}" ]; then',
+     "if false; then", 1, DEPENDENCIES, "test_existing_aws_credentials_refuse_installation_without_exposing_the_value"),
     ("d1_revertida", APP, 'fetch(new URL("./config.json", import.meta.url), { cache: "no-store" })',
      'fetch("./config.json", { cache: "no-store" })', 1, BROWSER, ""),
 ]

@@ -18,8 +18,8 @@ from unittest.mock import patch
 import boto3
 from moto import mock_aws
 
-from release_fixtures import (BUCKET, ENVDOC, REGION, REPO, RID, ROLE, SHA, FakeGitHub, block_network, child_env, config,
-                              environment_env, fr, load_script, repo_env)
+from release_fixtures import (BUCKET, ENVDOC, ENVDOC_SOLO, REGION, REPO, RID, ROLE, SHA, FakeGitHub, auto_env, block_network, child_env,
+                              ci_run_event, config, environment_env, fr, load_script, repo_env)
 
 import release_cli  # noqa: E402 - SCRIPTS já está no sys.path (release_fixtures)
 import release_gate as gate  # noqa: E402
@@ -43,8 +43,9 @@ class RepositoryGateTests(unittest.TestCase):
     def test_protected_main_with_green_ci_passes_and_queries_ci_by_exact_sha(self):
         github = FakeGitHub()
         for operation, extra in (("prepare", {}), ("verify", {}), ("publish", {}), ("activate", {"RELEASE_ID": RID}),
-                                 ("rollback", {"RELEASE_ID": RID, "EXPECTED_ACTIVE_RELEASE": "legacy"})):
-            with self.subTest(operation):
+                                 ("rollback", {"RELEASE_ID": RID, "EXPECTED_ACTIVE_RELEASE": "legacy"}), ("deploy", {}),
+                                 ("deploy", {"SOURCE": "baseline"})):
+            with self.subTest(operation, **extra):
                 self.assertEqual(gate.repository_problems(repo_env(OPERATION=operation, **extra), github), [])
         ci_query = next(p for p in github.paths if "ci.yml" in p)
         self.assertIn(f"head_sha={SHA}", ci_query)
@@ -53,12 +54,14 @@ class RepositoryGateTests(unittest.TestCase):
 
     def test_refusals_before_any_api_call(self):
         cases = {
-            "evento push": (repo_env(GITHUB_EVENT_NAME="push"), "workflow_dispatch"),
+            "evento push": (repo_env(GITHUB_EVENT_NAME="push"), "workflow_run"),
+            "evento pull_request": (repo_env(GITHUB_EVENT_NAME="pull_request"), "workflow_run"),
             "branch não autorizada": (repo_env(GITHUB_REF="refs/heads/feat/x"), "fora da branch main"),
             "tag": (repo_env(GITHUB_REF="refs/tags/v1"), "fora da branch main"),
             "sha divergente": (repo_env(EXPECTED_MAIN_SHA="e5" * 20), "diverge"),
             "sha curto": (repo_env(EXPECTED_MAIN_SHA=SHA[:12]), "40 hex"),
-            "operação desconhecida": (repo_env(OPERATION="deploy"), "Operação desconhecida"),
+            "operação desconhecida": (repo_env(OPERATION="destroy"), "Operação desconhecida"),
+            "baseline no verify": (repo_env(OPERATION="verify", SOURCE="baseline"), "baseline só se aplica"),
             "origem desconhecida": (repo_env(SOURCE="feature"), "Origem"),
             "baseline na ativação": (repo_env(OPERATION="activate", SOURCE="baseline", RELEASE_ID=RID), "baseline só se aplica"),
             "activate sem release": (repo_env(OPERATION="activate"), "release_id obrigatório"),
@@ -66,6 +69,7 @@ class RepositoryGateTests(unittest.TestCase):
             "rollback sem ativa": (repo_env(OPERATION="rollback", RELEASE_ID=RID), "expected_active_release"),
             "ativa inválida": (repo_env(OPERATION="activate", RELEASE_ID=RID, EXPECTED_ACTIVE_RELEASE="x"), "inválido"),
             "kill switch desligado": (repo_env(OPERATION="publish", DEPLOY_ENABLED="false"), "Kill switch"),
+            "kill switch no deploy manual": (repo_env(OPERATION="deploy", DEPLOY_ENABLED="false"), "Kill switch"),
             "kill switch ausente": (repo_env(OPERATION="activate", RELEASE_ID=RID, DEPLOY_ENABLED=None), "Kill switch"),
             "sonda fora do verify": (repo_env(OPERATION="publish", S3_PROBE="true"), "sonda S3"),
             "sonda sem kill switch": (repo_env(OPERATION="verify", S3_PROBE="true", DEPLOY_ENABLED=None), "sonda S3"),
@@ -83,30 +87,129 @@ class RepositoryGateTests(unittest.TestCase):
             with self.subTest(label):
                 self.assertIn("CI (ci.yml, push) não está verde para este commit.", gate.repository_problems(repo_env(), github))
 
-    def test_environment_must_exist_with_reviewer_main_only_and_no_admin_bypass(self):
-        without = lambda **changes: dict(ENVDOC, **changes)  # noqa: E731
+    def test_environment_must_exist_and_deploy_only_from_main(self):
+        without = lambda **changes: dict(ENVDOC_SOLO, **changes)  # noqa: E731
         cases = {
             "ausente": (FakeGitHub(env_status=404), "ausente"),
             "ilegível": (FakeGitHub(env_status=403), "Não foi possível ler"),
-            "sem revisor": (FakeGitHub(env=without(protection_rules=[])), "revisor obrigatório"),
-            "revisores vazios": (FakeGitHub(env=without(protection_rules=[{"type": "required_reviewers", "reviewers": []}])), "revisor"),
             "branches protegidas": (FakeGitHub(env=without(deployment_branch_policy={"protected_branches": True,
                                                                                      "custom_branch_policies": False})), "customizada"),
-            "sem política": (FakeGitHub(env=without(deployment_branch_policy=None)), "customizada"),
-            "outra branch": (FakeGitHub(branches=(("main", "branch"), ("release/*", "branch"))), "somente a branch main"),
-            "tag": (FakeGitHub(branches=(("main", "tag"),)), "somente a branch main"),
-            "bypass de admin": (FakeGitHub(env=without(can_admins_bypass=True)), "bypass"),
-            "bypass não informado": (FakeGitHub(env={k: v for k, v in ENVDOC.items() if k != "can_admins_bypass"}), "bypass"),
+            "sem política (todas as branches)": (FakeGitHub(env=without(deployment_branch_policy=None)), "customizada"),
+            "outra branch": (FakeGitHub(env=ENVDOC_SOLO, branches=(("main", "branch"), ("release/*", "branch"))), "somente a branch main"),
+            "curinga": (FakeGitHub(env=ENVDOC_SOLO, branches=(("*", "branch"),)), "somente a branch main"),
+            "tag": (FakeGitHub(env=ENVDOC_SOLO, branches=(("main", "tag"),)), "somente a branch main"),
         }
         for label, (github, reason) in cases.items():
             with self.subTest(label):
                 problems = gate.repository_problems(repo_env(), github)
                 self.assertTrue(any(reason in p for p in problems), problems)
 
-    def test_self_review_note_states_that_self_approval_is_not_independent(self):
+    def test_single_maintainer_environment_without_reviewers_passes(self):
+        """Mantenedor único: revisores e bloqueio de bypass são opcionais; a restrição à main continua obrigatória."""
+        variants = {
+            "sem revisor, bypass padrão": ENVDOC_SOLO,
+            "sem regras": dict(ENVDOC_SOLO, protection_rules=[]),
+            "bypass não informado": {k: v for k, v in ENVDOC_SOLO.items() if k != "can_admins_bypass"},
+            "com revisor (opcional)": ENVDOC,
+        }
+        for label, envdoc in variants.items():
+            for operation, extra in (("prepare", {}), ("publish", {}), ("activate", {"RELEASE_ID": RID}),
+                                     ("rollback", {"RELEASE_ID": RID, "EXPECTED_ACTIVE_RELEASE": "legacy"}), ("deploy", {})):
+                with self.subTest(label, operation=operation):
+                    self.assertEqual(gate.repository_problems(repo_env(OPERATION=operation, **extra), FakeGitHub(env=envdoc)), [])
+            with self.subTest(label, operation="deploy automático"):
+                self.assertEqual(gate.repository_problems(auto_env(), FakeGitHub(env=envdoc), ci_run_event()), [])
+
+    def test_review_note_describes_the_configured_model(self):
+        self.assertIn("Sem revisor obrigatório", gate.self_review_note(ENVDOC_SOLO))
+        self.assertIn("deploy automático segue o CI verde na main", gate.self_review_note(ENVDOC_SOLO))
         self.assertIn("não é revisão independente", gate.self_review_note(ENVDOC))
         strict = dict(ENVDOC, protection_rules=[dict(ENVDOC["protection_rules"][0], prevent_self_review=True)])
         self.assertEqual(gate.self_review_note(strict), "prevent_self_review ativo.")
+
+
+class AutomaticDeployGateTests(unittest.TestCase):
+    """Deploy automático: só o CI (ci.yml) verde, de push na main deste repositório, inicia o deploy daquele commit."""
+
+    def test_green_ci_of_a_push_on_main_deploys_that_exact_commit(self):
+        github = FakeGitHub()
+        self.assertEqual(gate.run_parameters(auto_env(), ci_run_event()), (("deploy", "main", SHA), []))
+        self.assertEqual(gate.repository_problems(auto_env(), github, ci_run_event()), [])
+        ci_query = next(p for p in github.paths if "ci.yml" in p)
+        self.assertIn(f"head_sha={SHA}", ci_query, "o CI verde é reconferido na API para o commit exato")
+        self.assertIn(f"/repos/{REPO}/git/ref/heads/main", github.paths)
+
+    def test_inputs_never_choose_the_automatic_operation_source_or_commit(self):
+        env = auto_env(OPERATION="rollback", SOURCE="baseline", EXPECTED_MAIN_SHA="e5" * 20, RELEASE_ID=RID)
+        self.assertEqual(gate.run_parameters(env, ci_run_event())[0], ("deploy", "main", SHA))
+        self.assertEqual(gate.repository_problems(env, FakeGitHub(), ci_run_event()), [])
+
+    def test_automatic_refusals_before_any_api_call(self):
+        cases = {
+            "CI falhou": (auto_env(), ci_run_event(conclusion="failure"), "não terminou verde"),
+            "CI cancelado": (auto_env(), ci_run_event(conclusion="cancelled"), "não terminou verde"),
+            "CI sem conclusão": (auto_env(), ci_run_event(conclusion=None), "não terminou verde"),
+            "CI de pull request": (auto_env(), ci_run_event(event="pull_request"), "não é de um push na main"),
+            "CI de outra branch": (auto_env(), ci_run_event(head_branch="feat/x"), "não é de um push na main"),
+            "fork com branch main": (auto_env(), ci_run_event(event="pull_request", head_repository={"full_name": "fork/portal-teste"}),
+                                     "outro repositório"),
+            "push de outro repositório": (auto_env(), ci_run_event(head_repository={"full_name": "fork/portal-teste"}), "outro repositório"),
+            "repositório ausente": (auto_env(), ci_run_event(head_repository=None), "outro repositório"),
+            "outro workflow": (auto_env(), ci_run_event(path=".github/workflows/outro.yml"), "não veio do CI"),
+            "payload ausente": (auto_env(), None, "não veio do CI"),
+            "payload sem workflow_run": (auto_env(), {"action": "completed"}, "não terminou verde"),
+            "main avançou antes do evento": (auto_env(GITHUB_SHA="e5" * 20), ci_run_event(), "diverge"),
+            "commit do CI malformado": (auto_env(), ci_run_event(head_sha=SHA[:12]), "40 hex"),
+            "commit do CI ausente": (auto_env(), ci_run_event(head_sha=None), "40 hex"),
+            "fora da main": (auto_env(GITHUB_REF="refs/heads/feat/x"), ci_run_event(), "fora da branch main"),
+            "kill switch desligado": (auto_env(DEPLOY_ENABLED="false"), ci_run_event(), "Kill switch"),
+            "kill switch ausente": (auto_env(DEPLOY_ENABLED=None), ci_run_event(), "Kill switch"),
+        }
+        for label, (env, event, reason) in cases.items():
+            with self.subTest(label):
+                github = FakeGitHub()
+                problems = gate.repository_problems(env, github, event)
+                self.assertTrue(any(reason in p for p in problems), problems)
+                self.assertEqual(github.paths, [], "evento recusado não consulta a API")
+
+    def test_head_ci_and_environment_are_still_checked_in_the_api(self):
+        cases = {
+            "main avançou": (FakeGitHub(head="e5" * 20), "A main avançou"),
+            "CI da API não verde": (FakeGitHub(ci=("failure",)), "CI (ci.yml, push) não está verde"),
+            "environment ausente": (FakeGitHub(env_status=404), "ausente"),
+            "environment sem restrição": (FakeGitHub(env=dict(ENVDOC_SOLO, deployment_branch_policy=None)), "customizada"),
+        }
+        for label, (github, reason) in cases.items():
+            with self.subTest(label):
+                problems = gate.repository_problems(auto_env(), github, ci_run_event())
+                self.assertTrue(any(reason in p for p in problems), problems)
+
+    def test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            event_file, output_file = Path(tmp) / "event.json", Path(tmp) / "output"
+            for label, event, expected in (("aprovado", ci_run_event(), 0), ("CI vermelho", ci_run_event(conclusion="failure"), 1)):
+                with self.subTest(label):
+                    event_file.write_text(json.dumps(event), encoding="utf-8")
+                    output_file.write_text("", encoding="utf-8")
+                    env = dict(auto_env(), GITHUB_EVENT_PATH=str(event_file), GITHUB_OUTPUT=str(output_file),
+                               GITHUB_STEP_SUMMARY=str(Path(tmp) / "summary.md"))
+                    code = 0
+                    with patch.dict(os.environ, env, clear=True), contextlib.redirect_stdout(io.StringIO()), \
+                            contextlib.redirect_stderr(io.StringIO()):
+                        try:
+                            check_gate.main(["--stage", "repository"], env=env, get=FakeGitHub())
+                        except SystemExit as exit_:
+                            code = exit_.code
+                    self.assertEqual(code, expected)
+                    outputs = output_file.read_text(encoding="utf-8")
+                    if expected == 0:
+                        self.assertEqual(outputs, f"operation=deploy\nsource=main\nexpected-main-sha={SHA}\n")
+                    else:
+                        self.assertEqual(outputs, "", "gate recusado não publica decisão")
+            self.assertIn("evento: `workflow_run`; operação: `deploy`", (Path(tmp) / "summary.md").read_text(encoding="utf-8"))
+        for label, path in (("sem arquivo", None), ("arquivo inexistente", "/nao/existe.json")):
+            with self.subTest(label):
+                self.assertIsNone(check_gate.load_event(auto_env(GITHUB_EVENT_PATH=path)))
 
 
 class EnvironmentGateTests(unittest.TestCase):
@@ -114,6 +217,9 @@ class EnvironmentGateTests(unittest.TestCase):
         self.assertEqual(gate.environment_problems(environment_env(), "publish", "main"), [])
         self.assertEqual(gate.environment_problems(environment_env(FRONTEND_CONFIG_JSON=None), "activate", "main"), [])
         self.assertEqual(gate.environment_problems(environment_env(FRONTEND_CONFIG_JSON=None), "publish", "baseline"), [])
+        self.assertEqual(gate.environment_problems(environment_env(FRONTEND_CONFIG_JSON=None), "deploy", "baseline"), [])
+        self.assertTrue(gate.environment_problems(environment_env(FRONTEND_CONFIG_JSON=None), "deploy", "main"),
+                        "o deploy da main precisa da config publicada")
 
     def test_fails_closed_without_variables_role_or_with_static_keys(self):
         cases = {

@@ -1,11 +1,12 @@
 """Pipeline do frontend (B.2): o HEAD atual da main no GitHub é revalidado em três momentos.
 
-- Verificação A: job gate, antes de qualquer aprovação do environment.
-- Verificação B: primeiro passo de cada job do environment, depois da aprovação e antes de credencial ou artefato.
+- Verificação A: job gate, antes de qualquer job do environment.
+- Verificação B: primeiro passo de cada job do environment, já liberado, e antes de credencial ou artefato.
 - Verificação C: nos scripts, imediatamente antes da primeira escrita AWS (publicação, ativação, sonda).
 
 A API do GitHub é simulada (FakeGitHub e urlopen substituído), a AWS só aparece como cliente simulado e a rede fica
-bloqueada. O simulador de workflow lê o deploy-frontend.yml real e executa os passos de gate na ordem dos jobs.
+bloqueada. O simulador de workflow lê o deploy-frontend.yml real e executa os passos de gate na ordem dos jobs, no
+disparo manual e no deploy automático (workflow_run do CI), com os outputs do gate decidindo jobs e passos.
 """
 import contextlib
 import io
@@ -14,12 +15,14 @@ import os
 import re
 import socket
 import subprocess
+import tempfile
 import unittest
 import urllib.error
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from release_fixtures import (ENVDOC, REPO, RID, ROOT, SHA, FakeGitHub, block_network, environment_env, fr, load_script,
-                              repo_env)
+from release_fixtures import (ENVDOC, ENVDOC_SOLO, REPO, RID, ROOT, SHA, FakeGitHub, block_network, ci_run_event, environment_env, fr,
+                              load_script, repo_env)
 
 import release_cli  # noqa: E402 - SCRIPTS já está no sys.path (release_fixtures)
 import release_gate as gate  # noqa: E402
@@ -43,18 +46,18 @@ def tearDownModule():
     _restore()
 
 
-def quiet():
-    """Sem GITHUB_STEP_SUMMARY/GITHUB_OUTPUT do runner e com a saída capturada."""
+def quiet(output_file=""):
+    """Sem GITHUB_STEP_SUMMARY do runner, GITHUB_OUTPUT só no arquivo pedido e com a saída capturada."""
     out = io.StringIO()
     stack = contextlib.ExitStack()
-    stack.enter_context(patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "", "GITHUB_OUTPUT": ""}))
+    stack.enter_context(patch.dict(os.environ, {"GITHUB_STEP_SUMMARY": "", "GITHUB_OUTPUT": output_file}))
     stack.enter_context(contextlib.redirect_stdout(out))
     stack.enter_context(contextlib.redirect_stderr(out))
     return stack, out
 
 
-def run_stage(stage, env, github):
-    stack, out = quiet()
+def run_stage(stage, env, github, output_file=""):
+    stack, out = quiet(output_file)
     with stack:
         try:
             check_gate.main(["--stage", stage], env=env, get=github)
@@ -131,12 +134,13 @@ class RemoteHeadGateTests(unittest.TestCase):
         self.assertEqual(problems, ["CI (ci.yml, push) não está verde para este commit."])
 
     def test_unprotected_environment_is_denied_even_with_main_current(self):
-        problems = gate.repository_problems(repo_env(), FakeGitHub(env=dict(ENVDOC, can_admins_bypass=True)))
-        self.assertEqual(problems, ["Environment permite (ou não informa) bypass de administradores."])
+        # Sem restrição de branch (qualquer branch poderia usar o environment): recusa mesmo com a main correta.
+        problems = gate.repository_problems(repo_env(), FakeGitHub(env=dict(ENVDOC_SOLO, deployment_branch_policy=None)))
+        self.assertEqual(problems, ["Environment sem política de branches customizada."])
 
     def test_kill_switch_off_denies_productive_operations_before_any_query(self):
         for operation, extra in (("publish", {}), ("activate", {"RELEASE_ID": RID}),
-                                 ("rollback", {"RELEASE_ID": RID, "EXPECTED_ACTIVE_RELEASE": "legacy"})):
+                                 ("rollback", {"RELEASE_ID": RID, "EXPECTED_ACTIVE_RELEASE": "legacy"}), ("deploy", {})):
             with self.subTest(operation):
                 github = FakeGitHub()
                 problems = gate.repository_problems(repo_env(OPERATION=operation, DEPLOY_ENABLED="false", **extra), github)
@@ -229,8 +233,10 @@ class GitHubAdapterTests(unittest.TestCase):
 
 # ---------------------------------------------------------------- simulador do deploy-frontend.yml
 
-EXPRESSION = re.compile(r"\$\{\{ (inputs|vars|secrets|github)\.(\w+) \}\}")
+EXPRESSION = re.compile(r"\$\{\{ (inputs|vars|secrets|github|steps\.gate\.outputs|needs\.gate\.outputs)\.([\w-]+) \}\}")
+OPERATION_IS = re.compile(r"needs\.gate\.outputs\.operation == '(\w+)'")
 GATE_STEP = re.compile(r"python3 -B \.github/scripts/check-deploy-gate\.py --stage (repository|environment)")
+AUTOMATIC = "automático"            # workflow_run do CI verde na main: sem inputs
 
 
 def load_workflow():
@@ -243,22 +249,31 @@ def load_workflow():
 
 
 class Run:
-    """Uma execução do workflow: contexto de expressões, runner e a API do GitHub simulada (mutável)."""
+    """Uma execução do workflow: evento, contexto de expressões, runner e a API do GitHub simulada (mutável)."""
 
-    def __init__(self, workflow, operation, github, **inputs):
-        self.workflow, self.github = workflow, github
-        self.inputs = {"operation": operation, "source": "main", "expected_main_sha": SHA, "release_id": "",
-                       "expected_active_release": "", "confirm_release_id": "", "allow_config_change": "false", "s3_probe": "false"}
-        if operation in ("activate", "rollback"):
-            self.inputs.update(release_id=RID, expected_active_release="legacy")
-        self.inputs.update(inputs)
+    def __init__(self, workflow, operation, github, tmp, event=None, **inputs):
+        self.workflow, self.github, self.tmp = workflow, github, Path(tmp)
+        if operation == AUTOMATIC:
+            self.inputs = {}  # no workflow_run, inputs.* vira texto vazio
+        else:
+            self.inputs = {"operation": operation, "source": "main", "expected_main_sha": SHA, "release_id": "",
+                           "expected_active_release": "", "confirm_release_id": "", "allow_config_change": "false",
+                           "s3_probe": "false"}
+            if operation in ("activate", "rollback"):
+                self.inputs.update(release_id=RID, expected_active_release="legacy")
+            self.inputs.update(inputs)
         variables = environment_env()
         self.vars = {"FRONTEND_DEPLOY_ENABLED": "true", **{k: variables[k] for k in ("AWS_ROLE_ARN", "AWS_REGION", "FRONTEND_BUCKET",
                                                                                       "CLOUDFRONT_DISTRIBUTION_ID", "PUBLIC_ORIGIN",
                                                                                       "FRONTEND_CONFIG_JSON")}}
-        self.context = {"inputs": self.inputs, "vars": self.vars, "secrets": {}, "github": {"token": TOKEN, "run_id": "1", "run_attempt": "1"}}
+        self.context = {"inputs": self.inputs, "vars": self.vars, "secrets": {}, "github": {"token": TOKEN, "run_id": "1", "run_attempt": "1"},
+                        "steps.gate.outputs": {}, "needs.gate.outputs": {}}
         self.runner = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA,
                        "GITHUB_REPOSITORY": REPO, "GITHUB_ACTOR": "operador"}
+        if operation == AUTOMATIC:
+            payload = self.tmp / "event.json"
+            payload.write_text(json.dumps(event or ci_run_event()), encoding="utf-8")
+            self.runner.update(GITHUB_EVENT_NAME="workflow_run", GITHUB_EVENT_PATH=str(payload), GITHUB_ACTOR="github-actions")
 
     def resolve(self, value):
         if isinstance(value, bool):
@@ -270,54 +285,63 @@ class Run:
         assert match, f"expressão fora do que o simulador entende: {value}"
         return str(self.context[match.group(1)].get(match.group(2), ""))
 
-    def jobs(self):
-        """Jobs que esta operação executa, na ordem do arquivo (gate, build, publish...)."""
-        selected = []
-        for name, job in self.workflow["jobs"].items():
-            condition = job.get("if")
-            if condition:
-                options = [re.fullmatch(r"inputs\.operation == '(\w+)'", part.strip()) for part in condition.split("||")]
-                assert all(options), condition
-                if self.inputs["operation"] not in [m.group(1) for m in options]:
-                    continue
-            selected.append(name)
-        return selected
+    def selected(self, condition):
+        """Condição de job ou de passo: alternativas `needs.gate.outputs.operation == 'x'`, com always() opcional."""
+        if not condition or condition == "always()":
+            return True
+        condition = condition[len("always() && "):] if condition.startswith("always() && ") else condition
+        options = [OPERATION_IS.fullmatch(part.strip()) for part in condition.split("||")]
+        assert all(options), f"condição fora do que o simulador entende: {condition}"
+        return self.context["needs.gate.outputs"].get("operation") in [m.group(1) for m in options]
 
     def run_job(self, name):
-        """Executa os passos de gate; os demais são só registrados. Devolve (aprovado, passos executados)."""
+        """Executa os passos de gate; os demais são só registrados. Devolve (aprovado, passos executados, saída)."""
         executed = []
-        for step in self.workflow["jobs"][name]["steps"]:
+        job = self.workflow["jobs"][name]
+        for step in job["steps"]:
+            if not self.selected(step.get("if")):
+                continue
             label = step.get("uses") or step.get("name") or step.get("run")
             match = GATE_STEP.fullmatch(step.get("run", ""))
             if match:
                 env = dict(self.runner, **{k: self.resolve(v) for k, v in step.get("env", {}).items()})
                 env = {k: v for k, v in env.items() if v != ""}
-                code, output = run_stage(match.group(1), env, self.github)
+                output = self.tmp / f"output-{name}"
+                output.write_text("", encoding="utf-8")
+                code, out = run_stage(match.group(1), env, self.github, str(output))
                 if code:
-                    return False, executed, output
+                    return False, executed, out
+                if step.get("id") == "gate":
+                    self.context["steps.gate.outputs"] = dict(line.split("=", 1) for line in output.read_text().splitlines())
             executed.append(label)
+        if name == "gate":
+            self.context["needs.gate.outputs"] = {k: self.resolve(v) for k, v in job.get("outputs", {}).items()}
         return True, executed, ""
 
 
 class WorkflowWindowTests(unittest.TestCase):
-    """A main avança enquanto a execução espera aprovação: o job liberado é recusado antes de credencial ou artefato."""
+    """A main avança enquanto a execução espera: o job liberado é recusado antes de credencial ou artefato."""
 
     @classmethod
     def setUpClass(cls):
         cls.workflow = load_workflow()
 
-    def run_operation(self, operation, advance_before=None, **inputs):
+    def run_operation(self, operation, advance_before=None, github=None, event=None, **inputs):
         """Executa os jobs em ordem; advance_before = job antes do qual a main avança para OTHER."""
-        github = FakeGitHub()
-        run = Run(self.workflow, operation, github, **inputs)
+        github = github or FakeGitHub()
         results = []
-        for job in run.jobs():
-            if job == advance_before:
-                github.head = OTHER
-            ok, executed, output = run.run_job(job)
-            results.append((job, ok, executed, output))
-            if not ok:
-                break
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Run(self.workflow, operation, github, tmp, event, **inputs)
+            for job, spec in self.workflow["jobs"].items():
+                if not run.selected(spec.get("if")):
+                    continue
+                if job == advance_before:
+                    github.head = OTHER
+                ok, executed, output = run.run_job(job)
+                results.append((job, ok, executed, output))
+                if not ok:
+                    break
+            self.outputs, self.run = dict(run.context["needs.gate.outputs"]), run
         return results
 
     def assert_denied_before_credentials(self, results, job):
@@ -329,28 +353,52 @@ class WorkflowWindowTests(unittest.TestCase):
 
     def test_control_with_main_unchanged_every_operation_reaches_its_last_step(self):
         expected = {"prepare": ["gate", "build"], "verify": ["gate", "verify"], "publish": ["gate", "build", "publish"],
-                    "activate": ["gate", "activate"], "rollback": ["gate", "activate"]}
+                    "activate": ["gate", "activate"], "rollback": ["gate", "activate"], "deploy": ["gate", "build", "publish"],
+                    AUTOMATIC: ["gate", "build", "publish"]}
         for operation, jobs in expected.items():
             with self.subTest(operation):
                 results = self.run_operation(operation)
                 self.assertEqual([(name, ok) for name, ok, _, _ in results], [(job, True) for job in jobs])
                 last = results[-1][2]
-                self.assertEqual(len(last), len(self.workflow["jobs"][jobs[-1]]["steps"]), "todos os passos do último job")
+                steps = [s for s in self.workflow["jobs"][jobs[-1]]["steps"] if self.run.selected(s.get("if"))]
+                self.assertEqual(len(last), len(steps), "todos os passos do último job que valem para a operação")
                 if operation != "prepare":
                     self.assertTrue(any(e.startswith(AWS_ACTION) for e in last))
 
+    def test_publish_never_activates_and_deploy_activates_only_after_publishing(self):
+        for operation, activates in (("publish", False), ("deploy", True), (AUTOMATIC, True)):
+            with self.subTest(operation):
+                last = self.run_operation(operation)[-1][2]
+                self.assertEqual("./.github/actions/activate-release" in last, activates, last)
+                if activates:
+                    self.assertLess(last.index("./.github/actions/publish-release"), last.index("./.github/actions/activate-release"))
+
+    def test_automatic_run_takes_operation_source_and_commit_from_the_gate(self):
+        results = self.run_operation(AUTOMATIC)
+        self.assertTrue(all(ok for _, ok, _, _ in results))
+        self.assertEqual(self.outputs, {"operation": "deploy", "source": "main", "expected-main-sha": SHA})
+
+    def test_automatic_run_with_red_ci_reaches_no_environment_job(self):
+        for label, event in (("CI vermelho", ci_run_event(conclusion="failure")), ("CI de PR", ci_run_event(event="pull_request"))):
+            with self.subTest(label):
+                results = self.run_operation(AUTOMATIC, event=event)
+                self.assertEqual([(name, ok) for name, ok, _, _ in results], [("gate", False)])
+                self.assertEqual(self.outputs, {}, "gate recusado não decide operação: nenhum job do environment roda")
+
     def test_main_advances_between_gate_and_approval_the_released_job_is_denied(self):
         for operation, job in (("prepare", "build"), ("verify", "verify"), ("publish", "build"),
-                               ("activate", "activate"), ("rollback", "activate")):
+                               ("activate", "activate"), ("rollback", "activate"), ("deploy", "build"), (AUTOMATIC, "build")):
             with self.subTest(operation):
                 results = self.run_operation(operation, advance_before=job)
                 self.assertTrue(results[0][1], "o gate inicial aprovou o commit A")
                 self.assert_denied_before_credentials(results, job)
 
     def test_main_advances_between_build_and_publish_is_denied_before_oidc(self):
-        results = self.run_operation("publish", advance_before="publish")
-        self.assertEqual([(name, ok) for name, ok, _, _ in results], [("gate", True), ("build", True), ("publish", False)])
-        self.assert_denied_before_credentials(results, "publish")
+        for operation in ("publish", "deploy", AUTOMATIC):
+            with self.subTest(operation):
+                results = self.run_operation(operation, advance_before="publish")
+                self.assertEqual([(name, ok) for name, ok, _, _ in results], [("gate", True), ("build", True), ("publish", False)])
+                self.assert_denied_before_credentials(results, "publish")
 
     def test_main_advances_before_activate_is_denied(self):
         self.assert_denied_before_credentials(self.run_operation("activate", advance_before="activate"), "activate")
@@ -362,11 +410,11 @@ class WorkflowWindowTests(unittest.TestCase):
         self.assert_denied_before_credentials(self.run_operation("verify", advance_before="verify", s3_probe="true"), "verify")
 
     def test_main_already_ahead_at_dispatch_is_denied_by_the_initial_gate(self):
-        github = FakeGitHub(head=OTHER)
-        run = Run(self.workflow, "publish", github)
-        ok, executed, output = run.run_job("gate")
-        self.assertFalse(ok)
-        self.assertIn("A main avançou", output)
+        for operation in ("publish", AUTOMATIC):
+            with self.subTest(operation):
+                results = self.run_operation(operation, github=FakeGitHub(head=OTHER))
+                self.assertEqual([(name, ok) for name, ok, _, _ in results], [("gate", False)])
+                self.assertIn("A main avançou", results[0][3])
 
 
 # ---------------------------------------------------------------- verificação C nos scripts
