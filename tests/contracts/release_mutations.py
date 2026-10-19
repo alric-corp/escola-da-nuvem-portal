@@ -19,7 +19,12 @@ ACCESS = ".github/scripts/verify-access.py"
 WORKFLOW = ".github/workflows/deploy-frontend.yml"
 ACTIVATE_ACTION = ".github/actions/activate-release/action.yml"
 APP = "frontend/app.js"
+CHECK = ".github/scripts/check-deploy-gate.py"
+CLI = ".github/scripts/release_cli.py"
+PUBLISH = ".github/scripts/publish-release.py"
+PUBLISH_ACTION = ".github/actions/publish-release/action.yml"
 S3, PACKAGE, GATES = "test_frontend_release_s3", "test_frontend_release_package", "test_frontend_release_gate"
+HEAD = "test_frontend_release_head"
 PIPELINE, BROWSER = "tests/release-pipeline.mjs", "tests/release-cache-browser.mjs"
 
 # (nome, arquivo, trecho original, substituto, ocorrências, suíte, teste que precisa matar o mutante)
@@ -120,6 +125,45 @@ CASES = [
      "      - id: activate", 1, PIPELINE, "permissões mínimas"),
     ("composite_interpola_input", ACTIVATE_ACTION, '--release-id "$RELEASE_ID"', '--release-id "${{ inputs.release-id }}"', 1,
      PIPELINE, "nenhuma expressão dentro de run"),
+    # B.2: HEAD atual da main revalidado no gate (A), depois da aprovação (B) e antes da primeira escrita AWS (C).
+    ("head_gate_removido", GATE, "    problems += main_head_problems(env, github_get)\n", "", 1,
+     HEAD, "test_head_different_from_the_run_commit_is_denied"),
+    ("head_compara_so_expected", GATE, "    if head != sha:", "    if expected != sha:", 1,
+     HEAD, "test_head_different_from_the_run_commit_is_denied"),
+    ("head_http_erro_aceito", GATE, '    if status != 200:\n        reason = f"HTTP {status}"', '    if status >= 500:\n        reason = f"HTTP {status}"', 1,
+     HEAD, "test_api_error_statuses_are_denied"),
+    ("head_falha_api_ignorada", GATE, '    if status != 200:\n        reason = f"HTTP {status}"',
+     '    if status not in (0, 200):\n        reason = f"HTTP {status}"', 1, HEAD, "test_timeouts_and_network_errors_are_denied"),
+    ("head_resposta_vazia_aceita", GATE,
+     '        return ["A resposta da API do GitHub não é a referência refs/heads/main; execução recusada."]', "        return []", 1,
+     HEAD, "test_responses_that_are_not_refs_heads_main_are_denied"),
+    ("head_sha_malformado_aceito", GATE, "    if not isinstance(head, str) or not SHA_RE.fullmatch(head):", "    if not isinstance(head, str):", 1,
+     HEAD, "test_missing_or_malformed_sha_is_denied"),
+    ("adaptador_erro_http_como_200", CLI, "        return err.code, None", "        return 200, None", 1,
+     HEAD, "test_http_errors_including_rate_limit_are_denied"),
+    ("segunda_verificacao_removida", CHECK, " + main_head_problems(env, get)", "", 1,
+     HEAD, "test_main_advances_between_gate_and_approval_the_released_job_is_denied"),
+    ("diferenca_apos_aprovacao_ignorada", CHECK, "    if problems:\n        summary([f\"### Gate ({args.stage}) recusou",
+     "    if problems and args.stage == \"repository\":\n        summary([f\"### Gate ({args.stage}) recusou", 1,
+     HEAD, "test_main_advances_between_gate_and_approval_the_released_job_is_denied"),
+    ("verificacao_so_no_build", WORKFLOW,
+     "        run: python3 -B .github/scripts/check-deploy-gate.py --stage environment\n      - uses: actions/download-artifact",
+     "        run: echo \"revalidação removida\"\n      - uses: actions/download-artifact", 1,
+     HEAD, "test_main_advances_between_build_and_publish_is_denied_before_oidc"),
+    ("guarda_publicacao_removida", CORE, "    if before_write:\n        before_write()  # verificação C: HEAD da main antes do primeiro objeto\n",
+     "", 1, S3, "test_publish_revalidates_main_before_the_first_object"),
+    ("guarda_ativacao_removida", CORE,
+     "    if before_write:\n        before_write()  # verificação C: HEAD da main depois das conferências e antes do index.html ou da invalidação\n",
+     "", 1, S3, "test_activation_revalidates_main_after_the_checks_and_before_the_index"),
+    ("cli_ativacao_sem_guarda", CLI, ", before_write=main_head_guard())", ")", 1,
+     HEAD, "test_activation_and_rollback_cli_revalidate_before_writing"),
+    ("cli_publicacao_sem_guarda", PUBLISH, ", before_write=main_head_guard())", ")", 1,
+     HEAD, "test_publish_cli_revalidates_before_the_first_object"),
+    ("sonda_sem_revalidacao", ACCESS,
+     "        try:\n            main_head_guard()()  # verificação C: HEAD da main antes da primeira escrita da sonda\n"
+     "        except ReleaseError as err:\n            fail(str(err))\n", "", 1, HEAD, "test_s3_probe_revalidates_before_writing"),
+    ("composite_publica_sem_sha", PUBLISH_ACTION, "        EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}\n", "", 1,
+     PIPELINE, "HEAD da main revalidado"),
     ("d1_revertida", APP, 'fetch(new URL("./config.json", import.meta.url), { cache: "no-store" })',
      'fetch("./config.json", { cache: "no-store" })', 1, BROWSER, ""),
 ]

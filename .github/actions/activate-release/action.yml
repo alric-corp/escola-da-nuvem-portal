@@ -4,6 +4,9 @@ description: >-
   grava o ponteiro com If-Match, invalida só / e /index.html, aguarda e faz o smoke. Sem rollback automático.
   Requer credenciais da role de deploy (OIDC) e checkout com fetch-depth 0 (ancestralidade na main).
 inputs:
+  expected-main-sha:
+    description: "SHA da main confirmado pelo operador; o HEAD atual da main é revalidado antes da primeira escrita"
+    required: true
   mode:
     description: "activate ou rollback"
     required: true
@@ -53,6 +56,8 @@ runs:
       name: Ativa com If-Match, invalida / e /index.html e faz o smoke
       shell: bash
       env:
+        EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}
+        GH_TOKEN: ${{ github.token }}
         MODE: ${{ inputs.mode }}
         RELEASE_ID: ${{ inputs.release-id }}
         EXPECTED_ACTIVE: ${{ inputs.expected-active }}

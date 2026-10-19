@@ -3,7 +3,8 @@
   --claims    pede um token OIDC (audience sts.amazonaws.com) e mostra apenas as claims da matriz, comparando-as
               com as condições da trust; o token nunca é impresso nem gravado
   --aws       com a role já assumida: identidade, index.html ativo, listagem de releases/ e distribuição
-  --s3-probe  escreve no máximo releases/_probe/<run>/probe.txt e nunca altera o index.html (plano do A.1, §8)
+  --s3-probe  escreve no máximo releases/_probe/<run>/probe.txt e nunca altera o index.html (plano do A.1, §8);
+              antes da primeira escrita, revalida o HEAD atual da main no GitHub
 """
 import argparse
 import base64
@@ -15,8 +16,8 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from frontend_release import RELEASES_PREFIX, read_active  # noqa: E402
-from release_cli import aws_clients, fail, summary  # noqa: E402
+from frontend_release import RELEASES_PREFIX, ReleaseError, read_active  # noqa: E402
+from release_cli import aws_clients, fail, main_head_guard, summary  # noqa: E402
 from release_gate import ENVIRONMENT, ROLE_NAME  # noqa: E402
 
 CLAIMS = ("aud", "sub", "repository", "repository_id", "repository_owner_id", "environment", "ref", "ref_type",
@@ -112,6 +113,10 @@ def main(argv=None):
                  f"- releases publicadas: {len(listing.get('CommonPrefixes', []))}",
                  f"- distribuição: {dist['Status']}"])
     if args.s3_probe:
+        try:
+            main_head_guard()()  # verificação C: HEAD da main antes da primeira escrita da sonda
+        except ReleaseError as err:
+            fail(str(err))
         results = probe(s3, args.bucket, f"{env.get('GITHUB_RUN_ID', 'local')}-{env.get('GITHUB_RUN_ATTEMPT', '0')}")
         summary(["### Sonda S3", "| passo | esperado | obtido |", "|---|---|---|"] +
                 [f"| {s} | `{e}` | `{o}` |" for s, e, o in results])

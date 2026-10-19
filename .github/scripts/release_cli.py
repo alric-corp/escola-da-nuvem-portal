@@ -1,4 +1,4 @@
-"""Adaptadores de E/S dos scripts de release: AWS (boto3), HTTP público, git e resumo do job.
+"""Adaptadores de E/S dos scripts de release: AWS (boto3), HTTP público, API do GitHub, git e resumo do job.
 
 A lógica de decisão fica em frontend_release.py e release_gate.py; aqui só há a ligação com o ambiente real.
 """
@@ -53,6 +53,49 @@ def http_fetch(url: str, timeout: int = 20):
             return response.status, {k.lower(): v for k, v in response.headers.items()}, response.read()
     except urllib.error.HTTPError as err:
         return err.code, {k.lower(): v for k, v in err.headers.items()}, err.read()
+
+
+def github_get(path: str, env=None, timeout: int = 20):
+    """GET na API do GitHub com o GITHUB_TOKEN do job (GH_TOKEN). Devolve (status HTTP, JSON ou None).
+
+    Falha fechada para quem chama: sem token ou URL não HTTPS, rede, TLS ou timeout → (0, None); erro HTTP →
+    (código, None); JSON inválido → (status, None). O token só vai no cabeçalho; nada da requisição é impresso.
+    """
+    env = os.environ if env is None else env
+    api, token = env.get("GITHUB_API_URL", "https://api.github.com"), env.get("GH_TOKEN", "")
+    if not api.startswith("https://") or not token:
+        return 0, None
+    request = urllib.request.Request(api + path, headers={"Authorization": f"Bearer {token}",
+                                                          "Accept": "application/vnd.github+json",
+                                                          "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - URL HTTPS da API do GitHub
+            status, body = response.status, response.read()
+    except urllib.error.HTTPError as err:
+        return err.code, None
+    except (urllib.error.URLError, OSError, ValueError):
+        return 0, None
+    try:
+        return status, json.loads(body)
+    except ValueError:
+        return status, None
+
+
+def main_head_guard(env=None, get=None):
+    """Verificação C: função que revalida o HEAD da main imediatamente antes da primeira escrita AWS.
+
+    Levanta ReleaseError (nada foi alterado) quando a main avançou ou a API não confirma o HEAD.
+    """
+    from frontend_release import ReleaseError
+    from release_gate import main_head_problems
+
+    env = dict(os.environ if env is None else env)
+
+    def guard():
+        problems = main_head_problems(env, get or (lambda path: github_get(path, env)))
+        if problems:
+            raise ReleaseError("Revalidação antes da escrita: " + " | ".join(problems))
+    return guard
 
 
 class Git:
@@ -114,7 +157,7 @@ def run_activation(mode: str, argv=None):
             s3, cloudfront, bucket=args.bucket, distribution_id=args.distribution_id, release_id=args.release_id,
             public_origin=args.public_origin, baseline=load_baseline(), git=Git(REPO_ROOT), fetch=http_fetch,
             mode=mode, expected_active=args.expected_active, confirm_release_id=args.confirm_release_id,
-            caller_reference=caller_reference(args.release_id))
+            caller_reference=caller_reference(args.release_id), before_write=main_head_guard())
     except PostActivationError as err:
         if args.record_out and err.record:
             args.record_out.write_bytes(pretty_json(dict(err.record, error=str(err))))

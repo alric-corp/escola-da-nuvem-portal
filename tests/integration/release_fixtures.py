@@ -6,6 +6,7 @@ bloqueada durante os testes (só sockets locais), e a AWS é sempre o moto.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -19,6 +20,7 @@ SCRIPTS = ROOT / ".github" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import frontend_release as fr  # noqa: E402
 from release_cli import Git  # noqa: E402
+from release_gate import ENVIRONMENT, ROLE_NAME  # noqa: E402
 
 BASELINE = json.loads((ROOT / ".github" / "release" / "baseline.json").read_text(encoding="utf-8"))
 BASELINE_SHA = BASELINE["source_sha"]
@@ -104,6 +106,74 @@ def child_env(**extra) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith(("GITHUB_", "AWS_", "RUNNER_", "ACTIONS_"))}
     env.update(AWS_EC2_METADATA_DISABLED="true", AWS_CONFIG_FILE=os.devnull, AWS_SHARED_CREDENTIALS_FILE=os.devnull, **extra)
     return env
+
+
+# ---------------------------------------------------------------- GitHub simulado (gates do workflow)
+
+SHA = "d4" * 20                      # commit da execução simulada (GITHUB_SHA)
+RID = "d4d4d4d4d4d4-0123456789ab"
+REPO = "org-teste/portal-teste"
+ROLE = f"arn:aws:iam::123456789012:role/{ROLE_NAME}"
+ENVDOC = {
+    "name": "production", "can_admins_bypass": False,
+    "protection_rules": [{"type": "required_reviewers", "prevent_self_review": False,
+                          "reviewers": [{"type": "User", "reviewer": {"login": "revisor"}}]}],
+    "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+}
+_MAIN_REF = object()
+
+
+def load_script(name):
+    """Carrega um script de .github/scripts/ com hífen no nome (check-deploy-gate.py, verify-access.py...)."""
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), SCRIPTS / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def repo_env(**overrides):
+    env = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "EXPECTED_MAIN_SHA": SHA,
+           "OPERATION": "prepare", "SOURCE": "main", "GITHUB_REPOSITORY": REPO, "DEPLOY_ENABLED": "true"}
+    env.update(overrides)
+    return {k: v for k, v in env.items() if v is not None}
+
+
+def environment_env(**overrides):
+    env = {"AWS_ROLE_ARN": ROLE, "AWS_REGION": REGION, "FRONTEND_BUCKET": "portal-web-teste", "CLOUDFRONT_DISTRIBUTION_ID": "E1ABCDEFGHIJ",
+           "PUBLIC_ORIGIN": "https://portal.example.test", "FRONTEND_CONFIG_JSON": json.dumps(config()),
+           "OPERATION": "publish", "SOURCE": "main"}
+    env.update(overrides)
+    return {k: v for k, v in env.items() if v is not None}
+
+
+def main_ref(sha):
+    """Resposta de GET /repos/{repo}/git/ref/heads/main."""
+    return {"ref": "refs/heads/main", "node_id": "REF_teste", "url": f"https://api.github.com/repos/{REPO}/git/refs/heads/main",
+            "object": {"sha": sha, "type": "commit", "url": f"https://api.github.com/repos/{REPO}/git/commits/{sha}"}}
+
+
+class FakeGitHub:
+    """API do GitHub simulada: runs da CI, environment, políticas de branch e o HEAD de refs/heads/main.
+
+    head pode mudar durante o teste (a main avança enquanto o workflow espera aprovação).
+    """
+
+    def __init__(self, ci=("success",), env=ENVDOC, env_status=200, branches=(("main", "branch"),), runs_sha=SHA,
+                 head=SHA, head_status=200, head_payload=_MAIN_REF):
+        self.ci, self.env, self.env_status, self.branches, self.runs_sha, self.paths = ci, env, env_status, branches, runs_sha, []
+        self.head, self.head_status, self.head_payload = head, head_status, head_payload
+
+    def __call__(self, path):
+        self.paths.append(path)
+        if path.endswith("/git/ref/heads/main"):
+            return self.head_status, main_ref(self.head) if self.head_payload is _MAIN_REF else self.head_payload
+        if "/actions/workflows/ci.yml/runs?" in path:
+            return 200, {"workflow_runs": [{"head_sha": self.runs_sha, "conclusion": c} for c in self.ci]}
+        if path.endswith("/deployment-branch-policies"):
+            return 200, {"branch_policies": [{"name": n, "type": t} for n, t in self.branches]}
+        if path.endswith(f"/environments/{ENVIRONMENT}"):
+            return self.env_status, self.env if self.env_status == 200 else None
+        raise AssertionError(f"consulta inesperada: {path}")
 
 
 # ---------------------------------------------------------------- rede

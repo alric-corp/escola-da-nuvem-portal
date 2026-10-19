@@ -3,6 +3,9 @@ description: >-
   Envia releases/<id>/ com If-None-Match e confere os objetos remotos. Não ativa, não sobrescreve e não apaga.
   Requer credenciais da role de deploy (OIDC) já configuradas no job.
 inputs:
+  expected-main-sha:
+    description: "SHA da main confirmado pelo operador; o HEAD atual da main é revalidado antes da primeira escrita"
+    required: true
   release-dir:
     description: "Diretório da release preparada e validada"
     required: true
@@ -29,6 +32,8 @@ runs:
       name: Publica com If-None-Match e confere hashes, MIME e cache remotos
       shell: bash
       env:
+        EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}
+        GH_TOKEN: ${{ github.token }}
         RELEASE_DIR: ${{ inputs.release-dir }}
         BUCKET: ${{ inputs.bucket }}
         REGION: ${{ inputs.region }}

@@ -30,7 +30,7 @@ O `release_id` amarra commit, assets, config, rotas da API e builder. A baseline
 
 ## Operações
 
-Todas são disparadas em Actions → *Deploy do frontend* → *Run workflow*, na `main`, com `expected_main_sha` igual ao SHA revisado. Se a `main` avançar, a execução é recusada.
+Todas são disparadas em Actions → *Deploy do frontend* → *Run workflow*, na `main`, com `expected_main_sha` igual ao SHA revisado. Se a `main` avançar antes da primeira escrita, inclusive enquanto a execução espera aprovação, a execução é recusada sem alterar nada: dispare de novo com o SHA atual (veja [Revalidação do HEAD da main](#revalidação-do-head-da-main)).
 
 | `operation` | Faz | AWS | Aprovações |
 |---|---|---|---|
@@ -41,6 +41,26 @@ Todas são disparadas em Actions → *Deploy do frontend* → *Run workflow*, na
 | `rollback` | Igual a `activate`, com as proteções de rollback | idem | 1 |
 
 `source=baseline` só vale em `prepare` e `publish`. As operações `publish`, `activate` e `rollback` exigem a variable de repositório `FRONTEND_DEPLOY_ENABLED=true` (kill switch), que fica `false` fora das janelas de operação.
+
+### Revalidação do HEAD da main
+
+O HEAD atual de `refs/heads/main` é lido na API do GitHub (`GET /repos/{repo}/git/ref/heads/main`, com o `GITHUB_TOKEN` do job e `contents: read`). Ele precisa ser igual, nos 40 hex, ao `GITHUB_SHA` e ao `expected_main_sha`:
+
+| Verificação | Quando | Onde |
+|---|---|---|
+| A | No job `gate`, antes de qualquer aprovação | `check-deploy-gate.py --stage repository` |
+| B | No primeiro passo de cada job do environment, depois da aprovação e antes de artefato, dependência ou OIDC. No `publish`, é independente da verificação do `build` | `check-deploy-gate.py --stage environment` |
+| C | Imediatamente antes da primeira escrita AWS: primeiro objeto da release, `index.html` ou invalidação, sonda | `main_head_guard` em `publish-release.py`, `activate-release.py`, `rollback-release.py` e `verify-access.py` |
+
+Qualquer resposta que não prove a igualdade recusa a execução:
+- HEAD diferente;
+- HTTP diferente de 200 (401, 403, 404, 429 e 5xx);
+- token ausente, rede ou timeout;
+- JSON inválido;
+- referência diferente de `refs/heads/main`;
+- SHA ausente ou malformado.
+
+**Janela residual:** entre a resposta da verificação C e a escrita no S3 (frações de segundo a poucos segundos) não há atomicidade possível. Uma integração na `main` exatamente nesse intervalo não é detectada. A release que seguir é a do commit aprovado, íntegra e imutável, e a próxima execução já usa o novo HEAD. As escritas condicionais (`If-None-Match` e `If-Match`) e a concorrência `frontend-production` continuam valendo.
 
 ## Pré-requisitos (uma vez, pelo owner)
 
@@ -107,7 +127,7 @@ A volta da baseline ao **layout plano** não passa pela pipeline. O procedimento
 npm test                                        # inclui tests/release-pipeline.mjs
 npm run test:browser                            # inclui tests/release-cache-browser.mjs
 python -m unittest discover -s tests/integration   # test_frontend_release_* (moto, rede bloqueada)
-python tests/contracts/release_mutations.py     # 41 mutações; precisa de moto e Chromium
+python tests/contracts/release_mutations.py     # 57 mutações; precisa de moto e Chromium
 cd infra/cicd-bootstrap && terraform init -backend=false && terraform test && python3 ../../tests/contracts/bootstrap_mutations.py
 ```
 

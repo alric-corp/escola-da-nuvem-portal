@@ -61,8 +61,10 @@ test("workflow: só workflow_dispatch, padrão prepare e nenhum input escolhe co
     }
   }
   const text = read(WORKFLOW);
-  assert.equal(text.match(/inputs\.expected_main_sha/g).length, 1);
-  assert.match(text, /EXPECTED_MAIN_SHA: \$\{\{ inputs\.expected_main_sha \}\}/);
+  // Cada uso alimenta só uma comparação (gates e guarda antes da escrita), nunca um checkout ou ref.
+  const uses = text.split("\n").filter((line) => line.includes("inputs.expected_main_sha"));
+  assert.ok(uses.length >= 5, uses.join("\n"));
+  for (const line of uses) assert.match(line, /^\s+(EXPECTED_MAIN_SHA|expected-main-sha): \$\{\{ inputs\.expected_main_sha \}\}$/, line);
 });
 
 test("workflow: permissões mínimas, id-token só nos jobs com OIDC e concorrência sem cancelamento", () => {
@@ -111,7 +113,11 @@ test("workflow: o gate do environment roda antes de qualquer credencial, artefat
     assert.equal(usesOf(job.steps[0]), "actions/checkout");
     const env = job.steps[index].env;
     assert.deepEqual(Object.keys(env).sort(), ["AWS_ACCESS_KEY_ID", "AWS_REGION", "AWS_ROLE_ARN", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
-      "CLOUDFRONT_DISTRIBUTION_ID", "FRONTEND_BUCKET", "FRONTEND_CONFIG_JSON", "OPERATION", "PUBLIC_ORIGIN", "SOURCE"]);
+      "CLOUDFRONT_DISTRIBUTION_ID", "EXPECTED_MAIN_SHA", "FRONTEND_BUCKET", "FRONTEND_CONFIG_JSON", "GH_TOKEN", "OPERATION", "PUBLIC_ORIGIN",
+      "SOURCE"]);
+    // Verificação B: o HEAD da main é relido depois da aprovação, com o GITHUB_TOKEN do job (contents: read).
+    assert.equal(env.GH_TOKEN, "${{ github.token }}", name);
+    assert.equal(env.EXPECTED_MAIN_SHA, "${{ inputs.expected_main_sha }}", name);
     for (const key of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]) assert.equal(env[key], `\${{ secrets.${key} }}`);
     const oidc = job.steps.findIndex((s) => usesOf(s) === AWS_ACTION);
     if (oidc >= 0) {
@@ -149,6 +155,33 @@ test("workflow e composites: actions externas fixadas por SHA e nenhuma express�
     assert.equal(action.runs.using, "composite", name);
     for (const step of action.runs.steps.filter((s) => s.run)) assert.equal(step.shell, "bash", `${name}: ${step.name}`);
   }
+});
+
+test("HEAD da main revalidado no gate, depois da aprovação e imediatamente antes da primeira escrita AWS", () => {
+  // Verificação A: o gate tem token e o SHA confirmado; B: conferida no teste do gate do environment acima.
+  assert.equal(steps("gate").at(-1).env.EXPECTED_MAIN_SHA, "${{ inputs.expected_main_sha }}");
+  // Verificação C: as composites que escrevem recebem o SHA confirmado e o token do job, só por env.
+  for (const name of ["publish-release", "activate-release"]) {
+    const action = actions[name];
+    assert.equal(action.inputs["expected-main-sha"].required, true, name);
+    const run = action.runs.steps.at(-1);
+    assert.equal(run.env.GH_TOKEN, "${{ github.token }}", name);
+    assert.equal(run.env.EXPECTED_MAIN_SHA, "${{ inputs.expected-main-sha }}", name);
+  }
+  for (const [job, uses] of [["publish", "./.github/actions/publish-release"], ["activate", "./.github/actions/activate-release"]]) {
+    assert.equal(steps(job).find((s) => s.uses === uses).with["expected-main-sha"], "${{ inputs.expected_main_sha }}", job);
+  }
+  const probe = steps("verify").at(-1);
+  assert.match(probe.run, /verify-access\.py/);
+  assert.equal(probe.env.GH_TOKEN, "${{ github.token }}");
+  assert.equal(probe.env.EXPECTED_MAIN_SHA, "${{ inputs.expected_main_sha }}");
+  // Os scripts chamam a guarda antes de escrever: publicação, ativação/rollback e sonda.
+  assert.match(read(".github/scripts/publish-release.py"), /publish_release\([^)]*before_write=main_head_guard\(\)\)/);
+  assert.match(read(".github/scripts/release_cli.py"), /before_write=main_head_guard\(\)\)/);
+  const access = read(".github/scripts/verify-access.py");
+  assert.ok(access.indexOf("main_head_guard()()") > 0 && access.indexOf("main_head_guard()()") < access.indexOf("results = probe("));
+  // Nenhuma permissão de escrita para o GITHUB_TOKEN: a leitura da referência usa contents: read.
+  for (const job of Object.values(jobs)) assert.ok(!Object.entries(job.permissions).some(([k, v]) => v === "write" && k !== "id-token"));
 });
 
 test("workflow: variables lidas são as do contrato e o kill switch fica no repositório", () => {

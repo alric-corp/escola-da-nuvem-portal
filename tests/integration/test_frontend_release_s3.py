@@ -324,6 +324,44 @@ class ReleaseS3Tests(unittest.TestCase):
                 self.activate(name)
         self.assertEqual(fr.pointer_release(self.index()[1]), rid("m2"))
 
+    # ------------------------------------------------------------ verificação C (B.2): HEAD da main antes da escrita
+
+    def moved(self, spy, seen):
+        def guard():
+            seen.append(len(spy.puts))
+            raise fr.ReleaseError("Revalidação antes da escrita: A main avançou (teste).")
+        return guard
+
+    def test_publish_revalidates_main_before_the_first_object(self):
+        spy, seen = Spy(self.s3), []
+        with self.assertRaisesRegex(fr.ReleaseError, "A main avançou"):
+            fr.publish_release(spy, BUCKET, R["m1"], log=self.logs.append, before_write=self.moved(spy, seen))
+        self.assertEqual((seen, spy.puts, self.keys("releases/")), ([0], [], []))
+
+    def test_activation_revalidates_main_after_the_checks_and_before_the_index(self):
+        self.legacy_up_to_baseline()
+        self.publish("m1")
+        etag, spy, seen = self.index()[0], Spy(self.s3), []
+        with self.assertRaisesRegex(fr.ReleaseError, "A main avançou") as ctx:
+            self.activate("m1", s3=spy, before_write=self.moved(spy, seen))
+        self.assertNotIsInstance(ctx.exception, fr.PostActivationError)
+        self.assertEqual((seen, spy.puts, self.index()[0]), ([0], [], etag))
+        self.assertEqual(len(self.invalidations()), 1, "só a invalidação da baseline")
+        # Reativar a release já ativa também revalida antes da invalidação.
+        with self.assertRaisesRegex(fr.ReleaseError, "A main avançou"):
+            self.activate("baseline", before_write=self.moved(spy, seen))
+        self.assertEqual(len(self.invalidations()), 1)
+
+    def test_revalidation_runs_only_after_the_activation_checks_pass(self):
+        self.legacy_up_to_baseline()
+        self.publish("m1")
+        spy, seen = Spy(self.s3), []
+        with self.assertRaisesRegex(fr.ReleaseError, "nada foi alterado"):
+            self.activate("m1", s3=spy, expected_active="legacy", before_write=self.moved(spy, seen))
+        self.assertEqual(seen, [], "uma ativação já recusada não chega à revalidação")
+        record = self.activate("m1", before_write=lambda: None)
+        self.assertEqual(record["release_id"], rid("m1"))
+
     # ------------------------------------------------------------ rollback
 
     def test_rollback_to_a_previous_release_with_the_same_contract(self):

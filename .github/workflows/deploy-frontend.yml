@@ -5,6 +5,9 @@ name: Deploy do frontend
 # main é sempre o commit desta execução, e baseline é a constante revisada em .github/release/baseline.json.
 # Toda operação passa pelo job gate (sem credenciais) e por um job no environment production, cuja aprovação
 # é obrigatória; as operações com AWS usam OIDC (id-token: write só nesses jobs) e nunca chaves permanentes.
+# O HEAD atual da main é relido no GitHub três vezes: no gate (A), no primeiro passo de cada job do environment,
+# depois da aprovação (B), e nos scripts, imediatamente antes da primeira escrita AWS (C). Se a main avançou, a
+# execução é recusada sem alterar nada.
 on:
   workflow_dispatch:
     inputs:
@@ -96,10 +99,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Variables do environment, sem chaves AWS estáticas
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
           OPERATION: ${{ inputs.operation }}
           SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
@@ -143,10 +148,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Variables do environment, sem chaves AWS estáticas
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
           OPERATION: ${{ inputs.operation }}
           SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
@@ -182,6 +189,7 @@ jobs:
           mask-aws-account-id: true
       - uses: ./.github/actions/publish-release
         with:
+          expected-main-sha: ${{ inputs.expected_main_sha }}
           release-dir: ${{ runner.temp }}/release
           bucket: ${{ vars.FRONTEND_BUCKET }}
           region: ${{ vars.AWS_REGION }}
@@ -200,10 +208,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Variables do environment, sem chaves AWS estáticas
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
           OPERATION: ${{ inputs.operation }}
           SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
@@ -230,6 +240,8 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check --no-input "boto3==1.42.97"
       - name: Leituras com a role e, se pedida, a sonda S3
         env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
           S3_PROBE: ${{ inputs.s3_probe }}
           BUCKET: ${{ vars.FRONTEND_BUCKET }}
           DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
@@ -254,10 +266,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Variables do environment, sem chaves AWS estáticas
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
         env:
           OPERATION: ${{ inputs.operation }}
           SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
           AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
@@ -278,6 +292,7 @@ jobs:
       - id: activate
         uses: ./.github/actions/activate-release
         with:
+          expected-main-sha: ${{ inputs.expected_main_sha }}
           mode: ${{ inputs.operation }}
           release-id: ${{ inputs.release_id }}
           expected-active: ${{ inputs.expected_active_release }}

@@ -1,9 +1,10 @@
 """Pré-condições do workflow de deploy do frontend (falha fechada).
 
-Estágio "repository" (job gate, sem environment e sem AWS): evento, branch, SHA confirmado, CI verde do SHA,
-operação, kill switch e proteções do environment production lidas pela API do GitHub.
-Estágio "environment" (primeiro passo dos jobs do environment, antes de qualquer credencial): variables do
-environment e ausência de chaves AWS estáticas.
+Estágio "repository" (job gate, sem environment e sem AWS): evento, branch, SHA confirmado, HEAD atual da main no
+GitHub, CI verde do SHA, operação, kill switch e proteções do environment production lidas pela API do GitHub.
+Estágio "environment" (primeiro passo dos jobs do environment, depois da aprovação e antes de qualquer credencial):
+variables do environment, ausência de chaves AWS estáticas e, de novo, o HEAD atual da main.
+main_head_problems também é a guarda que os scripts chamam imediatamente antes da primeira escrita AWS.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ SOURCES = ("main", "baseline")
 ENVIRONMENT = "production"
 ROLE_NAME = "restart-portal-prod-github-frontend-deploy"
 STATIC_KEYS = ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN")
+REPOSITORY_RE = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+")
 
 
 def repository_problems(env: dict, github_get) -> list:
@@ -52,6 +54,7 @@ def repository_problems(env: dict, github_get) -> list:
         problems.append("A sonda S3 só roda em verify e com FRONTEND_DEPLOY_ENABLED=true.")
     if problems:
         return problems  # não consulta a API com entradas já recusadas
+    problems += main_head_problems(env, github_get)
     repo = env["GITHUB_REPOSITORY"]
     status, runs = github_get(f"/repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&event=push&status=success&per_page=10")
     if status != 200 or not any(r.get("head_sha") == sha and r.get("conclusion") == "success"
@@ -59,6 +62,32 @@ def repository_problems(env: dict, github_get) -> list:
         problems.append("CI (ci.yml, push) não está verde para este commit.")
     problems += environment_protection_problems(repo, github_get)
     return problems
+
+
+def main_head_problems(env: dict, github_get) -> list:
+    """O commit desta execução precisa ser o HEAD atual de refs/heads/main no GitHub, lido agora pela API.
+
+    Não confia no checkout nem em referências lidas antes: a main pode ter avançado enquanto a execução esperava
+    a aprovação do environment. Qualquer resposta que não prove a igualdade dos 40 hex recusa (falha fechada).
+    """
+    sha, expected, repo = env.get("GITHUB_SHA", ""), env.get("EXPECTED_MAIN_SHA", ""), env.get("GITHUB_REPOSITORY", "")
+    if not SHA_RE.fullmatch(expected) or expected != sha:
+        return ["expected_main_sha diverge do commit desta execução (ou não é um SHA completo)."]
+    if not REPOSITORY_RE.fullmatch(repo):
+        return ["GITHUB_REPOSITORY ausente ou inválido."]
+    status, ref = github_get(f"/repos/{repo}/git/ref/heads/main")
+    if status != 200:
+        reason = f"HTTP {status}" if status else "sem resposta: credencial ausente, rede ou timeout"
+        return [f"HEAD da main ilegível no GitHub ({reason}); execução recusada."]
+    obj = ref.get("object") if isinstance(ref, dict) and ref.get("ref") == "refs/heads/main" else None
+    if not isinstance(obj, dict) or obj.get("type") != "commit":
+        return ["A resposta da API do GitHub não é a referência refs/heads/main; execução recusada."]
+    head = obj.get("sha")
+    if not isinstance(head, str) or not SHA_RE.fullmatch(head):
+        return ["SHA do HEAD remoto ausente ou malformado; execução recusada."]
+    if head != sha:
+        return [f"A main avançou: HEAD remoto {head[:12]} ≠ commit desta execução {sha[:12]}. Dispare de novo com o SHA atual."]
+    return []
 
 
 def environment_protection_problems(repo: str, github_get) -> list:

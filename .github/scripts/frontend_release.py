@@ -457,8 +457,11 @@ def _put_release_object(s3, bucket, key, body, content_type):
                          IfNoneMatch="*")
 
 
-def publish_release(s3, bucket: str, release_dir: Path, log=print) -> dict:
-    """Envia a release com If-None-Match (nunca sobrescreve). Manifesto por último: sem ele a release não ativa."""
+def publish_release(s3, bucket: str, release_dir: Path, log=print, before_write=None) -> dict:
+    """Envia a release com If-None-Match (nunca sobrescreve). Manifesto por último: sem ele a release não ativa.
+
+    before_write é chamada uma vez antes do primeiro objeto (verificação C: HEAD da main); se levantar, nada é enviado.
+    """
     from botocore.exceptions import ClientError
 
     manifest, assets, pointer = load_release_dir(release_dir)
@@ -467,6 +470,8 @@ def publish_release(s3, bucket: str, release_dir: Path, log=print) -> dict:
     items = [(rel, data, MIME[posixpath.splitext(rel)[1]]) for rel, data in sorted(assets.items())]
     items += [("pointer.html", pointer, MIME[".html"]), ("manifest.json", pretty_json(manifest), MIME[".json"])]
     created = identical = 0
+    if before_write:
+        before_write()  # verificação C: HEAD da main antes do primeiro objeto
     for rel, data, ctype in items:
         key = prefix + rel
         try:
@@ -610,12 +615,13 @@ def smoke_problems(fetch, public_origin: str, manifest: dict) -> list:
 
 def activate_release(s3, cloudfront, *, bucket, distribution_id, release_id, public_origin, baseline, git, fetch,
                      mode="activate", expected_active="", confirm_release_id="", caller_reference,
-                     smoke_attempts=10, smoke_wait=15, sleep=time.sleep, log=print) -> dict:
+                     smoke_attempts=10, smoke_wait=15, sleep=time.sleep, log=print, before_write=None) -> dict:
     """Ativa (ou faz rollback para) uma release já publicada.
 
     Antes do PutObject do index.html nada muda: manifesto, objetos, ponteiro, piso, rotas e a release ativa
     esperada são conferidos. A escrita usa If-Match com o ETag lido; corrida resulta em 412 e falha segura.
     Depois da escrita, falhas viram PostActivationError com diagnóstico; não há rollback automático.
+    before_write é chamada depois dessas conferências e antes da primeira mutação (index.html ou invalidação).
     """
     from botocore.exceptions import ClientError
 
@@ -635,6 +641,8 @@ def activate_release(s3, cloudfront, *, bucket, distribution_id, release_id, pub
         raise ReleaseError(f"Modo de ativação desconhecido: {mode}.")
     if problems:
         raise ReleaseError("Ativação recusada: " + " | ".join(problems))
+    if before_write:
+        before_write()  # verificação C: HEAD da main depois das conferências e antes do index.html ou da invalidação
     record = {"release_id": release_id, "previous_release": current, "mode": mode, "etag_before": active["etag"]}
     if current == release_id:
         log(f"release {release_id} já está ativa; index.html não foi reescrito")

@@ -4,7 +4,6 @@ A API do GitHub é simulada por função; o endpoint de token OIDC, por um servi
 """
 import base64
 import contextlib
-import importlib.util
 import io
 import json
 import os
@@ -19,17 +18,11 @@ from unittest.mock import patch
 import boto3
 from moto import mock_aws
 
-from release_fixtures import BUCKET, REGION, SCRIPTS, block_network, child_env, config, fr
+from release_fixtures import (BUCKET, ENVDOC, REGION, REPO, RID, ROLE, SHA, FakeGitHub, block_network, child_env, config,
+                              environment_env, fr, load_script, repo_env)
 
 import release_cli  # noqa: E402 - SCRIPTS já está no sys.path (release_fixtures)
 import release_gate as gate  # noqa: E402
-
-
-def load_script(name):
-    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), SCRIPTS / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 check_gate = load_script("check-deploy-gate")
@@ -44,48 +37,6 @@ def setUpModule():
 
 def tearDownModule():
     _restore()
-
-
-SHA = "d4" * 20
-RID = "d4d4d4d4d4d4-0123456789ab"
-REPO = "org-teste/portal-teste"
-ROLE = f"arn:aws:iam::123456789012:role/{gate.ROLE_NAME}"
-ENVDOC = {
-    "name": "production", "can_admins_bypass": False,
-    "protection_rules": [{"type": "required_reviewers", "prevent_self_review": False,
-                          "reviewers": [{"type": "User", "reviewer": {"login": "revisor"}}]}],
-    "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
-}
-
-
-def repo_env(**overrides):
-    env = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "EXPECTED_MAIN_SHA": SHA,
-           "OPERATION": "prepare", "SOURCE": "main", "GITHUB_REPOSITORY": REPO, "DEPLOY_ENABLED": "true"}
-    env.update(overrides)
-    return {k: v for k, v in env.items() if v is not None}
-
-
-def environment_env(**overrides):
-    env = {"AWS_ROLE_ARN": ROLE, "AWS_REGION": REGION, "FRONTEND_BUCKET": "portal-web-teste", "CLOUDFRONT_DISTRIBUTION_ID": "E1ABCDEFGHIJ",
-           "PUBLIC_ORIGIN": "https://portal.example.test", "FRONTEND_CONFIG_JSON": json.dumps(config()),
-           "OPERATION": "publish", "SOURCE": "main"}
-    env.update(overrides)
-    return {k: v for k, v in env.items() if v is not None}
-
-
-class FakeGitHub:
-    def __init__(self, ci=("success",), env=ENVDOC, env_status=200, branches=(("main", "branch"),), runs_sha=SHA):
-        self.ci, self.env, self.env_status, self.branches, self.runs_sha, self.paths = ci, env, env_status, branches, runs_sha, []
-
-    def __call__(self, path):
-        self.paths.append(path)
-        if "/actions/workflows/ci.yml/runs?" in path:
-            return 200, {"workflow_runs": [{"head_sha": self.runs_sha, "conclusion": c} for c in self.ci]}
-        if path.endswith("/deployment-branch-policies"):
-            return 200, {"branch_policies": [{"name": n, "type": t} for n, t in self.branches]}
-        if path.endswith(f"/environments/{gate.ENVIRONMENT}"):
-            return self.env_status, self.env if self.env_status == 200 else None
-        raise AssertionError(f"consulta inesperada: {path}")
 
 
 class RepositoryGateTests(unittest.TestCase):
