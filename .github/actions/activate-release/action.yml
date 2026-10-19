@@ -1,0 +1,73 @@
+name: Ativar uma release do frontend
+description: >-
+  Ativação ou rollback de uma release já publicada: confere manifesto e objetos remotos, lê o ETag do index.html,
+  grava o ponteiro com If-Match, invalida só / e /index.html, aguarda e faz o smoke. Sem rollback automático.
+  Requer credenciais da role de deploy (OIDC) e checkout com fetch-depth 0 (ancestralidade na main).
+inputs:
+  mode:
+    description: "activate ou rollback"
+    required: true
+  release-id:
+    description: "Release alvo (<12 hex>-<12 hex>)"
+    required: true
+  expected-active:
+    description: "Release ativa conferida pelo operador (id ou legacy); obrigatória no rollback"
+    required: false
+    default: ""
+  confirm-release-id:
+    description: "Rollback com contrato OpenAPI diferente: o release_id alvo repetido"
+    required: false
+    default: ""
+  bucket:
+    description: "Bucket web (variable FRONTEND_BUCKET)"
+    required: true
+  distribution-id:
+    description: "Distribuição CloudFront (variable CLOUDFRONT_DISTRIBUTION_ID)"
+    required: true
+  region:
+    description: "Região AWS"
+    required: true
+  public-origin:
+    description: "https://<domínio> público do portal (smoke)"
+    required: true
+  record-out:
+    description: "Arquivo JSON com o registro da ativação"
+    required: true
+outputs:
+  active-release:
+    description: "Release ativa ao final"
+    value: ${{ steps.activate.outputs.active-release }}
+  previous-release:
+    description: "Release ativa antes (id ou legacy)"
+    value: ${{ steps.activate.outputs.previous-release }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+    - name: boto3 na versão do requirements-dev.txt
+      shell: bash
+      run: python3 -m pip install --disable-pip-version-check --no-input "boto3==1.42.97"
+    - id: activate
+      name: Ativa com If-Match, invalida / e /index.html e faz o smoke
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        RELEASE_ID: ${{ inputs.release-id }}
+        EXPECTED_ACTIVE: ${{ inputs.expected-active }}
+        CONFIRM_RELEASE_ID: ${{ inputs.confirm-release-id }}
+        BUCKET: ${{ inputs.bucket }}
+        DISTRIBUTION_ID: ${{ inputs.distribution-id }}
+        REGION: ${{ inputs.region }}
+        PUBLIC_ORIGIN: ${{ inputs.public-origin }}
+        RECORD_OUT: ${{ inputs.record-out }}
+      run: |
+        case "$MODE" in
+          activate) script=activate-release.py ;;
+          rollback) script=rollback-release.py ;;
+          *) echo "::error::Modo de ativação desconhecido." >&2; exit 1 ;;
+        esac
+        python3 -B ".github/scripts/$script" --bucket "$BUCKET" --distribution-id "$DISTRIBUTION_ID" \
+          --release-id "$RELEASE_ID" --public-origin "$PUBLIC_ORIGIN" --region "$REGION" \
+          --expected-active "$EXPECTED_ACTIVE" --confirm-release-id "$CONFIRM_RELEASE_ID" --record-out "$RECORD_OUT"

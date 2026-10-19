@@ -1,0 +1,49 @@
+name: Validar a release do frontend
+description: >-
+  Valida uma release preparada sem credenciais: manifesto, MIME, imports, caminhos, ponteiro, config e dados sensíveis;
+  opcionalmente compara com o publicado (HTTPS público) e confere a release no Chromium com a rede externa bloqueada.
+  A conferência no navegador usa o Playwright instalado pela build-frontend.
+inputs:
+  release-dir:
+    description: "Diretório da release preparada"
+    required: true
+  public-origin:
+    description: "https://<domínio> público do portal"
+    required: true
+  check-live:
+    description: "true: config igual à publicada (moderna) ou 30 arquivos iguais aos servidos (baseline)"
+    required: false
+    default: "true"
+  allow-config-change:
+    description: "true: aceita config diferente da publicada em /config.json"
+    required: false
+    default: "false"
+  browser:
+    description: "true: confere a release no Chromium"
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Valida a release (offline e, se pedido, contra o publicado)
+      shell: bash
+      env:
+        RELEASE_DIR: ${{ inputs.release-dir }}
+        PUBLIC_ORIGIN: ${{ inputs.public-origin }}
+        CHECK_LIVE: ${{ inputs.check-live }}
+        ALLOW_CONFIG_CHANGE: ${{ inputs.allow-config-change }}
+      run: |
+        args=(--release-dir "$RELEASE_DIR" --public-origin "$PUBLIC_ORIGIN")
+        if [ "$CHECK_LIVE" = "true" ]; then args+=(--check-live); fi
+        if [ "$ALLOW_CONFIG_CHANGE" = "true" ]; then args+=(--allow-config-change); fi
+        python3 -B .github/scripts/validate-release.py "${args[@]}"
+    - name: Instala o Chromium do Playwright
+      if: inputs.browser == 'true'
+      shell: bash
+      run: npx playwright install --with-deps chromium
+    - name: Confere a release no Chromium (servidor local, rede externa bloqueada)
+      if: inputs.browser == 'true'
+      shell: bash
+      env:
+        RELEASE_DIR: ${{ inputs.release-dir }}
+      run: node .github/scripts/release-browser-check.mjs --release-dir "$RELEASE_DIR"

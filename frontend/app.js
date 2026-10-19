@@ -1457,7 +1457,9 @@ document.addEventListener("submit", (event) => {
 
 async function start() {
   try {
-    config = await fetch("./config.json", { cache: "no-store" }).then((r) =>
+    // Relativa ao módulo: numa release em releases/<id>/ cada versão lê a própria config
+    // (contrato em .github/scripts/frontend_release.py). No dist plano continua sendo /config.json.
+    config = await fetch(new URL("./config.json", import.meta.url), { cache: "no-store" }).then((r) =>
       r.ok ? r.json() : {},
     );
     if (demo) {

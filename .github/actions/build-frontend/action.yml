@@ -1,0 +1,52 @@
+name: Construir a release do frontend
+description: >-
+  Empacota uma release imutável sem AWS: builder do próprio commit, manifesto SHA-256, ponteiro e rotas da API.
+  Requer o checkout do repositório com fetch-depth 0 (a baseline sai do histórico da main).
+inputs:
+  source:
+    description: "main (commit do checkout, config por release) ou baseline (SHA fixado em .github/release/baseline.json)"
+    required: true
+  public-origin:
+    description: "https://<domínio> público do portal"
+    required: true
+  config-json:
+    description: "JSON público do frontend (variable FRONTEND_CONFIG_JSON); ignorado na baseline"
+    required: false
+    default: ""
+  out-dir:
+    description: "Diretório, ainda inexistente, em que a release preparada é gravada"
+    required: true
+outputs:
+  release-id:
+    description: "<sha12>-<content12>"
+    value: ${{ steps.prepare.outputs.release-id }}
+  release-dir:
+    description: "Diretório da release preparada"
+    value: ${{ steps.prepare.outputs.release-dir }}
+  mode:
+    description: "modern ou baseline"
+    value: ${{ steps.prepare.outputs.mode }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "22"
+    # Só o Playwright fixado no package-lock (parser YAML do contrato OpenAPI e Chromium da validação).
+    - name: Dependências Node fixadas, sem scripts de instalação
+      shell: bash
+      run: npm ci --ignore-scripts
+    - id: prepare
+      name: Empacota a release
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        PUBLIC_ORIGIN: ${{ inputs.public-origin }}
+        FRONTEND_CONFIG_JSON: ${{ inputs.config-json }}
+        OUT_DIR: ${{ inputs.out-dir }}
+      run: |
+        python3 -B .github/scripts/prepare-release.py --source "$SOURCE" --repo . \
+          --work "$RUNNER_TEMP/release-work" --out "$OUT_DIR" --public-origin "$PUBLIC_ORIGIN"
