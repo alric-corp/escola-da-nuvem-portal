@@ -14,7 +14,10 @@ jobs:
     name: Backend (Python + Moto)
     runs-on: ubuntu-latest
     steps:
+      # Histórico completo: a baseline da pipeline de release (1daab31) é extraída do Git nos testes.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
@@ -40,7 +43,10 @@ jobs:
     # validar e recalibrar estas suítes no Ubuntu 26.04 numa execução própria. Os outros jobs não medem layout.
     runs-on: ubuntu-24.04
     steps:
+      # Histórico completo: tests/release-cache-browser.mjs prepara a baseline 1daab31 a partir do Git.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -56,6 +62,14 @@ jobs:
         run: python3 tests/contracts/stale_mutations.py
       - name: Mutações de lifecycle do Feedback e dos rascunhos (C7.5, sem AWS real)
         run: python3 tests/contracts/lifecycle_mutations.py
+      # As mutações da release usam Moto e o Chromium acima (uma delas roda a suíte de navegador da release).
+      # O setup-python vem depois das mutações anteriores, que continuam no python3 do sistema.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Mutações da pipeline de release do frontend (Moto e Chromium locais, sem AWS real)
+        run: python tests/contracts/release_mutations.py
 
   terraform:
     name: Terraform (fmt, validate, test)
@@ -91,3 +105,22 @@ jobs:
             echo "O cache do pytest entrou no pacote das Lambdas." >&2
             exit 1
           fi
+
+  cicd-bootstrap:
+    name: Bootstrap do deploy do frontend (fmt, validate, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/cicd-bootstrap
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
+      - run: terraform test
+      - name: Mutações da trust e da policy (mocks, sem AWS real)
+        run: python3 ../../tests/contracts/bootstrap_mutations.py
