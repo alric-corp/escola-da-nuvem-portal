@@ -1,0 +1,25 @@
+name: Preparar Python do deploy sem credenciais AWS
+description: >-
+  P-SC1: instala boto3 e dependências transitivas com versões e hashes fixos em um venv novo.
+  Executar antes de qualquer requisição OIDC ou configuração de credenciais AWS no job.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: "3.12"
+    - name: Instala wheels com hashes verificados, sem credenciais AWS
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "${AWS_ACCESS_KEY_ID:-}${AWS_SECRET_ACCESS_KEY:-}${AWS_SESSION_TOKEN:-}" ]; then
+          echo "::error::Instalação recusada: credenciais AWS já estão disponíveis." >&2
+          exit 1
+        fi
+        deploy_venv=$(mktemp -d "$RUNNER_TEMP/frontend-deploy-python.XXXXXX")
+        python3 -m venv "$deploy_venv"
+        "$deploy_venv/bin/python" -m pip --isolated install --disable-pip-version-check --no-input --no-cache-dir \
+          --index-url https://pypi.org/simple --require-hashes --only-binary=:all: -r .github/requirements-deploy.txt
+        "$deploy_venv/bin/python" -m pip --isolated check
+        # Só publica o intérprete no PATH dos passos seguintes depois de toda a instalação aprovada.
+        echo "$deploy_venv/bin" >> "$GITHUB_PATH"

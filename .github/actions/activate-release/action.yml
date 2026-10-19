@@ -2,7 +2,8 @@ name: Ativar uma release do frontend
 description: >-
   Ativação ou rollback de uma release já publicada: confere manifesto e objetos remotos, lê o ETag do index.html,
   grava o ponteiro com If-Match, invalida só / e /index.html, aguarda e faz o smoke. Sem rollback automático.
-  Requer credenciais da role de deploy (OIDC) e checkout com fetch-depth 0 (ancestralidade na main).
+  Requer Python preparado por setup-deploy-python antes das credenciais da role de deploy (OIDC),
+  e checkout com fetch-depth 0 (ancestralidade na main).
 inputs:
   expected-main-sha:
     description: "SHA esperado da main (do gate: confirmado pelo operador ou o commit do CI); o HEAD atual é revalidado antes da primeira escrita"
@@ -46,12 +47,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-      with:
-        python-version: "3.12"
-    - name: boto3 na versão do requirements-dev.txt
-      shell: bash
-      run: python3 -m pip install --disable-pip-version-check --no-input "boto3==1.42.97"
     - id: activate
       name: Ativa com If-Match, invalida / e /index.html e faz o smoke
       shell: bash

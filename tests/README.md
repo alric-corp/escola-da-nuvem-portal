@@ -41,7 +41,7 @@ As suítes de navegador medem layout com as fontes do sistema. A evidência verd
 | Regras puras | `canvas-links.mjs` (links do Canvas anotados pelo backend), `student-journey.mjs` (módulos, revisão e próximos passos), `participation.mjs` (participação na turma, C7.2.3) |
 | Concorrência e lifecycle | `stale-responses.mjs` (C7.4, respostas assíncronas obsoletas), `feedback-lifecycle.mjs` (C7.5, Feedback e rascunhos de importação) |
 | Telas renderizadas como texto | `student-feedback.mjs`, `student-feedback-outcomes.mjs`, `teacher-home.mjs`, `teacher-publications.mjs`, `teacher-import.mjs`, `teacher-reminders.mjs`, `admin-access-page.mjs`, `admin-feedback-page.mjs`, `c1-reliability.mjs`, `c2-robustness.mjs` |
-| Pipeline de deploy do frontend | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1) |
+| Pipeline de deploy do frontend | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1; ruleset; P-SC1: instalação isolada com hashes antes do OIDC, sem reinstalação depois das credenciais) |
 
 ## Navegador (`npm run test:browser`)
 
@@ -100,6 +100,9 @@ As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
 | `test_frontend_release_s3.py` | Publicação com `If-None-Match`, ativação com `If-Match`, corrida, upload parcial, falhas antes e depois do `index.html` e rollback, em S3/CloudFront Moto |
 | `test_frontend_release_gate.py` | Gates do workflow (deploy automático só com o CI verde de push na main, main, SHA, CI, environment restrito à main, variables, chaves estáticas, outputs do gate), claims OIDC sem expor o token e a sonda S3 |
 | `test_frontend_release_head.py` | HEAD atual da main revalidado no gate, no início de cada job do environment e antes da primeira escrita AWS: API do GitHub simulada (erros HTTP, timeout, JSON, SHA malformado) e simulador do `deploy-frontend.yml` (disparo manual e deploy automático, outputs do gate, `publish` que só ativa no `deploy`) com a main avançando entre os jobs |
+| `test_frontend_release_dependencies.py` | P-SC1: shell real da composite, pip/venv e wheels sintéticos locais; venv novo e isolado, hash divergente no wheel/lock, transitiva sem hash e recusa de credenciais preexistentes. Uma marca simula a autenticação seguinte, que nunca é atingida após erro; não usa AWS ou índice remoto |
+
+Ao final do job Backend, a CI também instala o lock real com a mesma composite `setup-deploy-python` e importa boto3/botocore/s3transfer. Essa etapa baixa wheels do PyPI com hashes obrigatórios, sem credenciais ou acesso à AWS; não faz parte do `unittest` offline.
 
 `release_fixtures.py` reúne os builds reais, o bloqueio de rede (só sockets locais) e os simuladores dessas três suítes. Os testes da baseline extraem `1daab31` do Git: o checkout precisa do histórico completo (`fetch-depth: 0` na CI).
 

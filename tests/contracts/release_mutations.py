@@ -23,8 +23,11 @@ CHECK = ".github/scripts/check-deploy-gate.py"
 CLI = ".github/scripts/release_cli.py"
 PUBLISH = ".github/scripts/publish-release.py"
 PUBLISH_ACTION = ".github/actions/publish-release/action.yml"
+SETUP_ACTION = ".github/actions/setup-deploy-python/action.yml"
+DEPLOY_REQUIREMENTS = ".github/requirements-deploy.txt"
 S3, PACKAGE, GATES = "test_frontend_release_s3", "test_frontend_release_package", "test_frontend_release_gate"
 HEAD = "test_frontend_release_head"
+DEPENDENCIES = "test_frontend_release_dependencies"
 PIPELINE, BROWSER = "tests/release-pipeline.mjs", "tests/release-cache-browser.mjs"
 
 # (nome, arquivo, trecho original, substituto, ocorrências, suíte, teste que precisa matar o mutante)
@@ -193,6 +196,24 @@ CASES = [
      GATES, "test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved"),
     ("publish_ativa_sem_deploy", WORKFLOW, "      - id: deploy-activate\n        if: needs.gate.outputs.operation == 'deploy'\n",
      "      - id: deploy-activate\n", 1, HEAD, "test_publish_never_activates_and_deploy_activates_only_after_publishing"),
+    # P-SC1: dependências verificadas antes das credenciais, também nas composites chamadas depois do OIDC.
+    ("dependencias_ausentes_na_ativacao", WORKFLOW,
+     "      - uses: ./.github/actions/setup-deploy-python\n      - uses: aws-actions/configure-aws-credentials",
+     "      - uses: aws-actions/configure-aws-credentials", 1, PIPELINE, "P-SC1"),
+    ("erro_de_dependencias_ignorado", WORKFLOW, "      - uses: ./.github/actions/setup-deploy-python\n",
+     "      - uses: ./.github/actions/setup-deploy-python\n        continue-on-error: true\n", 3, PIPELINE, "P-SC1"),
+    ("dependencias_sem_require_hashes", SETUP_ACTION, "--require-hashes ", "", 1, PIPELINE, "P-SC1"),
+    ("dependencias_aceitam_sdist", SETUP_ACTION, "--only-binary=:all: ", "", 1, PIPELINE, "P-SC1"),
+    ("dependencias_herdam_pacotes_do_runner", SETUP_ACTION, 'python3 -m venv "$deploy_venv"',
+     'python3 -m venv --system-site-packages "$deploy_venv"', 1, PIPELINE, "P-SC1"),
+    ("composite_reinstala_depois_do_oidc", PUBLISH_ACTION, "  steps:\n    - id: publish",
+     "  steps:\n    - uses: ./.github/actions/setup-deploy-python\n    - id: publish", 1, PIPELINE, "P-SC1"),
+    ("dependencia_transitiva_sem_hash", DEPLOY_REQUIREMENTS,
+     "urllib3==2.8.0 --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3",
+     "urllib3==2.8.0", 1, PIPELINE, "P-SC1"),
+    ("instalacao_aceita_credencial_existente", SETUP_ACTION,
+     'if [ -n "${AWS_ACCESS_KEY_ID:-}${AWS_SECRET_ACCESS_KEY:-}${AWS_SESSION_TOKEN:-}" ]; then',
+     "if false; then", 1, DEPENDENCIES, "test_existing_aws_credentials_refuse_installation_without_exposing_the_value"),
     ("d1_revertida", APP, 'fetch(new URL("./config.json", import.meta.url), { cache: "no-store" })',
      'fetch("./config.json", { cache: "no-store" })', 1, BROWSER, ""),
 ]

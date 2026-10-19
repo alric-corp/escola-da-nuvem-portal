@@ -14,7 +14,7 @@ const yaml = (file) => {
   return document.toJS({ maxAliasCount: 0 });
 };
 const WORKFLOW = ".github/workflows/deploy-frontend.yml";
-const ACTIONS = ["build-frontend", "validate-release", "publish-release", "activate-release"];
+const ACTIONS = ["build-frontend", "validate-release", "setup-deploy-python", "publish-release", "activate-release"];
 const workflow = yaml(WORKFLOW);
 const actions = Object.fromEntries(ACTIONS.map((name) => [name, yaml(`.github/actions/${name}/action.yml`)]));
 const jobs = workflow.jobs;
@@ -34,7 +34,8 @@ function callArgs(text, name) {
   }
   return found;
 }
-const SCRIPTS = readdirSync(new URL("../.github/scripts/", import.meta.url)).map((name) => `.github/scripts/${name}`);
+const SCRIPTS = readdirSync(new URL("../.github/scripts/", import.meta.url), { withFileTypes: true })
+  .filter((entry) => entry.isFile()).map((entry) => `.github/scripts/${entry.name}`);
 
 test("governança: checks obrigatórios cobrem todo PR sem credenciais nem aprovação humana", () => {
   const ci = yaml(".github/workflows/ci.yml");
@@ -181,6 +182,49 @@ test("workflow: o gate do environment roda antes de qualquer credencial, artefat
   const secrets = [...read(WORKFLOW).matchAll(/secrets\.(\w+)/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(secrets)].sort(), ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]);
   assert.equal(secrets.length, 3 * (Object.keys(jobs).length - 1));
+});
+
+test("P-SC1: dependências com hashes e venv novo antes do OIDC, sem instalação após credenciais", () => {
+  const setup = "./.github/actions/setup-deploy-python";
+  const expand = (list) => list.flatMap((step) => step.uses?.startsWith("./.github/actions/")
+    ? expand(actions[step.uses.replace("./.github/actions/", "")].runs.steps) : [step]);
+  for (const name of ["publish", "verify", "activate"]) {
+    const list = steps(name);
+    const prepare = list.findIndex((s) => s.uses === setup);
+    const oidc = list.findIndex((s) => usesOf(s) === AWS_ACTION);
+    assert.equal(list.filter((s) => s.uses === setup).length, 1, name);
+    assert.ok(prepare > list.findIndex((s) => s.run === ENV_GATE) && prepare < oidc, name);
+    assert.equal(list[prepare].if, undefined, `${name}: instalação não pode ser opcional`);
+    assert.equal(list[prepare]["continue-on-error"], undefined, `${name}: erro de instalação deve impedir OIDC`);
+    const flattened = expand(list);
+    const authenticated = flattened.findIndex((s) => usesOf(s) === AWS_ACTION);
+    for (const step of flattened.slice(authenticated + 1)) {
+      assert.notEqual(usesOf(step), "actions/setup-python", `${name}: troca de intérprete depois do OIDC`);
+      assert.doesNotMatch(step.run || "", /\bpip\b|\b(?:npm|uv)\s+(?:ci|install|sync)\b/, `${name}: instalação depois do OIDC`);
+    }
+    const claims = list.findIndex((s) => /verify-access\.py --claims/.test(s.run || ""));
+    if (claims >= 0) assert.ok(prepare < claims, "instalação deve preceder a primeira requisição de token OIDC");
+  }
+  const install = actions["setup-deploy-python"].runs.steps.at(-1);
+  assert.equal(install.if, undefined);
+  assert.equal(install["continue-on-error"], undefined);
+  assert.match(install.run, /set -euo pipefail/);
+  assert.match(install.run, /mktemp -d/);
+  assert.match(install.run, /python3 -m venv "\$deploy_venv"/);
+  assert.doesNotMatch(install.run, /--system-site-packages|--no-require-hashes/);
+  assert.match(install.run, /"\$deploy_venv\/bin\/python" -m pip --isolated install/);
+  for (const flag of ["--no-cache-dir", "--require-hashes", "--only-binary=:all:", "-r .github/requirements-deploy.txt"])
+    assert.ok(install.run.includes(flag), flag);
+  const lock = read(".github/requirements-deploy.txt").split("\n").filter((line) => line && !line.startsWith("#"));
+  assert.equal(lock.length, 7);
+  for (const line of lock) assert.match(line, /^[a-z0-9-]+==[\d.]+(?:post\d+)? --hash=sha256:[a-f0-9]{64}$/);
+  const boto = lock.find((line) => line.startsWith("boto3==")).split(" ")[0];
+  assert.ok(read("requirements-dev.txt").split("\n").includes(boto));
+  const ci = yaml(".github/workflows/ci.yml");
+  const backend = ci.jobs.python.steps;
+  assert.equal(backend.at(-2).uses, setup, "CI instala o mesmo lock real, sem credenciais, após as suítes Moto");
+  assert.match(backend.at(-1).run, /import boto3, botocore, s3transfer/);
+  assert.deepEqual(ci.permissions, { contents: "read" });
 });
 
 test("workflow e composites: actions externas fixadas por SHA e nenhuma expressão dentro de run", () => {
