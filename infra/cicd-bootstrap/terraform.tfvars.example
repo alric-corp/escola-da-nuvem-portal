@@ -1,0 +1,6 @@
+# Copie para terraform.tfvars (ignorado pelo Git). Valores vêm dos outputs da infraestrutura principal,
+# lidos localmente pelo operador; nenhuma credencial.
+aws_account_id             = "123456789012"
+aws_region                 = "us-east-1"
+frontend_bucket_name       = "restart-portal-prod-123456789012-us-east-1-web"
+cloudfront_distribution_id = "E0000000000000"

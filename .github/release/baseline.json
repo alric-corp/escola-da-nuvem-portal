@@ -1,0 +1,159 @@
+{
+  "schema": "escola-da-nuvem/frontend-baseline@1",
+  "description": "Versão funcional no ar antes da migração (C7.3). Primeira ativação do mecanismo de releases: troca só a entrega, não a funcionalidade. Lê /config.json da raiz, como hoje.",
+  "source_sha": "1daab314413e675cec9cf1d8b3be2aa8b5e1dc25",
+  "rollback_floor_sha": "1daab314413e675cec9cf1d8b3be2aa8b5e1dc25",
+  "config_mode": "document-root",
+  "files": {
+    "api.js": {
+      "sha256": "4d0ee5555b2fbfec0cde9679bc53732d3c1fef8a45f26d952a46fd09bdeee730",
+      "md5": "50bd24bedea2a348ed276a2074bc4f08",
+      "size": 12679
+    },
+    "app.js": {
+      "sha256": "b162a5a5c4641490b741bfb4812514c3a0364729f95242b2e7d10c0257b4689e",
+      "md5": "505b19c0a7255af1db76e8b86329febd",
+      "size": 38546
+    },
+    "auth.js": {
+      "sha256": "7c5cf1075186cc517c35333a84d33a531d3e4069a1cdfe5023121256add9a13a",
+      "md5": "0dd163d94cc348308e72c04dbdba410f",
+      "size": 5238
+    },
+    "canvas-links.js": {
+      "sha256": "08cd2cb7d0fbd5b06e0e7f46096024cbe092bd3ed38520e5f2bcf6e4b211be2d",
+      "md5": "05b44ce7e38ee642e99d206ca131f2db",
+      "size": 747
+    },
+    "demo.js": {
+      "sha256": "a3c48fad8f2dface7428a6f8675dc50773e25f2c515373944e538dcf155a00bf",
+      "md5": "2bd5e8cfdc3ac079e518d3c7b58900f9",
+      "size": 5663
+    },
+    "handlers/access.js": {
+      "sha256": "4c7682c3234131b0ee5922b764a3159bb9ee429e9d23c899d029bd25ded41b4a",
+      "md5": "387447801cf55e35c9daac1446ffe0a8",
+      "size": 3904
+    },
+    "handlers/admin-feedback.js": {
+      "sha256": "40da84d51876c3975883eada6c5d2940b05ec74063a3e592f5a05ba24e97e4fa",
+      "md5": "2ab7a0b7f8520080f11d5807e8b85997",
+      "size": 2020
+    },
+    "handlers/feedback.js": {
+      "sha256": "424f195708462cd1b3bf6bda61f5629166e2882a530656be98e6d888935158ac",
+      "md5": "77301e9bf3eff24a39173c94a55b6556",
+      "size": 8294
+    },
+    "handlers/import.js": {
+      "sha256": "4781fe376e66327981c94043d871630047e78fc68890a6a2e21a1c29b351cce6",
+      "md5": "a0f493c120a7c0b13bb55c8a9145f295",
+      "size": 4492
+    },
+    "handlers/reminders.js": {
+      "sha256": "6bd7ffc0676afede7d796b99273766c2e217117466aaeb41bc04da20aeb9d7d9",
+      "md5": "5c808798e8779f23e0fa328aeb878f9d",
+      "size": 5383
+    },
+    "handlers/signup-confirmation.js": {
+      "sha256": "945ea0eb8ff9f02424e61ce808a6916b729f91af1a2b64eefd5ae73df2ad99dd",
+      "md5": "e1396e63132b954a3ccbd6185614d2be",
+      "size": 5367
+    },
+    "index.html": {
+      "sha256": "7cb211241249ce2028eff6d1744c80110a514f57927692b3fe40d9934c643c47",
+      "md5": "acc5ca66a3a1661ca98280aefa29b2cc",
+      "size": 800
+    },
+    "logo.png": {
+      "sha256": "2f42c6a94d4c0fbb32c0c4f6907fbc95db858d73f3d45f313d9389f3324c25c0",
+      "md5": "20d7695ca11c7a20aa4122bcf7026421",
+      "size": 88867
+    },
+    "pages/access.js": {
+      "sha256": "8982a3952a64fbacdbe95d94a547611728f80fa65279491b7531ca463ecae85d",
+      "md5": "8cd367444617bb1901a3134b1a42d453",
+      "size": 7724
+    },
+    "pages/activities-overview.js": {
+      "sha256": "623cdcb2e2b1314b250d90b44ed8a87327adcd0065c5278807de2379babd280d",
+      "md5": "d6074403bf94cb01bc41a82a49cedc22",
+      "size": 3684
+    },
+    "pages/admin-feedback.js": {
+      "sha256": "eef02fe0317156e7bd078a742729f8db3cac65d23b8b33cbe59a21cbca29cf6b",
+      "md5": "924199becf634151e034ebfdc78daa68",
+      "size": 5488
+    },
+    "pages/class-report.js": {
+      "sha256": "43ca8c886eaef9d1ac634e2aec8fa3942cd004b573ccd7aca3fbbbc057015789",
+      "md5": "b06d79f7aea769204f8ed191a3bd0c43",
+      "size": 4621
+    },
+    "pages/feedback.js": {
+      "sha256": "ae7c72bd00282ddfe5646459b39c636cd40f7417a0c957e52585e3431b6e54f8",
+      "md5": "0ae49ba0d92a69cbc2922f9b3fcc29ad",
+      "size": 8586
+    },
+    "pages/history.js": {
+      "sha256": "1190dcb55cc4ca6f5ec32d7e99ef3a6bd85ee35199d625e72afc7f950911533c",
+      "md5": "ecf414b2644396f436921b12a84e1228",
+      "size": 2006
+    },
+    "pages/import.js": {
+      "sha256": "40d2232eb2cb335b8e4e26c1fbe8f90e1f64d1ccf2f254aa9d5f8470c672fe3d",
+      "md5": "f36d14ef00749af59ca160550a21b099",
+      "size": 9665
+    },
+    "pages/landing.js": {
+      "sha256": "276702281b2156f2b2b6f2902bac175d0e4bac6885f9f337c9facb2bc3cc0e9e",
+      "md5": "2b4e6b2cde902524ba507bdec5194259",
+      "size": 2690
+    },
+    "pages/reminders.js": {
+      "sha256": "8c753218581ac3af96ddcbbec1bc31ea7375b8c655f1e183ca20fed41b919dd0",
+      "md5": "59280da7a07e273501553f1c6039bca5",
+      "size": 10481
+    },
+    "pages/signup-confirmation.js": {
+      "sha256": "9f4edfb16fb7c479df3bb3186d33141ba59fcef59b3803785add40292447e46d",
+      "md5": "ccd265e18c7ff54a42741f40804da2b8",
+      "size": 4661
+    },
+    "pages/student.js": {
+      "sha256": "64d0a1872ebbd866bb97dba4f92a7fadb9c9383632113af94ead06010f058d7e",
+      "md5": "bd4e1a2d17e41d6066d53808c17a60e9",
+      "size": 11932
+    },
+    "pages/teacher.js": {
+      "sha256": "766e2c6430539014a4fd537bf48a11af7ed60c57bdaa080077bc489a795a3ea3",
+      "md5": "8618ed850ace2652194a1bebd4535ac0",
+      "size": 10296
+    },
+    "participation.js": {
+      "sha256": "6359241782e208b97774403c0c2d19b2f235075aa7be6270ebc4c88b01f2704d",
+      "md5": "66af2bbd322458df49f39db52d773fb3",
+      "size": 405
+    },
+    "state.js": {
+      "sha256": "18b41e7225577be731c1af525fb34e7bb277447405ada1f8fe2de373b3b890d3",
+      "md5": "a0a6ecb2ee4d8c1d681cb4b99a71971c",
+      "size": 2583
+    },
+    "student-journey.js": {
+      "sha256": "33db1b74ce494dfada6326ba0ae19b75ace4b5897f679c8bfbe7c6899bec1276",
+      "md5": "bb7927a94ca910a1c1248098dbf27ef4",
+      "size": 2115
+    },
+    "styles.css": {
+      "sha256": "777999327bdfed16acbaeca51cf3b276435a19693fdeed874aece3a17e28c7ce",
+      "md5": "cc74fe9e86740deb133c0886b11ac184",
+      "size": 78936
+    },
+    "ui.js": {
+      "sha256": "d43609e7aa1525002d45a3da1745f7799e2479c776fe584d261c7836b20d6750",
+      "md5": "f9bf6d7cb084c4c1d694205581047c62",
+      "size": 14972
+    }
+  }
+}

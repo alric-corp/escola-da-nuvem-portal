@@ -21,6 +21,7 @@ npx playwright install chromium
 | Backend Python | `python -m unittest discover -s backend` | Backend (Python + Moto) |
 | Integração com Moto | `python -m unittest discover -s tests/integration` | Backend (Python + Moto) |
 | Terraform | `cd infra/terraform && terraform init -backend=false && terraform validate && terraform test` | Terraform (fmt, validate, test) |
+| Bootstrap do deploy do frontend | `cd infra/cicd-bootstrap && terraform init -backend=false && terraform validate && terraform test` | Bootstrap do deploy do frontend |
 | Contratos, mutações e transições | ver [Mutações e transições](#mutações-e-transições) | conforme a tabela |
 
 As suítes de navegador medem layout com as fontes do sistema. A evidência verde da CI é do Ubuntu 24.04, como explica o comentário do job Frontend no workflow; em outro sistema, medidas próximas do limite podem variar.
@@ -40,6 +41,7 @@ As suítes de navegador medem layout com as fontes do sistema. A evidência verd
 | Regras puras | `canvas-links.mjs` (links do Canvas anotados pelo backend), `student-journey.mjs` (módulos, revisão e próximos passos), `participation.mjs` (participação na turma, C7.2.3) |
 | Concorrência e lifecycle | `stale-responses.mjs` (C7.4, respostas assíncronas obsoletas), `feedback-lifecycle.mjs` (C7.5, Feedback e rascunhos de importação) |
 | Telas renderizadas como texto | `student-feedback.mjs`, `student-feedback-outcomes.mjs`, `teacher-home.mjs`, `teacher-publications.mjs`, `teacher-import.mjs`, `teacher-reminders.mjs`, `admin-access-page.mjs`, `admin-feedback-page.mjs`, `c1-reliability.mjs`, `c2-robustness.mjs` |
+| Pipeline de deploy do frontend | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1) |
 
 ## Navegador (`npm run test:browser`)
 
@@ -54,6 +56,7 @@ Todas usam API fictícia (e, quando aplicável, Cognito ou S3 fictícios), sem a
 | Feedback | `feedback-browser.mjs`, `feedback-attachments-browser.mjs`, `feedback-lifecycle-browser.mjs` |
 | Casca global | `shell-browser.mjs`, `shell-a11y-browser.mjs`, `shell-adaptive-browser.mjs` |
 | Robustez | `stale-browser.mjs` (C7.4), `c1-reliability-browser.mjs`, `c2-robustness-browser.mjs` |
+| Releases do frontend | `release-cache-browser.mjs`: releases reais preparadas num clone temporário (baseline C7.3 e main), servidas como o S3; P2, HTML antigo em cache, duas releases simultâneas, callback do Cognito, `?turma=`, rollback e migração do layout plano |
 
 As suítes `student-home*`, `student-activities-*`, `student-history-*`, `student-feedback*`, `teacher-*`, `admin-access-page*`, `admin-feedback-page*`, `shell-*`, `c1-*` e `c2-*` (navegador e unitárias) correspondem às etapas do redesign registradas em [docs/design-visual.md](../docs/design-visual.md).
 
@@ -78,6 +81,8 @@ Os mutantes rodam em cópias temporárias: o checkout não é alterado. Uma muta
 | `python3 tests/contracts/lifecycle_mutations.py` | C7.5: lifecycle do Feedback e dos rascunhos (unitário, arquitetura e navegador) | Frontend |
 | `python3 ../../tests/contracts/terraform_mutations.py` | OpenAPI como fonte das rotas, avaliado pelo `terraform test` com mocks | Terraform (em `infra/terraform`, depois do `init`) |
 | `python3 ../../tests/contracts/manual_alias_transitions.py` | Transições e mutações do alias manual, com HCL real e mocks | Terraform (em `infra/terraform`, depois do `init`) |
+| `python tests/contracts/release_mutations.py` | Pipeline de release do frontend: publicação, ativação, rollback, gates, revalidação do HEAD da main, workflow e D1 (Moto e Chromium locais, clone temporário) | Frontend (depois do `setup-python`) |
+| `python3 ../../tests/contracts/bootstrap_mutations.py` | Trust e policy da role de deploy do frontend, avaliadas pelo `terraform test` com mocks | Bootstrap do deploy (em `infra/cicd-bootstrap`, depois do `init`) |
 
 As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
 
@@ -91,11 +96,18 @@ As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
 | `test_manual_recovery.py` | Recuperação pelo alias protegido, com DynamoDB/S3 Moto e SES fictício |
 | `test_ses.py` | Contrato do SES com o Stubber do botocore, sem enviar e-mail |
 | `test_hygiene.py` | Higiene do backend (C7.6): compilação sem avisos e `Content-Disposition` |
+| `test_frontend_release_package.py` | Releases do frontend: build determinístico, id, manifesto SHA-256, grafo de imports, MIME, config por release, ponteiro, baseline C7.3 e CLIs num clone temporário |
+| `test_frontend_release_s3.py` | Publicação com `If-None-Match`, ativação com `If-Match`, corrida, upload parcial, falhas antes e depois do `index.html` e rollback, em S3/CloudFront Moto |
+| `test_frontend_release_gate.py` | Gates do workflow (main, SHA, CI, environment protegido, variables, chaves estáticas), claims OIDC sem expor o token e a sonda S3 |
+| `test_frontend_release_head.py` | HEAD atual da main revalidado no gate, depois da aprovação e antes da primeira escrita AWS: API do GitHub simulada (erros HTTP, timeout, JSON, SHA malformado) e simulador do `deploy-frontend.yml` com a main avançando entre os jobs |
+
+`release_fixtures.py` reúne os builds reais, o bloqueio de rede (só sockets locais) e os simuladores dessas três suítes. Os testes da baseline extraem `1daab31` do Git: o checkout precisa do histórico completo (`fetch-depth: 0` na CI).
 
 ## Fora de `tests/`
 
 - `backend/test_canvas.py`, `test_grades.py`, `test_identity.py`, `test_journey.py`, `test_portal.py` e `test_reminders.py`: unitários do backend.
 - `infra/terraform/tests/*.tftest.hcl` (`automatic-pilot`, `automatic-reminders`, `infrastructure`, `manual-alias`, `manual-recovery`, `routes`): `terraform test` com `mock_provider`.
+- `infra/cicd-bootstrap/tests/*.tftest.hcl` (`bootstrap`, `hardening`): trust e policy da role de deploy do frontend, com `mock_provider` (job Bootstrap do deploy).
 
 ## Verificações manuais contra o ambiente publicado
 

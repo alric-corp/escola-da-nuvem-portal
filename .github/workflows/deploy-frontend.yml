@@ -1,0 +1,312 @@
+name: Deploy do frontend
+
+# Pipeline de releases imutáveis do frontend (contrato em .github/scripts/frontend_release.py).
+# Único gatilho: execução manual na main. O padrão é prepare (sem AWS). Nenhum input escolhe commit:
+# main é sempre o commit desta execução, e baseline é a constante revisada em .github/release/baseline.json.
+# Toda operação passa pelo job gate (sem credenciais) e por um job no environment production, cuja aprovação
+# é obrigatória; as operações com AWS usam OIDC (id-token: write só nesses jobs) e nunca chaves permanentes.
+# O HEAD atual da main é relido no GitHub três vezes: no gate (A), no primeiro passo de cada job do environment,
+# depois da aprovação (B), e nos scripts, imediatamente antes da primeira escrita AWS (C). Se a main avançou, a
+# execução é recusada sem alterar nada.
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: "prepare (sem AWS) | verify (leituras; sonda opcional) | publish | activate | rollback"
+        type: choice
+        options: [prepare, verify, publish, activate, rollback]
+        default: prepare
+        required: true
+      source:
+        description: "prepare/publish: main (commit desta execução) ou baseline (C7.3 fixada em baseline.json)"
+        type: choice
+        options: [main, baseline]
+        default: main
+        required: true
+      expected_main_sha:
+        description: "SHA completo da main revisado pelo operador; precisa ser o commit desta execução"
+        type: string
+        required: true
+      release_id:
+        description: "activate/rollback: release já publicada (<12 hex>-<12 hex>)"
+        type: string
+        default: ""
+      expected_active_release:
+        description: "Release ativa conferida pelo operador (id ou legacy); obrigatória no rollback"
+        type: string
+        default: ""
+      confirm_release_id:
+        description: "rollback com contrato OpenAPI diferente: repetir o release_id alvo"
+        type: string
+        default: ""
+      allow_config_change:
+        description: "prepare/publish: aceitar config diferente da publicada em /config.json"
+        type: boolean
+        default: false
+      s3_probe:
+        description: "verify: sonda S3 em releases/_probe/ (nunca altera o index.html)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+# Uma operação por vez em produção; uma execução em andamento nunca é cancelada por outra.
+concurrency:
+  group: frontend-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Gate (main, SHA, CI, environment)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Pré-condições do repositório
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          EXPECTED_ACTIVE_RELEASE: ${{ inputs.expected_active_release }}
+          S3_PROBE: ${{ inputs.s3_probe }}
+          DEPLOY_ENABLED: ${{ vars.FRONTEND_DEPLOY_ENABLED }}
+        run: python3 -B .github/scripts/check-deploy-gate.py --stage repository
+
+  # prepare e publish: empacota e valida sem credenciais. No publish, o job publish (outra aprovação) envia o pacote.
+  build:
+    name: Preparar e validar a release (sem AWS)
+    needs: gate
+    if: inputs.operation == 'prepare' || inputs.operation == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    outputs:
+      release-id: ${{ steps.build.outputs.release-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
+        env:
+          OPERATION: ${{ inputs.operation }}
+          SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          FRONTEND_CONFIG_JSON: ${{ vars.FRONTEND_CONFIG_JSON }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python3 -B .github/scripts/check-deploy-gate.py --stage environment
+      - id: build
+        uses: ./.github/actions/build-frontend
+        with:
+          source: ${{ inputs.source }}
+          public-origin: ${{ vars.PUBLIC_ORIGIN }}
+          config-json: ${{ vars.FRONTEND_CONFIG_JSON }}
+          out-dir: ${{ runner.temp }}/releases
+      - uses: ./.github/actions/validate-release
+        with:
+          release-dir: ${{ steps.build.outputs.release-dir }}
+          public-origin: ${{ vars.PUBLIC_ORIGIN }}
+          allow-config-change: ${{ inputs.allow_config_change }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-${{ steps.build.outputs.release-id }}
+          path: ${{ steps.build.outputs.release-dir }}
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publicar releases/<id>/ (não ativa)
+    needs: [gate, build]
+    if: inputs.operation == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
+        env:
+          OPERATION: ${{ inputs.operation }}
+          SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          FRONTEND_CONFIG_JSON: ${{ vars.FRONTEND_CONFIG_JSON }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python3 -B .github/scripts/check-deploy-gate.py --stage environment
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-${{ needs.build.outputs.release-id }}
+          path: ${{ runner.temp }}/release
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      # O pacote aprovado é revalidado offline: manifesto íntegro e o mesmo release_id do build.
+      - name: Revalida o pacote recebido do build
+        env:
+          RELEASE_DIR: ${{ runner.temp }}/release
+          BUILT_RELEASE_ID: ${{ needs.build.outputs.release-id }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+        run: |
+          python3 -B .github/scripts/validate-release.py --release-dir "$RELEASE_DIR" --public-origin "$PUBLIC_ORIGIN"
+          test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release_id"])' "$RELEASE_DIR/manifest.json")" = "$BUILT_RELEASE_ID"
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 1800
+          mask-aws-account-id: true
+      - uses: ./.github/actions/publish-release
+        with:
+          expected-main-sha: ${{ inputs.expected_main_sha }}
+          release-dir: ${{ runner.temp }}/release
+          bucket: ${{ vars.FRONTEND_BUCKET }}
+          region: ${{ vars.AWS_REGION }}
+
+  verify:
+    name: Verificar acesso (claims, leituras e sonda opcional)
+    needs: gate
+    if: inputs.operation == 'verify'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
+        env:
+          OPERATION: ${{ inputs.operation }}
+          SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          FRONTEND_CONFIG_JSON: ${{ vars.FRONTEND_CONFIG_JSON }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python3 -B .github/scripts/check-deploy-gate.py --stage environment
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Claims do token OIDC (sem imprimir o token)
+        run: python3 -B .github/scripts/verify-access.py --claims
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 1800
+          mask-aws-account-id: true
+      - name: boto3 na versão do requirements-dev.txt
+        run: python3 -m pip install --disable-pip-version-check --no-input "boto3==1.42.97"
+      - name: Leituras com a role e, se pedida, a sonda S3
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          S3_PROBE: ${{ inputs.s3_probe }}
+          BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          args=(--aws --bucket "$BUCKET" --distribution-id "$DISTRIBUTION_ID" --region "$REGION")
+          if [ "$S3_PROBE" = "true" ]; then args+=(--s3-probe); fi
+          python3 -B .github/scripts/verify-access.py "${args[@]}"
+
+  activate:
+    name: Ativar (${{ inputs.operation }}) uma release publicada
+    needs: gate
+    if: inputs.operation == 'activate' || inputs.operation == 'rollback'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Variables do environment, sem chaves AWS estáticas, HEAD atual da main
+        env:
+          OPERATION: ${{ inputs.operation }}
+          SOURCE: ${{ inputs.source }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          GH_TOKEN: ${{ github.token }}
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          FRONTEND_BUCKET: ${{ vars.FRONTEND_BUCKET }}
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+          FRONTEND_CONFIG_JSON: ${{ vars.FRONTEND_CONFIG_JSON }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        run: python3 -B .github/scripts/check-deploy-gate.py --stage environment
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 1800
+          mask-aws-account-id: true
+      - id: activate
+        uses: ./.github/actions/activate-release
+        with:
+          expected-main-sha: ${{ inputs.expected_main_sha }}
+          mode: ${{ inputs.operation }}
+          release-id: ${{ inputs.release_id }}
+          expected-active: ${{ inputs.expected_active_release }}
+          confirm-release-id: ${{ inputs.confirm_release_id }}
+          bucket: ${{ vars.FRONTEND_BUCKET }}
+          distribution-id: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          region: ${{ vars.AWS_REGION }}
+          public-origin: ${{ vars.PUBLIC_ORIGIN }}
+          record-out: ${{ runner.temp }}/activation-record.json
+      # Registro da versão ativa (passo 10), também em caso de falha depois da escrita do index.html.
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: activation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/activation-record.json
+          if-no-files-found: warn
+          retention-days: 90
