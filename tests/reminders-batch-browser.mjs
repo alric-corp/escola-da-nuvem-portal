@@ -826,63 +826,24 @@ try {
     await context.close();
   }
 
-  // Envio individual: confirmação cancelada não envia; com confirmação, botão ocupado (sem envio duplo),
-  // contrato exato, aviso e prévia recarregada com o status da entrega.
+  // Detalhes acompanham a automação: nenhuma composição/cópia/envio manual, inclusive com mensagem legada na API.
   {
     const { context, tab, log } = await open();
-    const gate = deferred(), arrived = deferred();
-    log.handle = ({ route, entry }) => {
-      if (!entry.path.endsWith("/send-reminder")) return;
-      log.delivery["BRSA0267/1"] = { status: "sent" };
-      arrived.resolve();
-      return held(route, gate, { delivery: { status: "sent" } });
-    };
     await button(tab, "Ver pendências de Ana Teste").click();
-    await heading(tab, "Prévia do lembrete").waitFor();
-    log.acceptConfirm = false;
-    await button(tab, "Enviar e-mail para este aluno").click();
-    assert.deepEqual(log.dialogs, [{ type: "confirm", message: "Enviar este lembrete para ana@example.test, usando instrutor@example.test?" }]);
+    await heading(tab, "Lembretes automáticos").waitFor();
+    for (const name of ["Enviar e-mail para este aluno", "Copiar mensagem", "Configurar meu remetente"])
+      assert.equal(await button(tab, name).count(), 0, name);
+    assert.equal(await tab.locator(".email-preview").count(), 0);
+    log.delivery["BRSA0267/1"] = { status: "delivered" };
+    await button(tab, "Atualizar status do envio").focus();
+    await tab.keyboard.press("Enter");
+    await tab.getByText("Entregue ao servidor de e-mail do destinatário. Isso não confirma leitura ou chegada à caixa de entrada.", { exact: true }).waitFor();
     assert.equal(calls(log, "send-reminder").length, 0);
-    assert.deepEqual(await noticeTexts(tab), []);
-    assert.equal((await snapshot(tab, "pendingPreview")).pendingPreview.previewHash, "hash-BRSA0267-1");
-    log.acceptConfirm = true;
-    const send = button(tab, "Enviar e-mail para este aluno");
-    await send.click();
-    await arrived.promise;
-    assert.ok(await send.isDisabled());
-    await send.click({ force: true });
-    assert.deepEqual([calls(log, "send-reminder").length, log.dialogs.length], [1, 2]);
-    gate.resolve();
-    await tab.getByText("Aceito pelo serviço de envio; entrega ainda não confirmada.", { exact: true }).waitFor();
-    assert.deepEqual(calls(log, "send-reminder"), [{ method: "POST", path: "/cohorts/BRSA0267/send-reminder", query: "",
-      body: { studentId: "1", publicationId: "pub-BRSA0267", previewHash: "hash-BRSA0267-1" } }]);
-    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Mensagem aceita pelo serviço de envio. Consulte o status da entrega." }]);
-    assert.deepEqual(calls(log, "pending-preview").map((r) => r.body), [{ studentId: "1" }, { studentId: "1" }]);
-    assert.ok(await button(tab, "Enviar e-mail para este aluno").isDisabled());
-    assert.deepEqual([log.errors, log.dialogs.length], [[], 2]);
-    await context.close();
-  }
-
-  // Copiar mensagem: copia assunto e texto, avisa e não chama a API; se o clipboard recusa, aviso de erro.
-  {
-    const { context, tab, log } = await open();
-    await button(tab, "Ver pendências de Ana Teste").click();
-    await heading(tab, "Prévia do lembrete").waitFor();
-    await tab.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = (text) => { window.__copied.push(text); return Promise.resolve(); }; });
-    const before = log.requests.length;
-    await button(tab, "Copiar mensagem").click();
-    await tab.getByText("Mensagem copiada.", { exact: true }).waitFor();
-    assert.deepEqual(await tab.evaluate(() => window.__copied), ["Podemos ajudar? · BRSA0267\n\nOlá, Ana Teste!"]);
-    assert.deepEqual(await noticeTexts(tab), [{ error: false, text: "Mensagem copiada." }]);
-    await tab.evaluate(() => { navigator.clipboard.writeText = () => Promise.reject(new Error("negado")); });
-    await button(tab, "Copiar mensagem").click();
-    await tab.locator("#notices .notice.error").waitFor();
-    assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Não foi possível copiar. Selecione o texto da prévia e copie manualmente." }]);
-    assert.equal(log.requests.length, before, "copiar não chama a API");
+    assert.equal(calls(log, "pending-preview").length, 2);
     assert.deepEqual([log.errors, log.dialogs], [[], []]);
     await context.close();
   }
-  console.log("Lembretes (ciclo de vida): filtros do painel, respostas atrasadas (aluno, turma, view, lote por request, remetente), erros, verificação, envios com confirmação e busy, e cópia OK.");
+  console.log("Lembretes (ciclo de vida): filtros do painel, respostas atrasadas (aluno, turma, view, lote por request, remetente), erros, verificação, envio em lote e consulta individual sem envio manual OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

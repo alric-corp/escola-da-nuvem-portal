@@ -110,7 +110,7 @@ try {
     assert.deepEqual(log.posts, [{ canvasId: "1", status: "WITHDRAWN", expectedStatus: "ACTIVE" }]);
     assert.deepEqual(opsSince(log, mark), ["POST participation", "POST pending-preview", "GET report"]);
     await tab.getByText("Aluno desistente. Lembretes estão desativados.", { exact: true }).waitFor();
-    assert.ok(await button(tab, "Enviar e-mail para este aluno").isDisabled());
+    assert.equal(await button(tab, "Enviar e-mail para este aluno").count(), 0);
     assert.equal(await button(tab, "Marcar como desistente").count(), 0);
     assert.equal(await tab.locator("main .badge.withdrawn").count(), 1);
     assert.equal(await tab.evaluate(() => document.activeElement.id), "participation-heading");
@@ -129,7 +129,7 @@ try {
     assert.deepEqual(log.posts[1], { canvasId: "1", status: "ACTIVE", expectedStatus: "WITHDRAWN" });
     assert.deepEqual(opsSince(log, mark), ["POST participation", "POST pending-preview", "GET report"]);
     assert.equal(await tab.getByText("Aluno desistente. Lembretes estão desativados.", { exact: true }).count(), 0);
-    assert.ok(await button(tab, "Enviar e-mail para este aluno").isEnabled());
+    assert.equal(await button(tab, "Enviar e-mail para este aluno").count(), 0);
     assert.equal(await tab.evaluate(() => document.activeElement.id), "participation-heading");
     assert.deepEqual((await noticeTexts(tab)).at(-1), { error: false, text: "Aluno reativado." });
     await button(tab, "Voltar ao painel").click();

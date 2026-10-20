@@ -5,7 +5,7 @@
 // servidor; a verificação com andamento e erro junto da ação; os dois caminhos de envio e as regras; no lote, quem recebe e
 // quem fica de fora por motivo, a mensagem, o envio como a única superfície e a lista; Enviar parado sem remetente pronto e
 // durante o envio; recusa, conflito e dúvida junto da ação; o resultado sem confundir "aceito" com entrega; a pergunta do envio;
-// e o detalhe do aluno (prévia e envio individuais) igual.
+// e o detalhe do aluno somente para consulta.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
@@ -104,10 +104,10 @@ test("TR3: Lembretes — a verificação em andamento para as duas ações; o er
   assert.doesNotMatch(tag(unsure, 'data-action="refresh-sender"'), /disabled/, "a nova consulta fica disponível depois do erro");
 });
 
-test("TR4: Lembretes — os dois caminhos de envio que existem, o atalho para o filtro do painel e as regras do servidor", () => {
+test("TR4: Lembretes — consulta individual, envio de apoio em lote e regras do servidor", () => {
   const html = senderPage({ sender: senders.pronto });
   const how = block(html, "trem-how");
-  assert.match(strip(how), /^Como enviar Para um aluno No painel, “Ver pendências” do aluno mostra a mensagem dele, o envio e a situação da entrega\. Para vários alunos No painel, o filtro “Com atividades sem nota” oferece “Enviar lembrete para…”: a lista diz quem recebe e quem fica de fora, com o motivo\. Ver alunos com atividades sem nota Ir ao painel da turma$/);
+  assert.match(strip(how), /^Como enviar Para um aluno No painel, “Ver pendências” do aluno mostra suas atividades e a situação da entrega\. Nas turmas habilitadas, o envio é automático\. Para vários alunos No painel, o filtro “Com atividades sem nota” oferece “Enviar lembrete para…”: a lista diz quem recebe e quem fica de fora, com o motivo\. Ver alunos com atividades sem nota Ir ao painel da turma$/);
   assert.match(how, /<button type="button" class="text-link" data-view="overview" data-pending="1">Ver alunos com atividades sem nota<\/button>/);
   assert.match(how, /<button class="button secondary" data-view="overview">Ir ao painel da turma<\/button>/);
   const rules = [...block(html, "trem-rules").matchAll(/<li>([^<]*)<\/li>/g)].map((m) => m[1]);
@@ -317,10 +317,10 @@ test("TR9: a pergunta do envio em lote — a mesma confirmação, no mesmo ponto
   assert.deepEqual(await sendWith(preview([R("31003", "Diego Melo", 3, "withdrawn")])), [], "sem aprovados: nem pergunta");
 });
 
-// O detalhe do aluno (prévia e envio individuais, participação e histórico) continua o de antes: as impressões digitais foram
-// tiradas da árvore anterior à Expansão 7, com datas nulas (independem do fuso).
+// As impressões digitais abaixo preservam o detalhe anterior, removendo somente a seção de lembrete.
+// As novas asserções cobrem a seção de consulta e impedem o retorno do envio/composição manuais.
 const sha = (s) => createHash("sha256").update(s).digest("hex");
-test("TR10: o detalhe do aluno — prévia e envio individuais, participação e histórico — continua igual (impressões digitais da árvore de antes)", () => {
+test("TR10: detalhes preservam notas/participação/histórico e substituem o modelo por consulta da automação", () => {
   const activities = [{ id: "a1", name: "10- CF - KC — <Introdução> & S3", kind: "kc", state: "pending", active: true, points: "100", module: "Cloud", moduleOrder: 1 },
     { id: "a2", name: "11--Lab - EC2", kind: "lab", state: "pending", active: true, points: "100", module: "Cloud", moduleOrder: 1 }];
   const base = (extra = {}) => ({ student: { id: "31007", name: "Aluna <b>Fictícia</b>", email: "aluna@example.test" }, activities, publicationId: "p1", publishedAt: null,
@@ -331,24 +331,23 @@ test("TR10: o detalhe do aluno — prévia e envio individuais, participação e
   const cases = { ativo: base(), desistente: base({ participationStatus: "WITHDRAWN" }), desligado: base({ message: undefined, remindersEnabled: false }),
     ...Object.fromEntries(["sent", "sending", "unknown", "failed", "delivered", "bounced", "complained", "rejected", "delayed", "outro"].map((s) => [s, base({ delivery: { status: s } })])),
     "nao-pronto": base({ ses: { ready: false, reason: "Confirme o e-mail de verificação." } }) };
-  const EXPECTED = {
-    ativo: ["ce7b84af1d91fb4796d1484e4e6f38fce7d25ddd531134d48778e9b040bf5126", "03708f71c4d76dd67031d91169cb10af657bb8b9809b3b41d9246e26d11b949d"],
-    desistente: ["462276a4949e21365c80df773991a3a81b62cc33c27d01c0e7c921a45417384a", "7b0d08ed70098d6560fa85bc5318c2127bdf9e626a559756c7799aa94b7fd2a0"],
-    desligado: ["98f859b1d915ba74b81d4c2d497dea88a25c3f8d0031123845b4a58a788b28ca", "96b2928d86ef96f6a43262f7347348d8541dc3fcb2819297a477ea15537efceb"],
-    sent: ["4a75f9a28a272c6de12aa56f1ef9dcea5aa8d8e838b88d160adbd8f451854f44", "4888529ff2e0093ebc2a5b1713a4e62a0a3ca6583d529f576094367117c8e953"],
-    sending: ["9dd60c76b6aab1644046279a9c100c5bb04da59858abcff6e7af1961e5eda785", "12a55bf8eb70f92c7dc9ebf75d96101c7234d9e0acd07ff3d7cc59c90f3063cb"],
-    unknown: ["e1b94511df8c864bdd3d02245f65a9708488269c1d8a4e23e48d203dd6de7887", "90f2a244402ac41a3eecaa03d40b1c452ad46c8d82a08fc96b4f4f2a65254691"],
-    failed: ["b96e3f899d2e8689924137dba422b39005256113346ee24e9280cabd9251c317", "5ef824dfa9b2b5b2773855f8cfe510c70c5c647b1a941e826d217ecf9552cf34"],
-    delivered: ["3e7556b9c4673b33a14cd4f8fe1664ef4317fa8e596cd2f2138df6e0769d17ad", "6eb869477f3e6938731cfc6664386cc037c80e437ee3ef4950ca494398015fd2"],
-    bounced: ["116758250eb308fe31e47948d4c72e3fafefc73de3d9e739ea4fe986fa506a10", "ee47045621f4ace697b65dfb2eca072e3c0256d8ba99519c8f1f00f132a19977"],
-    complained: ["58ff69e374ab622963594552180fd8ac6a9265bebfbe19dbe09e5bedfdd19854", "d7583635b4135b30973f8321be35fc5ace30abb9f2221a9ec1a736e49f9f603a"],
-    rejected: ["b4cb9bf5a76af9b759097d31d13413db7e5baf6b0f14f886f594427f6c30da3b", "a6b14e9ebb788651b7a43bbc3b070cd1eae6c587c88a9c5152ee4babf9b89abc"],
-    delayed: ["cc6e37951e6387506670be171d7e9a21ed392f18b262f8124ea5c5cef62c4351", "02d56c0215fd3be8c76c0bf5eaf7daf4800ee26a1257df8c28a4f1aa955a7c10"],
-    outro: ["5e9a365c3e73545e72f17b4559983c5a16479c950e8c680c00ef0ab7d38f1d23", "2aaba8cca38eb8383f3980aa6dde5ed5b22854d42b1b79afe446f91fc582a439"],
-    "nao-pronto": ["e7bcff546d2448b45f4eb0d8970252f6d79a8cbef777b19d411a37cba315cdb9", "de83a4ea185dbca37809245b6022b4a65874738cef4c59d06c5bd0f1d2e45765"],
-  };
-  for (const [name, p] of Object.entries(cases))
-    assert.deepEqual(withState({ view: "student-pending", pendingPreview: p, pendingError: "", pendingStudentId: "31007" }, () => [sha(pages.pendingPage()), sha(pages.reminderPreview(p))]), EXPECTED[name], name);
+  const withoutReminder = { ativo: "f7ee8bf2d9995384355946d481b888175d0355dfeff12a5365f0bcddd5b31230",
+    desistente: "73f50ffb5a952b152d86a60585f472f6fccda33fe09fb7ac95e7c5af38d09b4a" };
+  for (const [name, p] of Object.entries(cases)) {
+    const html = withState({ view: "student-pending", pendingPreview: p, pendingError: "", pendingStudentId: "31007" }, () => pages.pendingPage());
+    const status = pages.reminderPreview(p);
+    assert.equal(sha(html.replace(status, "")), withoutReminder[name === "desistente" ? "desistente" : "ativo"], `${name}: somente a seção de lembrete mudou`);
+    assert.match(strip(status), /Lembretes automáticos Nas turmas habilitadas/);
+    assert.match(strip(status), /terças e sextas, às 20h/);
+    assert.match(status, /data-student-pending="31007"/);
+    assert.doesNotMatch(status, /email-preview|<pre|<dl|data-action="(?:send-reminder|copy-reminder)"|Configurar meu remetente/);
+    assert.doesNotMatch(status, /Olá, Aluna|aluna@example.test|instrutor@example.test|Podemos ajudar/);
+  }
+  assert.match(strip(pages.reminderPreview(cases.delivered)), /Entregue ao servidor/);
+  assert.match(strip(pages.reminderPreview(cases.sent)), /entrega ainda não confirmada/);
+  assert.match(strip(pages.reminderPreview(cases.unknown)), /Resultado do envio incerto/);
+  assert.match(strip(pages.reminderPreview(cases.ativo)), /Nenhum lembrete registrado/);
+  assert.match(strip(pages.reminderPreview(cases.desligado)), /Informações de entrega indisponíveis/);
   assert.equal(withState({ view: "student-pending", pendingPreview: null, pendingError: "Falha <x>." }, () => sha(pages.pendingPage())), "b2cc1f646b06236d74a81a71605b3432003ea19b17ce199ad0cb3259246810f7");
   assert.equal(withState({ view: "student-pending", pendingPreview: null, pendingError: "" }, () => sha(pages.pendingPage())), "f549444c717ac2e74275a0653b010f346d3ddff9e5b19a245dacbfff951faf57");
 });

@@ -434,8 +434,6 @@ test("app.js não implementa mais Lembretes: as actions, o clique, a navegação
   const wrappers = {
     "retry-pending": /"retry-pending":\s*\(\)\s*=>\s*remindersHandlers\.loadPending\(\s*state\.pendingStudentId\s*\)\s*,/,
     "reminders-batch": /"reminders-batch":\s*\(button\)\s*=>\s*remindersHandlers\.openBatch\(\s*button\.dataset\.ids\s*\)\s*,/,
-    "copy-reminder": /"copy-reminder":\s*\(\)\s*=>\s*remindersHandlers\.copyReminder\(\s*\)\s*,/,
-    "send-reminder": /"send-reminder":\s*\(\)\s*=>\s*remindersHandlers\.sendReminder\(\s*\)\s*,/,
   };
   const composed = {
     "retry-batch-preview": ["recheckReminderBatch", "loadBatchPreview"],

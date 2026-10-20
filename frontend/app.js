@@ -1049,10 +1049,8 @@ const actions = {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     notice(`CSV exportado com ${plural(rows.length, "aluno", "alunos")}.`);
   },
-  "copy-reminder": () => remindersHandlers.copyReminder(),
   "refresh-sender": () => refreshReminderSender(),
   "verify-sender": () => verifyReminderSender(),
-  "send-reminder": () => remindersHandlers.sendReminder(),
   "withdraw-student": () => setParticipation("WITHDRAWN"),
   "reactivate-student": () => setParticipation("ACTIVE"),
   login: () => login(config),

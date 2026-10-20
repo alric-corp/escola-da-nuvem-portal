@@ -445,7 +445,7 @@ try {
   );
   assert.equal(
     await adminPage.locator('[data-action="send-reminder"]').count(),
-    1,
+    0,
   );
   await adminPage
     .getByRole("button", { name: "Atualizar pendências", exact: true })

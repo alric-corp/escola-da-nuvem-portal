@@ -6,8 +6,8 @@ import { activityCard, activityGroups } from "./student.js";
 // Lembretes (Expansão 7; docs/design-visual.md): "Lembretes" (o remetente) e "Lembretes em lote", sob .teacher-reminders. As
 // operações são as do handler, com as mesmas chamadas, a mesma confirmação e as mesmas guardas; a tela só mostra o que o
 // contrato traz (backend/portal.py::_reminder_settings e _reminder_batch) e não decide quem recebe: elegíveis e motivos vêm do
-// servidor. view (app.js): verifying e failure (verificação do remetente); sending e failure (envio do lote). A prévia e o
-// envio individuais continuam no detalhe do aluno (pendingPage), como antes.
+// servidor. view (app.js): verifying e failure (verificação do remetente); sending e failure (envio do lote). O detalhe do aluno
+// (pendingPage) consulta o status dos lembretes; não oferece composição nem envio individual.
 
 // Situação do remetente pelo contrato: envio ligado na instalação (enabled) e e-mail pronto no serviço de envio (ready); o
 // motivo é sempre o do servidor.
@@ -31,10 +31,10 @@ function senderBlock(view) {
   <div class="trem-actions">${verify ? `<button class="button primary" data-action="verify-sender"${busy ? " disabled" : ""}>Solicitar confirmação do meu e-mail</button>` : ""}<button class="button secondary" data-action="refresh-sender"${busy ? " disabled" : ""}>${verify ? "Já confirmei · verificar novamente" : "Verificar novamente"}</button></div>${op}</section>`;
 }
 
-// Os dois caminhos de envio que existem (pelo detalhe do aluno e pelo lote do painel) e as regras do servidor que valem para
-// os dois. O atalho leva ao painel com o filtro "Com atividades sem nota", o mesmo do painel.
+// Consulta individual de entrega e envio em lote de apoio; as regras de elegibilidade continuam no servidor.
+// O atalho leva ao filtro "Com atividades sem nota" do painel.
 const howToSend = () => `<section class="trem-how" aria-labelledby="trem-how-title"><h2 id="trem-how-title">Como enviar</h2>
-  <ul class="trem-paths"><li><h3>Para um aluno</h3><p>No painel, “Ver pendências” do aluno mostra a mensagem dele, o envio e a situação da entrega.</p></li><li><h3>Para vários alunos</h3><p>No painel, o filtro “Com atividades sem nota” oferece “Enviar lembrete para…”: a lista diz quem recebe e quem fica de fora, com o motivo.</p><button type="button" class="text-link" data-view="overview" data-pending="1">Ver alunos com atividades sem nota</button></li></ul>
+  <ul class="trem-paths"><li><h3>Para um aluno</h3><p>No painel, “Ver pendências” do aluno mostra suas atividades e a situação da entrega. Nas turmas habilitadas, o envio é automático.</p></li><li><h3>Para vários alunos</h3><p>No painel, o filtro “Com atividades sem nota” oferece “Enviar lembrete para…”: a lista diz quem recebe e quem fica de fora, com o motivo.</p><button type="button" class="text-link" data-view="overview" data-pending="1">Ver alunos com atividades sem nota</button></li></ul>
   <div class="trem-actions"><button class="button secondary" data-view="overview">Ir ao painel da turma</button></div></section>`;
 const sendingRules = () => `<section class="trem-rules" aria-labelledby="trem-rules-title"><h2 id="trem-rules-title">O que vale para todo envio</h2>
   <ul class="trem-rule-list"><li>Cada aluno recebe no máximo um lembrete por publicação de notas: quem já tem lembrete registrado nesta publicação fica de fora.</li><li>Também ficam de fora desistentes, alunos sem e-mail no Canvas e alunos sem atividades sem nota.</li><li>A mensagem é montada pelo portal com as atividades sem nota da publicação em vigor, e você a revisa antes de enviar.</li><li>“Aceito pelo serviço de envio” ainda não é a entrega: a situação de cada aluno aparece nas pendências dele.</li><li>Publicar notas nunca dispara lembretes automaticamente.</li></ul></section>`;
@@ -176,18 +176,19 @@ export function batchPage(view = {}) {
 }
 
 export function reminderPreview(p) {
-  // Desistente: aviso e envio desabilitado aqui; o servidor recusa o envio de qualquer forma (409).
+  // Somente consulta: o Scheduler e a worker existentes continuam responsáveis pelo envio automático.
   const withdrawn = isWithdrawn(p) ? '<p role="status"><strong>Aluno desistente.</strong> Lembretes estão desativados.</p>' : "";
-  if (!p.message) return `<section class="panel"><h2>Lembrete por e-mail</h2><p>O envio está desativado nesta instalação. Você pode consultar as atividades acima.</p>${withdrawn}</section>`;
   const status = p.delivery?.status;
   const deliveryLabels = { sent: "Aceito pelo serviço de envio; entrega ainda não confirmada.",
     sending: "Envio em processamento. Atualize o status antes de tentar novamente.",
     unknown: "Resultado do envio incerto. Não reenvie para evitar duplicação; procure a coordenação.",
-    failed: "O serviço rejeitou a tentativa. Você pode revisar e tentar novamente.",
+    failed: "O serviço rejeitou a tentativa. Consulte a coordenação.",
     delivered: "Entregue ao servidor de e-mail do destinatário. Isso não confirma leitura ou chegada à caixa de entrada.",
     bounced: "E-mail devolvido. Confira o endereço do aluno com a coordenação.",
     complained: "O destinatário marcou a mensagem como indesejada. Não reenvie.",
     rejected: "Mensagem rejeitada pelo serviço de e-mail.", delayed: "Entrega atrasada. Aguarde e consulte novamente." };
-  const allowed = !demo && !isWithdrawn(p) && p.ses?.ready && p.student.email && p.activities.length && (!status || status === "failed");
-  return `<section class="panel reminder-panel"><h2>Prévia do lembrete</h2>${withdrawn}<dl><dt>De</dt><dd>${e(p.message.from)}</dd><dt>Para</dt><dd>${e(p.message.to || "E-mail ausente no Canvas")}</dd><dt>Assunto</dt><dd>${e(p.message.subject)}</dd></dl><pre class="email-preview">${e(p.message.text)}</pre><p role="status">${e(status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio." : p.ses?.reason || "Verifique seu remetente.")}</p>${!p.ses?.ready ? '<button class="button secondary" data-view="reminders">Configurar meu remetente</button>' : ""}<button class="button primary" data-action="send-reminder" ${allowed ? "" : "disabled"}>Enviar e-mail para este aluno</button><button class="button secondary" data-action="copy-reminder">Copiar mensagem</button><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
+  const statusText = status ? deliveryLabels[status] || "Consulte a coordenação sobre o envio."
+    : p.remindersEnabled === false ? "Informações de entrega indisponíveis nesta consulta."
+    : "Nenhum lembrete registrado para este aluno nesta publicação.";
+  return `<section class="panel reminder-panel"><h2>Lembretes automáticos</h2><p>Nas turmas habilitadas, os lembretes são enviados automaticamente às terças e sextas, às 20h (horário de Brasília), conforme as pendências e as regras da turma. Não é necessário enviar e-mail por esta tela.</p>${withdrawn}<p role="status">${e(statusText)}</p><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar status do envio</button></section>`;
 }
