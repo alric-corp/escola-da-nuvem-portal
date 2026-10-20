@@ -244,6 +244,7 @@ jobs:
           release-dir: ${{ runner.temp }}/release
           bucket: ${{ vars.FRONTEND_BUCKET }}
           region: ${{ vars.AWS_REGION }}
+          public-origin: ${{ vars.PUBLIC_ORIGIN }}
       # Só no deploy, e só depois da publicação conferida: ativação para frente (nunca para trás, sem rollback
       # automático), pelo mesmo caminho testado da operação activate.
       - id: deploy-activate

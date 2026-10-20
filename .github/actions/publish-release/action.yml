@@ -18,6 +18,9 @@ inputs:
   region:
     description: "Região AWS"
     required: true
+  public-origin:
+    description: "Origem pública usada para validar a configuração da release"
+    required: true
 outputs:
   release-id:
     description: "Release publicada"
@@ -35,4 +38,5 @@ runs:
         RELEASE_DIR: ${{ inputs.release-dir }}
         BUCKET: ${{ inputs.bucket }}
         REGION: ${{ inputs.region }}
+        PUBLIC_ORIGIN: ${{ inputs.public-origin }}
       run: python3 -B .github/scripts/publish-release.py --bucket "$BUCKET" --release-dir "$RELEASE_DIR" --region "$REGION"
