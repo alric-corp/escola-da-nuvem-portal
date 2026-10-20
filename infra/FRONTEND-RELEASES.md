@@ -73,6 +73,34 @@ Disparadas em Actions → *Deploy do frontend* → *Run workflow*, na `main`, co
 
 `source=baseline` só vale em `prepare`, `publish` e `deploy`. As operações `publish`, `activate`, `rollback` e `deploy`, inclusive o deploy automático, exigem a variable de repositório `FRONTEND_DEPLOY_ENABLED=true` (kill switch).
 
+### Aprovação do pacote nas publicações manuais da main
+
+Em `workflow_dispatch` com `operation=publish` ou `deploy` e `source=main`, preencher também:
+
+- `approved_release_id`: o ID completo do artefato previamente preparado e revisado;
+- `approved_manifest_sha256`: SHA-256 completo dos **bytes** de `manifest.json` desse artefato.
+
+Primeiro execute `prepare/source=main`, baixe o artefato e revise seu conteúdo. Calcule o hash com
+`shasum -a 256 manifest.json`, sem reformatar o JSON. O hash do ZIP não substitui o hash do manifesto.
+Os inputs são opcionais na interface porque `prepare`, `verify`, ativação e rollback não os exigem;
+publicação/deploy manuais da main recusam valores ausentes, malformados ou divergentes.
+
+O gate verifica os inputs e sua origem. Depois da construção e novamente após baixar o artefato,
+antes do OIDC, a pipeline confere source SHA completo, mode `modern`, ID recalculado/produzido/aprovado
+e hash do manifesto. O publicador reconfere o evento original do runner e a aprovação dos mesmos bytes
+em memória que serão enviados, imediatamente antes do primeiro `PutObject`, preservando a guarda de HEAD.
+Não existe input para dispensar essa validação. Uma recusa produz zero chamadas de `PutObject`.
+
+O automático (`workflow_run`) continua sem inputs de aprovação humana: aceita somente o CI verde de
+push na main, com evento/repositório/commit validados, e mantém os gates de HEAD, environment, integridade
+e kill switch. `source=baseline` continua preso a `baseline.json`; não pode publicar um pacote moderno.
+
+Qualquer novo commit na main exige uma nova preparação e revisão: source SHA, Release ID, manifesto e
+ponteiro mudam. Na revalidação B.9A-R após o merge, compare os hashes/tamanhos/MIME/cache de cada asset,
+configuração, imports, caminhos e rotas com a referência histórica. Separe essas verificações das mudanças
+de identidade e ponteiro; não presuma equivalência. Este fluxo não habilita o kill switch nem dispensa o
+QA autenticado e as autorizações separadas de publicação e ativação.
+
 ### Revalidação do HEAD da main
 
 O HEAD atual de `refs/heads/main` é lido na API do GitHub (`GET /repos/{repo}/git/ref/heads/main`, com o `GITHUB_TOKEN` do job e `contents: read`). Ele precisa ser igual, nos 40 hex, ao `GITHUB_SHA` e ao SHA esperado (o `expected_main_sha` no manual, o commit do CI no automático):

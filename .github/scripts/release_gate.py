@@ -12,6 +12,7 @@ import json
 import re
 
 from frontend_release import RELEASE_ID_RE, SHA_RE, ReleaseError, validate_config, validate_public_origin
+from publication_approval import input_problems, publication_context
 
 OPERATIONS = ("prepare", "verify", "publish", "activate", "rollback", "deploy")
 PRODUCTIVE = ("publish", "activate", "rollback", "deploy")
@@ -56,6 +57,12 @@ def repository_problems(env: dict, github_get, event=None) -> list:
     """github_get(path) -> (status, objeto JSON); event: payload do workflow_run. Nenhuma decisão depende de entrada
     não validada."""
     (operation, source, expected), problems = run_parameters(env, event)
+    problems += input_problems(env, operation, source)
+    if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" and operation in ("publish", "deploy") and event is not None:
+        try:
+            publication_context(env, event)
+        except ReleaseError as err:
+            problems.append(str(err))
     if env.get("GITHUB_REF") != "refs/heads/main":
         problems.append("Execução recusada fora da branch main.")
     if operation not in OPERATIONS:
@@ -150,7 +157,7 @@ def self_review_note(envdoc: dict) -> str:
     rule = {r.get("type"): r for r in envdoc.get("protection_rules", [])}.get("required_reviewers", {})
     if not rule.get("reviewers"):
         return ("Sem revisor obrigatório (mantenedor único): o deploy automático segue o CI verde na main; no disparo "
-                "manual, o SHA confirmado é a confirmação.")
+                "manual produtivo da main, o SHA e o manifesto previamente aprovados são conferidos.")
     if rule.get("prevent_self_review"):
         return "prevent_self_review ativo."
     return ("prevent_self_review desativado: se o iniciador também aprovar, a aprovação não é revisão independente "

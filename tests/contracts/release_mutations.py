@@ -32,14 +32,47 @@ PIPELINE, BROWSER = "tests/release-pipeline.mjs", "tests/release-cache-browser.m
 
 # (nome, arquivo, trecho original, substituto, ocorrências, suíte, teste que precisa matar o mutante)
 CASES = [
+    # B.9B-FIX: aprovações externas; cada falha precisa impedir todos os PutObject.
+    ("manual_sem_aprovacao", ".github/scripts/publication_approval.py",
+     '    required = source == "main" and operation in ("publish", "deploy")', '    required = False', 1,
+     "test_frontend_publication_approval", "test_gate_refuses_manual_publish_and_deploy_without_approval_before_api"),
+    ("id_aprovado_ignorado", ".github/scripts/publication_approval.py",
+     '        if manifest.get("release_id") != env.get("APPROVED_RELEASE_ID"):', '        if False:', 1,
+     "test_frontend_publication_approval", "test_different_approved_id_hash_or_built_id_zero_put"),
+    ("hash_aprovado_ignorado", ".github/scripts/publication_approval.py",
+     '        if sha256_hex(manifest_bytes) != env.get("APPROVED_MANIFEST_SHA256"):', '        if False:', 1,
+     "test_frontend_publication_approval", "test_manifest_changed_immediately_before_write_zero_put"),
+    ("hash_recanonicalizado", ".github/scripts/publication_approval.py",
+     'sha256_hex(manifest_bytes) != env.get("APPROVED_MANIFEST_SHA256")',
+     'sha256_hex(__import__("frontend_release").pretty_json(manifest)) != env.get("APPROVED_MANIFEST_SHA256")', 1,
+     "test_frontend_publication_approval", "test_hash_is_exact_manifest_bytes_not_reserialized_json"),
+    ("source_aprovado_ignorado", ".github/scripts/publication_approval.py",
+     '        if manifest.get("source_sha") != expected:', '        if False:', 1,
+     "test_frontend_publication_approval", "test_source_sha_and_mode_must_match_even_with_approval_for_package"),
+    ("mode_aprovado_ignorado", ".github/scripts/publication_approval.py",
+     '        if manifest.get("mode") != "modern":', '        if False:', 1,
+     "test_frontend_publication_approval", "test_mode_wrong_with_matching_source_sha_zero_put"),
+    ("aprovacao_antes_put_removida", CORE,
+     '    approve(manifest, assets, pointer, manifest_bytes)  # mesmos bytes em memória que serão enviados\n', '', 1,
+     "test_frontend_publication_approval", "test_manifest_changed_immediately_before_write_zero_put"),
+    ("origem_aprovacao_ignorada", ".github/scripts/publication_approval.py",
+     '            if env.get(key.upper(), "") != value:', '            if False:', 1,
+     "test_frontend_publication_approval", "test_event_approval_cannot_be_replaced_by_environment"),
+    ("prepare_publica_sem_aprovacao", ".github/scripts/publication_approval.py",
+     '    if publication_context(env, event)[0] not in ("publish", "deploy"):', '    if False:', 1,
+     "test_frontend_publication_approval", "test_prepare_without_approval_remains_valid"),
+    ("workflow_aprovacao_so_depois_oidc", WORKFLOW,
+     '          python3 -B .github/scripts/check-publication-approval.py --release-dir "$RELEASE_DIR"\n', '', 1,
+     PIPELINE, "aprovação externa"),
+
     ("release_sem_if_none_match", CORE, '                         IfNoneMatch="*")', "                         )", 1,
      S3, "test_publish_sends_every_object_with_if_none_match_and_manifest_last"),
     ("conflito_aceito", CORE, "            if sha256_hex(existing) != sha256_hex(data):", "            if False:", 1,
      S3, "test_same_id_with_different_content_is_a_conflict_and_nothing_is_overwritten"),
     ("manifesto_primeiro", CORE,
      '    items = [(rel, data, MIME[posixpath.splitext(rel)[1]]) for rel, data in sorted(assets.items())]\n'
-     '    items += [("pointer.html", pointer, MIME[".html"]), ("manifest.json", pretty_json(manifest), MIME[".json"])]',
-     '    items = [("manifest.json", pretty_json(manifest), MIME[".json"])]\n'
+     '    items += [("pointer.html", pointer, MIME[".html"]), ("manifest.json", manifest_bytes, MIME[".json"])]',
+     '    items = [("manifest.json", manifest_bytes, MIME[".json"])]\n'
      '    items += [(rel, data, MIME[posixpath.splitext(rel)[1]]) for rel, data in sorted(assets.items())]\n'
      '    items += [("pointer.html", pointer, MIME[".html"])]', 1,
      S3, "test_partial_upload_leaves_no_activatable_release_and_a_rerun_completes_it"),
@@ -165,7 +198,7 @@ CASES = [
      "", 1, S3, "test_activation_revalidates_main_after_the_checks_and_before_the_index"),
     ("cli_ativacao_sem_guarda", CLI, ", before_write=main_head_guard())", ")", 1,
      HEAD, "test_activation_and_rollback_cli_revalidate_before_writing"),
-    ("cli_publicacao_sem_guarda", PUBLISH, ", before_write=main_head_guard())", ")", 1,
+    ("cli_publicacao_sem_guarda", PUBLISH, ", before_write=main_head_guard(), approve=approve)", ", approve=approve)", 1,
      HEAD, "test_publish_cli_revalidates_before_the_first_object"),
     ("sonda_sem_revalidacao", ACCESS,
      "        try:\n            main_head_guard()()  # verificação C: HEAD da main antes da primeira escrita da sonda\n"
@@ -189,7 +222,7 @@ CASES = [
      '    if name == "workflow_dispatch" or env.get("OPERATION"):', 1, GATES, "test_inputs_never_choose_the_automatic_operation"),
     ("deploy_sem_config", GATE, "    if operation in BUILDS and source == \"main\":", "    if operation in (\"prepare\", \"publish\") and source == \"main\":", 1,
      GATES, "test_complete_variables_without_static_keys_pass"),
-    ("gate_sem_outputs", CHECK, '        set_outputs(**{"operation": operation, "source": source, "expected-main-sha": expected})', "        pass", 1,
+    ("gate_sem_outputs", CHECK, '        set_outputs(**{"operation": operation, "source": source, "expected-main-sha": expected, **approval})', "        pass", 1,
      GATES, "test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved"),
     ("outputs_mesmo_recusado", CHECK, "    if problems:\n        summary([f\"### Gate ({args.stage}) recusou",
      "    set_outputs(operation=operation)\n    if problems:\n        summary([f\"### Gate ({args.stage}) recusou", 1,

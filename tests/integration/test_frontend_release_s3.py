@@ -72,7 +72,7 @@ class ReleaseS3Tests(unittest.TestCase):
     # ------------------------------------------------------------ utilidades
 
     def publish(self, name, s3=None):
-        return fr.publish_release(s3 or self.s3, BUCKET, R[name], log=self.logs.append)
+        return fr.publish_release(s3 or self.s3, BUCKET, R[name], log=self.logs.append, approve=lambda *snapshot: None)
 
     def activate(self, name, mode="activate", s3=None, fetch=None, cloudfront=None, **kwargs):
         kwargs.setdefault("caller_reference", f"{rid(name)}-teste-{len(self.logs)}")
@@ -160,7 +160,7 @@ class ReleaseS3Tests(unittest.TestCase):
 
     def test_unauthorized_or_missing_bucket_fails_closed(self):
         with self.assertRaisesRegex(fr.ReleaseError, "NoSuchBucket"):
-            fr.publish_release(self.s3, "outro-bucket-nao-autorizado", R["m1"])
+            fr.publish_release(self.s3, "outro-bucket-nao-autorizado", R["m1"], approve=lambda *snapshot: None)
         stub = Stubber(self.s3)
         stub.add_client_error("get_object", service_error_code="AccessDenied", http_status_code=403)
         with stub, self.assertRaises(ClientError):
@@ -335,7 +335,7 @@ class ReleaseS3Tests(unittest.TestCase):
     def test_publish_revalidates_main_before_the_first_object(self):
         spy, seen = Spy(self.s3), []
         with self.assertRaisesRegex(fr.ReleaseError, "A main avançou"):
-            fr.publish_release(spy, BUCKET, R["m1"], log=self.logs.append, before_write=self.moved(spy, seen))
+            fr.publish_release(spy, BUCKET, R["m1"], log=self.logs.append, before_write=self.moved(spy, seen), approve=lambda *snapshot: None)
         self.assertEqual((seen, spy.puts, self.keys("releases/")), ([0], [], []))
 
     def test_activation_revalidates_main_after_the_checks_and_before_the_index(self):

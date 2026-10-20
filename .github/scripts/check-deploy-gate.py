@@ -20,13 +20,16 @@ from release_gate import (ENVIRONMENT, environment_problems, main_head_problems,
 
 
 def load_event(env: dict):
-    """Payload do workflow_run (GITHUB_EVENT_PATH). O disparo manual usa só os inputs; ilegível → None (recusa)."""
-    if env.get("GITHUB_EVENT_NAME") != "workflow_run" or not env.get("GITHUB_EVENT_PATH"):
-        return None
+    """Evento original do runner: CI no automático e origem dos inputs de aprovação no manual; ilegível recusa."""
+    if not env.get("GITHUB_EVENT_PATH"):
+        return {} if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else None
     try:
-        return json.loads(Path(env["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+        event = json.loads(Path(env["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+        if not isinstance(event, dict):
+            return {} if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else None
+        return event
     except (OSError, ValueError):
-        return None
+        return {} if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else None
 
 
 def main(argv=None, env=None, get=None):
@@ -51,7 +54,10 @@ def main(argv=None, env=None, get=None):
         summary([f"### Gate ({args.stage}) recusou a execução"] + [f"- {p}" for p in problems])
         fail(" | ".join(problems))
     if args.stage == "repository":
-        set_outputs(**{"operation": operation, "source": source, "expected-main-sha": expected})
+        approval = ({"approved-release-id": env.get("APPROVED_RELEASE_ID", ""),
+                     "approved-manifest-sha256": env.get("APPROVED_MANIFEST_SHA256", "")}
+                    if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else {})
+        set_outputs(**{"operation": operation, "source": source, "expected-main-sha": expected, **approval})
     summary([f"### Gate ({args.stage}) aprovado",
              f"- evento: `{env.get('GITHUB_EVENT_NAME')}`; operação: `{operation}`; origem: `{source}`; commit: `{env.get('GITHUB_SHA')}`",
              f"- HEAD atual da main no GitHub confirmado igual ao commit desta execução",

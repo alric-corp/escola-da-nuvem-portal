@@ -258,7 +258,7 @@ class Run:
         else:
             self.inputs = {"operation": operation, "source": "main", "expected_main_sha": SHA, "release_id": "",
                            "expected_active_release": "", "confirm_release_id": "", "allow_config_change": "false",
-                           "s3_probe": "false"}
+                           "s3_probe": "false", "approved_release_id": RID, "approved_manifest_sha256": "a" * 64}
             if operation in ("activate", "rollback"):
                 self.inputs.update(release_id=RID, expected_active_release="legacy")
             self.inputs.update(inputs)
@@ -270,6 +270,10 @@ class Run:
                         "steps.gate.outputs": {}, "needs.gate.outputs": {}}
         self.runner = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA,
                        "GITHUB_REPOSITORY": REPO, "GITHUB_ACTOR": "operador"}
+        if operation != AUTOMATIC:
+            payload = self.tmp / "event.json"
+            payload.write_text(json.dumps({"inputs": self.inputs}), encoding="utf-8")
+            self.runner["GITHUB_EVENT_PATH"] = str(payload)
         if operation == AUTOMATIC:
             payload = self.tmp / "event.json"
             payload.write_text(json.dumps(event or ci_run_event()), encoding="utf-8")
@@ -376,7 +380,8 @@ class WorkflowWindowTests(unittest.TestCase):
     def test_automatic_run_takes_operation_source_and_commit_from_the_gate(self):
         results = self.run_operation(AUTOMATIC)
         self.assertTrue(all(ok for _, ok, _, _ in results))
-        self.assertEqual(self.outputs, {"operation": "deploy", "source": "main", "expected-main-sha": SHA})
+        self.assertEqual(self.outputs, {"operation": "deploy", "source": "main", "expected-main-sha": SHA,
+                                       "approved-release-id": "", "approved-manifest-sha256": ""})
 
     def test_automatic_run_with_red_ci_reaches_no_environment_job(self):
         for label, event in (("CI vermelho", ci_run_event(conclusion="failure")), ("CI de PR", ci_run_event(event="pull_request"))):
@@ -457,12 +462,13 @@ class WriteGuardTests(unittest.TestCase):
     def test_publish_cli_revalidates_before_the_first_object(self):
         writes = []
 
-        def publish(s3, bucket, release_dir, before_write=None):
+        def publish(s3, bucket, release_dir, before_write=None, approve=None):
             if before_write:
                 before_write()
             writes.append(release_dir)
             return {"release_id": RID, "created": 1, "identical": 0}
         with patch.dict(os.environ, dict(self.env, GH_TOKEN=TOKEN), clear=True), \
+                patch.object(publish_cli, "check_package"), \
                 patch.object(publish_cli, "aws_clients", return_value=(None, None, None)), \
                 patch.object(publish_cli, "publish_release", side_effect=publish), \
                 patch.object(release_cli, "github_get", side_effect=lambda path, env=None: FakeGitHub(head=OTHER)(path)), \

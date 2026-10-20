@@ -338,8 +338,8 @@ def manifest_problems(manifest: dict) -> list:
     return problems
 
 
-def load_release_dir(release_dir: Path) -> tuple:
-    manifest = json.loads((release_dir / "manifest.json").read_text(encoding="utf-8"))
+def load_release_dir(release_dir: Path, *, manifest_bytes=None) -> tuple:
+    manifest = json.loads(manifest_bytes if manifest_bytes is not None else (release_dir / "manifest.json").read_bytes())
     problems = manifest_problems(manifest)
     if problems:
         raise ReleaseError(" ".join(problems))
@@ -457,21 +457,23 @@ def _put_release_object(s3, bucket, key, body, content_type):
                          IfNoneMatch="*")
 
 
-def publish_release(s3, bucket: str, release_dir: Path, log=print, before_write=None) -> dict:
+def publish_release(s3, bucket: str, release_dir: Path, log=print, before_write=None, *, approve) -> dict:
     """Envia a release com If-None-Match (nunca sobrescreve). Manifesto por último: sem ele a release não ativa.
 
     before_write é chamada uma vez antes do primeiro objeto (verificação C: HEAD da main); se levantar, nada é enviado.
     """
     from botocore.exceptions import ClientError
 
-    manifest, assets, pointer = load_release_dir(release_dir)
+    manifest_bytes = (release_dir / "manifest.json").read_bytes()
+    manifest, assets, pointer = load_release_dir(release_dir, manifest_bytes=manifest_bytes)
     rid = manifest["release_id"]
     prefix = f"{RELEASES_PREFIX}{rid}/"
     items = [(rel, data, MIME[posixpath.splitext(rel)[1]]) for rel, data in sorted(assets.items())]
-    items += [("pointer.html", pointer, MIME[".html"]), ("manifest.json", pretty_json(manifest), MIME[".json"])]
+    items += [("pointer.html", pointer, MIME[".html"]), ("manifest.json", manifest_bytes, MIME[".json"])]
     created = identical = 0
     if before_write:
         before_write()  # verificação C: HEAD da main antes do primeiro objeto
+    approve(manifest, assets, pointer, manifest_bytes)  # mesmos bytes em memória que serão enviados
     for rel, data, ctype in items:
         key = prefix + rel
         try:

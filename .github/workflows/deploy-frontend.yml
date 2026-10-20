@@ -37,6 +37,14 @@ on:
         description: "SHA completo da main revisado pelo operador; precisa ser o commit desta execução"
         type: string
         required: true
+      approved_release_id:
+        description: "Release moderna previamente revisada (obrigatória em publish/deploy manuais com source=main)"
+        required: false
+        type: string
+      approved_manifest_sha256:
+        description: "SHA-256 completo dos bytes do manifest.json aprovado (publish/deploy manuais da main)"
+        required: false
+        type: string
       release_id:
         description: "activate/rollback: release já publicada (<12 hex>-<12 hex>)"
         type: string
@@ -78,6 +86,8 @@ jobs:
       operation: ${{ steps.gate.outputs.operation }}
       source: ${{ steps.gate.outputs.source }}
       expected-main-sha: ${{ steps.gate.outputs.expected-main-sha }}
+      approved-release-id: ${{ steps.gate.outputs.approved-release-id }}
+      approved-manifest-sha256: ${{ steps.gate.outputs.approved-manifest-sha256 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,6 +102,8 @@ jobs:
           OPERATION: ${{ inputs.operation }}
           SOURCE: ${{ inputs.source }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          APPROVED_RELEASE_ID: ${{ inputs.approved_release_id }}
+          APPROVED_MANIFEST_SHA256: ${{ inputs.approved_manifest_sha256 }}
           RELEASE_ID: ${{ inputs.release_id }}
           EXPECTED_ACTIVE_RELEASE: ${{ inputs.expected_active_release }}
           S3_PROBE: ${{ inputs.s3_probe }}
@@ -106,6 +118,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
+    env:
+      OPERATION: ${{ needs.gate.outputs.operation }}
+      SOURCE: ${{ needs.gate.outputs.source }}
+      EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
+      APPROVED_RELEASE_ID: ${{ needs.gate.outputs.approved-release-id }}
+      APPROVED_MANIFEST_SHA256: ${{ needs.gate.outputs.approved-manifest-sha256 }}
     permissions:
       contents: read
     outputs:
@@ -143,6 +161,12 @@ jobs:
           release-dir: ${{ steps.build.outputs.release-dir }}
           public-origin: ${{ vars.PUBLIC_ORIGIN }}
           allow-config-change: ${{ inputs.allow_config_change }}
+      - name: Vincula a construção à aprovação externa, sem AWS
+        env:
+          RELEASE_DIR: ${{ steps.build.outputs.release-dir }}
+          BUILT_RELEASE_ID: ${{ steps.build.outputs.release-id }}
+          PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
+        run: python3 -B .github/scripts/check-publication-approval.py --release-dir "$RELEASE_DIR"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-${{ steps.build.outputs.release-id }}
@@ -159,6 +183,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production
+    env:
+      OPERATION: ${{ needs.gate.outputs.operation }}
+      SOURCE: ${{ needs.gate.outputs.source }}
+      EXPECTED_MAIN_SHA: ${{ needs.gate.outputs.expected-main-sha }}
+      APPROVED_RELEASE_ID: ${{ needs.gate.outputs.approved-release-id }}
+      APPROVED_MANIFEST_SHA256: ${{ needs.gate.outputs.approved-manifest-sha256 }}
     permissions:
       contents: read
       id-token: write
@@ -198,6 +228,7 @@ jobs:
           PUBLIC_ORIGIN: ${{ vars.PUBLIC_ORIGIN }}
         run: |
           python3 -B .github/scripts/validate-release.py --release-dir "$RELEASE_DIR" --public-origin "$PUBLIC_ORIGIN"
+          python3 -B .github/scripts/check-publication-approval.py --release-dir "$RELEASE_DIR"
           test "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release_id"])' "$RELEASE_DIR/manifest.json")" = "$BUILT_RELEASE_ID"
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
@@ -208,6 +239,7 @@ jobs:
           mask-aws-account-id: true
       - uses: ./.github/actions/publish-release
         with:
+          built-release-id: ${{ needs.build.outputs.release-id }}
           expected-main-sha: ${{ needs.gate.outputs.expected-main-sha }}
           release-dir: ${{ runner.temp }}/release
           bucket: ${{ vars.FRONTEND_BUCKET }}
