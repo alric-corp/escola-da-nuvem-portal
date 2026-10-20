@@ -3357,7 +3357,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-scale i { display: block; flex-basis: 0; min-width: 0.375rem; }
 .teacher-home .tp-scale .is-ok { background: var(--color-success); }
 .teacher-home .tp-scale .is-attention { background: repeating-linear-gradient(135deg, var(--color-warning) 0 0.25rem, color-mix(in srgb, var(--color-warning) 45%, transparent) 0.25rem 0.4rem); }
-.teacher-home .tp-scale .is-critical { background: var(--color-warning); }
+.teacher-home .tp-scale .is-critical { background: var(--color-danger); }
 .teacher-home .tp-scale .is-other { background: var(--color-line); }
 .teacher-home .tp-statuses { display: grid; gap: var(--space-1); }
 /* Lado a lado, as três alinham rótulo, número e regra entre si (subgrid), mesmo quando um rótulo quebra a linha. */
@@ -3383,7 +3383,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-follow .tp-filter > span { color: var(--color-text); }
 
 /* Formas de situação, sempre junto do texto: visto verde-água (na referência), um anel âmbar (uma média abaixo), dois
-   anéis âmbar (as duas abaixo), traço (sem avaliação completa) e visto cinza (graduado). O mesmo anel marca a média
+   anéis vermelhos (as duas abaixo), traço (sem avaliação completa) e visto cinza (graduado). O mesmo anel marca a média
    abaixo da referência (antes do número na tabela; junto do rótulo nas linhas empilhadas, onde meia coluna não comporta
    anel e duas casas): o número de anéis da situação é o número de médias abaixo. */
 .teacher-home :is(.tp-filter.is-ok > span, .tp-state.is-ok, .tp-state.is-graduated)::before {
@@ -3408,9 +3408,11 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home :is(.tp-filter.is-critical > span, .tp-state.is-critical)::before {
   width: 1.38em;
   background:
-    radial-gradient(circle at 0.415em 50%, transparent 0.27em, var(--color-warning) 0.28em 0.41em, transparent 0.42em),
-    radial-gradient(circle at 0.965em 50%, transparent 0.27em, var(--color-warning) 0.28em 0.41em, transparent 0.42em);
+    radial-gradient(circle at 0.415em 50%, transparent 0.27em, var(--color-danger) 0.28em 0.41em, transparent 0.42em),
+    radial-gradient(circle at 0.965em 50%, transparent 0.27em, var(--color-danger) 0.28em 0.41em, transparent 0.42em);
 }
+.teacher-home .tp-filter.is-critical > strong,
+.teacher-home .tp-state.is-critical { color: var(--color-danger); }
 .teacher-home .tp-state.is-insufficient::before { content: ""; flex: none; width: 0.6em; border-top: 2px solid currentColor; }
 .teacher-home .tp-state { display: inline-flex; align-items: center; gap: 0.45em; color: var(--color-text); font-size: 0.875rem; line-height: 1.35; }
 .teacher-home .tp-state:is(.is-attention, .is-critical) { font-weight: 600; }
@@ -3501,7 +3503,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-areas: "name name name" "kc lab pending" "status status action";
+  grid-template-areas: "name name name" "kc lab pending" "last last time" "status status action";
   align-items: center;
   gap: var(--space-2) var(--space-3);
   padding: var(--space-3) 0;
@@ -3513,6 +3515,9 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-row > .tp-avg.is-lab { grid-area: lab; }
 .teacher-home .tp-row > .tp-pending { grid-area: pending; }
 .teacher-home .tp-row > .tp-status { grid-area: status; }
+.teacher-home .tp-row > .tp-last-activity { grid-area: last; }
+.teacher-home .tp-row > .tp-canvas-time { grid-area: time; }
+.teacher-home .tp-last-activity small { display: block; color: var(--color-text-muted); font-size: 0.75rem; }
 .teacher-home .tp-row > .tp-action { grid-area: action; justify-self: end; }
 .teacher-home .tp-student { display: block; color: var(--color-text); font-size: 1rem; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
 .teacher-home .tp-email { display: block; margin-top: 0.1em; color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.4; overflow-wrap: break-word; }
@@ -3537,7 +3542,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 @container teacher (min-width: 26rem) {
   .teacher-home .tp-row {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.8fr) auto;
-    grid-template-areas: "name name status status" "kc lab pending action";
+    grid-template-areas: "name name status status" "kc lab pending action" "last last time time";
     align-items: start;
   }
   .teacher-home .tp-row > .tp-status { justify-self: end; text-align: right; }
@@ -3548,14 +3553,14 @@ details ul, .onboarding ol { padding-left: 24px; }
    situação lado a lado, a ação embaixo. Menos de 10,5rem (320 px a 200%): a situação ganha a linha inteira ("referência"
    não cabe em meia coluna e não é quebrada no meio). Menos de 8,5rem (texto ainda maior): um valor por linha. */
 @container teacher (max-width: 15rem) {
-  .teacher-home .tp-row { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "kc lab" "pending status" "action action"; align-items: start; }
+  .teacher-home .tp-row { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "name name" "kc lab" "pending status" "last last" "time time" "action action"; align-items: start; }
   .teacher-home .tp-row > .tp-action { justify-self: start; }
 }
 @container teacher (max-width: 10.5rem) {
-  .teacher-home .tp-row { grid-template-areas: "name name" "kc lab" "pending pending" "status status" "action action"; }
+  .teacher-home .tp-row { grid-template-areas: "name name" "kc lab" "pending pending" "status status" "last last" "time time" "action action"; }
 }
 @container teacher (max-width: 8.5rem) {
-  .teacher-home .tp-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "kc" "lab" "pending" "status" "action"; }
+  .teacher-home .tp-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: "name" "kc" "lab" "pending" "status" "last" "time" "action"; }
   /* C3: o preenchimento lateral dos botões cede largura ao rótulo; a palavra que ainda assim não cabe (fonte mais larga, como a
      DejaVu Sans do Linux) quebra em vez de sair do botão. */
   .teacher-home .button { padding-inline: var(--space-1); overflow-wrap: anywhere; }
@@ -3581,20 +3586,23 @@ details ul, .onboarding ol { padding-left: 24px; }
   }
   .teacher-home .tp-table thead small { display: block; margin: 0; font-size: 0.75rem; font-weight: 400; }
   .teacher-home .tp-table thead :is(.tp-avg, .tp-pending) { text-align: right; }
-  .teacher-home .tp-table table { display: table; }
+  .teacher-home .tp-table table { display: table; table-layout: fixed; }
   .teacher-home .tp-table tbody { display: table-row-group; }
   .teacher-home .tp-row { display: table-row; padding: 0; border: 0; }
-  .teacher-home .tp-row > :is(th, td) { display: table-cell; padding: var(--space-3); border-bottom: 1px solid var(--color-line-soft); vertical-align: middle; }
+  .teacher-home .tp-row > :is(th, td) { display: table-cell; padding: var(--space-3) var(--space-2); border-bottom: 1px solid var(--color-line-soft); vertical-align: middle; }
   .teacher-home .tp-row > .tp-status { justify-self: auto; text-align: left; }
   .teacher-home .tp-row:hover > :is(th, td), .teacher-home .tp-row:focus-within > :is(th, td) { background: color-mix(in srgb, var(--color-surface) 75%, transparent); }
   .teacher-home .tp-cell-label { display: none; }
   .teacher-home .tp-avg.is-below .tp-value::before { content: ""; }
-  .teacher-home :is(th, td).tp-avg { width: 8.5rem; text-align: right; }
-  .teacher-home :is(th, td).tp-pending { width: 5.5rem; text-align: right; }
-  .teacher-home :is(th, td).tp-status { width: 12rem; }
-  .teacher-home :is(th, td).tp-action { width: 9rem; text-align: right; }
+  .teacher-home :is(th, td).tp-name { width: 22%; }
+  .teacher-home :is(th, td).tp-avg { width: 10%; text-align: right; }
+  .teacher-home :is(th, td).tp-pending { width: 7%; text-align: right; }
+  .teacher-home :is(th, td).tp-status { width: 15%; }
+  .teacher-home :is(th, td).tp-last-activity { width: 15%; }
+  .teacher-home :is(th, td).tp-canvas-time { width: 10%; }
+  .teacher-home :is(th, td).tp-action { width: 11%; text-align: right; }
   .teacher-home .tp-avg .tp-ruler { margin-left: auto; }
-  .teacher-home .tp-state { white-space: nowrap; }
+  .teacher-home .tp-state { white-space: normal; }
   .teacher-home .tp-student { font-size: 0.9375rem; }
 }
 
@@ -3608,6 +3616,16 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home > .panel[role="alert"] h2 { margin: 0 0 var(--space-2); }
 .teacher-home > .panel[role="alert"] p { margin: 0 0 var(--space-3); max-width: none; font-size: 0.9375rem; }
 .teacher-home > .panel[role="alert"] .button { margin: 0; }
+
+/* Engajamento é informação auxiliar, restrita ao painel do instrutor. */
+.teacher-home .tp-engagement { margin-block: var(--space-5); padding-block: var(--space-4); border-block: 1px solid var(--color-line-soft); }
+.teacher-home .tp-engagement h2 { margin: 0; font-size: 1rem; }
+.teacher-home .tp-engagement-note, .teacher-home .tp-engagement-meta { color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.5; margin: var(--space-2) 0 0; }
+.teacher-home .tp-engagement-empty { color: var(--color-text-muted); font-size: 0.875rem; margin-bottom: 0; }
+.teacher-home .tp-engagement-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.teacher-home .tp-engagement-stats dt { color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.5; }
+.teacher-home .tp-engagement-stats dd { margin: var(--space-1) 0 0; font-size: 1.25rem; font-weight: 600; }
+.teacher-home .tp-row > :is(.tp-last-activity, .tp-canvas-time) { font-size: 0.8125rem; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* =========================================================
    35. Expansão 5 — Publicações da turma (docs/design-visual.md)

@@ -1,12 +1,61 @@
-import { current, demo, e, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
+import { canvasTimeZone, current, demo, e, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
 
 // Painel do instrutor (Expansão 4, docs/design-visual.md): instrumento de acompanhamento da turma. Situação da turma
 // (contagens que também filtram a lista), Foco da turma e a tabela de desempenho, na seção 34 do CSS (.teacher-home).
-// Contagens, filtros, ordenação, CSV, ids, data-* e ações são os de antes; só a composição e os textos de apoio mudam.
+// Engajamento acrescenta informação auxiliar; os critérios acadêmicos e as ações existentes são preservados.
 
 const thresholdsOf = (report) => ({ kc: report.thresholds?.kc ?? 70, lab: report.thresholds?.lab ?? 95 });
+const WEEK = 7 * 86400000;
+
+export function canvasTimestamp(value) {
+  if (typeof value !== "string") return null;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!parts) return null;
+  const day = new Date(Date.UTC(+parts[1], +parts[2] - 1, +parts[3]));
+  const at = Date.parse(value);
+  return Number.isFinite(at) && day.getUTCMonth() === +parts[2] - 1 && day.getUTCDate() === +parts[3] ? at : null;
+}
+
+export function canvasTimeText(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) return "Sem informação";
+  if (value > 0 && value < 60) return "<1min";
+  const minutes = Math.floor(value / 60), hours = Math.floor(minutes / 60);
+  return hours ? `${hours.toLocaleString("pt-BR")}h ${minutes % 60}min` : `${minutes}min`;
+}
+
+export function canvasDateText(value, includeTime = false) {
+  const at = canvasTimestamp(value);
+  return at === null ? "Sem informação" : new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone,
+    dateStyle: "short", ...(includeTime ? { timeStyle: "short" } : {}) }).format(at);
+}
+
+export function canvasActivityStatus(row, at = Date.now()) {
+  const last = canvasTimestamp(row.canvasActivity?.lastActivityAt);
+  if (last === null || last > at) return "unknown";
+  return at - last >= WEEK ? "inactive" : "recent";
+}
+
+export function canvasEngagementSummary(rows, at = Date.now()) {
+  const active = rows.filter((r) => !isWithdrawn(r));
+  const times = active.map((r) => r.canvasActivity?.totalActivityTime)
+    .filter((n) => typeof n === "number" && Number.isFinite(n) && n >= 0).sort((a, b) => a - b);
+  const middle = Math.floor(times.length / 2);
+  const median = !times.length ? null : times.length % 2 ? times[middle] : (times[middle - 1] + times[middle]) / 2;
+  const count = (kind) => active.filter((r) => canvasActivityStatus(r, at) === kind).length;
+  return { median, recent: count("recent"), inactive: count("inactive"), unknown: count("unknown"), timeKnown: times.length };
+}
+
+function canvasEngagement(report) {
+  const stats = canvasEngagementSummary(report.students || []), collected = canvasTimestamp(report.canvasEngagement?.collectedAt);
+  const known = stats.timeKnown || stats.recent || stats.inactive;
+  return `<section class="tp-engagement" aria-labelledby="canvas-engagement-title"><h2 id="canvas-engagement-title">Engajamento no Canvas</h2>
+    <p class="tp-engagement-note">Atividade registrada e acumulada no curso; não representa necessariamente tempo de estudo efetivo.</p>
+    ${known ? `<dl class="tp-engagement-stats"><div><dt>Tempo mediano registrado no Canvas</dt><dd>${canvasTimeText(stats.median)}</dd></div><div><dt>Com atividade nos últimos 7 dias</dt><dd>${stats.recent}</dd></div><div><dt>Sem atividade registrada há 7+ dias</dt><dd>${stats.inactive}</dd></div></dl>`
+    : '<p class="tp-engagement-empty">O Canvas ainda não disponibilizou dados de atividade para os alunos ativos.</p>'}
+    <p class="tp-engagement-meta">${stats.unknown ? `${plural(stats.unknown, "aluno ativo sem informação de última atividade", "alunos ativos sem informação de última atividade")}. ` : ""}${collected === null ? "Coleta ainda não disponível." : `Última coleta: <time datetime="${e(report.canvasEngagement.collectedAt)}">${canvasDateText(report.canvasEngagement.collectedAt, true)}</time> (Brasília).${Date.now() - collected > 86400000 ? ' <span>Coleta desatualizada.</span>' : ""}`}</p></section>`;
+}
 
 // Média com uma casa, como o aluno vê em "Meu desempenho"; duas quando uma casa mostraria a referência (ou mais) para
 // quem está abaixo dela (94,96% não vira "95%"). A situação continua vindo do backend; o número só é exibido.
@@ -58,11 +107,18 @@ export function filteredStudents() {
   const rows = state.report.students || [];
   // O filtro Desistentes sem nenhum desistente na turma (ex.: restaurado ao voltar ao painel) vale como Todos.
   const filter = state.filter === "withdrawn" && !rows.some(isWithdrawn) ? "all" : state.filter;
-  const filtered = rows.filter((r) => matchesFilter(r, filter) && normalize(`${r.name} ${r.email || ""}`).includes(query));
+  const activityFilter = state.canvasActivityFilter || "all", at = Date.now();
+  const filtered = rows.filter((r) => matchesFilter(r, filter) && normalize(`${r.name} ${r.email || ""}`).includes(query)
+    && (activityFilter === "all" || (!isWithdrawn(r) && canvasActivityStatus(r, at) === activityFilter)));
   return filtered.sort((a, b) => {
     if (isWithdrawn(a) !== isWithdrawn(b)) return isWithdrawn(a) ? 1 : -1;
     if (state.sort === "pending" && a.pending !== b.pending) return b.pending - a.pending;
     if (state.sort === "score" && a.total !== b.total) return (a.total ?? -1) - (b.total ?? -1);
+    if (state.sort === "last-activity") {
+      const left = canvasActivityStatus(a, at) === "unknown" ? null : canvasTimestamp(a.canvasActivity.lastActivityAt);
+      const right = canvasActivityStatus(b, at) === "unknown" ? null : canvasTimestamp(b.canvasActivity.lastActivityAt);
+      if (left !== right) return left === null ? 1 : right === null ? -1 : left - right;
+    }
     return a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
   });
 }
@@ -73,11 +129,12 @@ const csvCell = (value) => {
   return `"${(/^[=+\-@\t\r]/.test(text) ? "'" + text : text).replaceAll('"', '""')}"`;
 };
 
-// Participação vem sempre, no fim (as colunas anteriores não mudam de posição); Situação continua sendo a acadêmica.
+// Engajamento é acrescentado após as dez colunas existentes; Situação continua sendo a acadêmica.
 export function studentsCsv(rows) {
-  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal", "Participação"];
+  const header = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média geral (%)", "Com nota (%)", "Sem nota", "Situação", "Entrou no portal", "Participação", "Última atividade no Canvas (Brasília)", "Tempo no Canvas"];
   const lines = rows.map((r) => [r.name, r.email || "", r.kc ?? "", r.lab ?? "", r.total ?? "", r.progress ?? "", r.pending, labels[r.status] || r.status,
-    r.portalLinked === undefined ? "" : r.portalLinked ? "Sim" : "Não", isWithdrawn(r) ? "Desistente" : "Ativo"]);
+    r.portalLinked === undefined ? "" : r.portalLinked ? "Sim" : "Não", isWithdrawn(r) ? "Desistente" : "Ativo",
+    canvasDateText(r.canvasActivity?.lastActivityAt, true), canvasTimeText(r.canvasActivity?.totalActivityTime)]);
   // BOM para o Excel reconhecer UTF-8 (acentos); ponto e vírgula é o separador que ele espera em pt-BR.
   return "﻿" + [header, ...lines].map((line) => line.map(csvCell).join(";")).join("\r\n");
 }
@@ -115,15 +172,21 @@ function averageCell(kind, label, value, reference) {
 
 // Uma linha: nome (cabeçalho da linha), médias, atividades sem nota, situação por texto e forma, e o detalhe do aluno.
 // Abaixo de 46rem de largura o CSS empilha a linha; os rótulos visíveis das células só existem nesse modo.
+function canvasCells(r) {
+  const value = r.canvasActivity?.lastActivityAt, valid = canvasActivityStatus(r) !== "unknown";
+  const last = valid ? `<time datetime="${e(value)}" title="${canvasDateText(value, true)} (Brasília)" aria-label="${canvasDateText(value, true)} (Brasília)">${canvasDateText(value)}<small>${new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone, timeStyle: "short" }).format(canvasTimestamp(value))}</small></time>` : "Sem informação";
+  return `<td role="cell" class="tp-last-activity"><span class="tp-cell-label" aria-hidden="true">Última atividade no Canvas</span>${last}</td><td role="cell" class="tp-canvas-time"><span class="tp-cell-label" aria-hidden="true">Tempo no Canvas</span>${e(canvasTimeText(r.canvasActivity?.totalActivityTime))}</td>`;
+}
+
 function studentRow(r, t) {
   const tags = [isWithdrawn(r) && '<span class="tp-tag">Desistente</span>', r.portalLinked === false && '<span class="tp-tag is-portal">Não entrou no portal</span>'].filter(Boolean).join("");
-  return `<tr class="tp-row" role="row"><th scope="row" role="rowheader" class="tp-name"><span class="tp-student">${e(r.name)}</span><span class="tp-email${r.email ? "" : " is-missing"}">${r.email ? e(r.email).replace("@", "@<wbr>") : "E-mail ausente no Canvas"}</span>${tags ? `<span class="tp-tags">${tags}</span>` : ""}</th>${averageCell("kc", "Média KC", r.kc, t.kc)}${averageCell("lab", "Média LAB", r.lab, t.lab)}<td role="cell" class="tp-pending${r.pending ? "" : " is-zero"}"><span class="tp-cell-label" aria-hidden="true">Sem nota</span><span class="tp-value">${r.pending}</span></td><td role="cell" class="tp-status"><span class="tp-state is-${e(r.status)}">${e(labels[r.status] || r.status)}</span></td><td role="cell" class="tp-action"><button type="button" class="text-link tp-details" data-student-pending="${e(r.id)}" aria-label="Ver pendências de ${e(r.name)}">Ver pendências</button></td></tr>`;
+  return `<tr class="tp-row" role="row"><th scope="row" role="rowheader" class="tp-name"><span class="tp-student">${e(r.name)}</span><span class="tp-email${r.email ? "" : " is-missing"}">${r.email ? e(r.email).replace("@", "@<wbr>") : "E-mail ausente no Canvas"}</span>${tags ? `<span class="tp-tags">${tags}</span>` : ""}</th>${averageCell("kc", "Média KC", r.kc, t.kc)}${averageCell("lab", "Média LAB", r.lab, t.lab)}<td role="cell" class="tp-pending${r.pending ? "" : " is-zero"}"><span class="tp-cell-label" aria-hidden="true">Sem nota</span><span class="tp-value">${r.pending}</span></td><td role="cell" class="tp-status"><span class="tp-state is-${e(r.status)}">${e(labels[r.status] || r.status)}</span></td>${canvasCells(r)}<td role="cell" class="tp-action"><button type="button" class="text-link tp-details" data-student-pending="${e(r.id)}" aria-label="Ver pendências de ${e(r.name)}">Ver pendências</button></td></tr>`;
 }
 
 // Lista vazia por filtro ou busca: diz o que está limitando e oferece limpar (a mesma action do botão Limpar filtros).
 function noMatch() {
   const term = state.search ? `para “${e(state.search)}”` : "";
-  const filtered = state.filter !== "all";
+  const filtered = state.filter !== "all" || (state.canvasActivityFilter || "all") !== "all";
   const text = term && filtered ? `${term} com o filtro escolhido` : term || "neste filtro";
   return `<div class="tp-empty" role="status"><p>Nenhum aluno encontrado ${text}.</p><button class="button secondary" type="button" data-action="clear-filters">Limpar busca e filtros</button></div>`;
 }
@@ -142,12 +205,13 @@ export function teacherPage(view = {}) {
   // Com atualização automática, o envio de CSV é só alternativa (antes do horário ou se a sincronização falhar).
   const auto = !!current()?.autoSync;
   const filterOptions = [["all", "Todos os status"], ...(withdrawn ? [["active", "Ativos"], ["withdrawn", "Desistentes"]] : []), ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"], ["no-portal", "Ainda não entraram no portal"], ...Object.entries(labels).filter(([k]) => ["ok", "attention", "critical"].includes(k))];
-  const sortOptions = [["name", "Nome A–Z"], ["pending", "Mais atividades sem nota"], ["score", "Menor média geral primeiro"]];
+  const sortOptions = [["name", "Nome A–Z"], ["pending", "Mais atividades sem nota"], ["score", "Menor média geral primeiro"], ["last-activity", "Última atividade mais antiga primeiro"]];
   const shown = filtered.length === rows.length ? plural(rows.length, "aluno", "alunos") : `${filtered.length.toLocaleString("pt-BR")} de ${plural(rows.length, "aluno", "alunos")}`;
-  const table = `<div class="tp-table"><table role="table"><caption class="sr-only">Alunos da turma ${e(state.code)}: médias, atividades sem nota e situação</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader" class="tp-name">Aluno</th><th scope="col" role="columnheader" class="tp-avg">Média KC <small>referência ${t.kc}%</small></th><th scope="col" role="columnheader" class="tp-avg">Média LAB <small>referência ${t.lab}%</small></th><th scope="col" role="columnheader" class="tp-pending">Sem nota</th><th scope="col" role="columnheader" class="tp-status">Situação</th><th scope="col" role="columnheader" class="tp-action"><span class="sr-only">Ação</span></th></tr></thead><tbody role="rowgroup">${filtered.map((r) => studentRow(r, t)).join("")}</tbody></table></div>`;
+  const table = `<div class="tp-table"><table role="table"><caption class="sr-only">Alunos da turma ${e(state.code)}: médias, atividades sem nota, situação e atividade registrada no Canvas</caption><thead role="rowgroup"><tr role="row"><th scope="col" role="columnheader" class="tp-name">Aluno</th><th scope="col" role="columnheader" class="tp-avg">Média KC <small>referência ${t.kc}%</small></th><th scope="col" role="columnheader" class="tp-avg">Média LAB <small>referência ${t.lab}%</small></th><th scope="col" role="columnheader" class="tp-pending">Sem nota</th><th scope="col" role="columnheader" class="tp-status">Situação</th><th scope="col" role="columnheader" class="tp-last-activity">Última atividade no Canvas <small>Horário de Brasília</small></th><th scope="col" role="columnheader" class="tp-canvas-time">Tempo no Canvas <small>Acumulado no curso</small></th><th scope="col" role="columnheader" class="tp-action"><span class="sr-only">Ação</span></th></tr></thead><tbody role="rowgroup">${filtered.map((r) => studentRow(r, t)).join("")}</tbody></table></div>`;
   return `<div class="teacher-home">${heading("", `Painel da ${e(state.code)}`, "", `<div class="tp-actions"><button class="button secondary" data-view="activity-overview">Ver por atividade</button><button class="button ${auto ? "secondary" : "primary"}" data-view="import">${icon("upload")} ${auto ? "Enviar CSV manualmente" : "Atualizar notas"}</button></div>`)}
   ${updateInfo()}${rows.length ? `<div class="tp-summary">${overview(rows, t)}${focusEditor(view)}</div>` : focusEditor(view)}
-  <section class="tp-students" aria-labelledby="students-heading"><h2 id="students-heading" tabindex="-1">Desempenho dos alunos</h2>${rows.length ? `<div class="tp-tools"><div class="tp-field tp-search"><label for="search">Buscar aluno</label><input id="search" type="search" placeholder="Nome ou e-mail" value="${e(state.search)}"></div><div class="tp-field"><label for="status-filter">Filtrar</label><select id="status-filter">${filterOptions.map(([id, label]) => `<option value="${id}" ${state.filter === id ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-field"><label for="student-sort">Ordenar por</label><select id="student-sort">${sortOptions.map(([value, label]) => `<option value="${value}" ${state.sort === value ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-tool-actions"><button class="button secondary" data-action="clear-filters">Limpar filtros</button><button class="button secondary" data-action="export-csv" ${filtered.length ? "" : "disabled"}>Exportar CSV (${filtered.length})</button></div></div>
+  ${canvasEngagement(report)}
+  <section class="tp-students" aria-labelledby="students-heading"><h2 id="students-heading" tabindex="-1">Desempenho dos alunos</h2>${rows.length ? `<div class="tp-tools"><div class="tp-field tp-search"><label for="search">Buscar aluno</label><input id="search" type="search" placeholder="Nome ou e-mail" value="${e(state.search)}"></div><div class="tp-field"><label for="status-filter">Filtrar</label><select id="status-filter">${filterOptions.map(([id, label]) => `<option value="${id}" ${state.filter === id ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-field"><label for="canvas-activity-filter">Atividade no Canvas</label><select id="canvas-activity-filter">${[["all", "Todas as atividades"], ["inactive", "Sem atividade há 7+ dias"], ["recent", "Com atividade nos últimos 7 dias"], ["unknown", "Sem informação de atividade"]].map(([id, label]) => `<option value="${id}" ${(state.canvasActivityFilter || "all") === id ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-field"><label for="student-sort">Ordenar por</label><select id="student-sort">${sortOptions.map(([value, label]) => `<option value="${value}" ${state.sort === value ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-tool-actions"><button class="button secondary" data-action="clear-filters">Limpar filtros</button><button class="button secondary" data-action="export-csv" ${filtered.length ? "" : "disabled"}>Exportar CSV (${filtered.length})</button></div></div>
   <div class="tp-result"><p class="tp-count">${shown}</p>${state.filter === "pending" && filtered.length ? `<button class="button primary" data-action="reminders-batch" data-ids="${filtered.map((r) => e(r.id)).join(",")}">Enviar lembrete para ${plural(filtered.length, "aluno", "alunos")}</button>` : ""}</div>
   ${filtered.length ? table : noMatch()}` : '<div class="tp-empty is-start"><h3>A turma está pronta para começar.</h3><p>Importe o CSV do Canvas para publicar a primeira atualização.</p></div>'}</section></div>`;
 }

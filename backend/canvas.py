@@ -61,10 +61,11 @@ def _number(value):
     return "0" if text in ("-0", "") else text
 
 
-def course_students(client, course_id):
+def course_students(client, course_id, *, include_enrollments=False):
     """Alunos matriculados no curso: a mesma lista que vira as linhas do CSV da sincronização
     e a matrícula (ROSTER) usada nas validações do envio manual."""
-    return client.get_all(f"/courses/{course_id}/users?enrollment_type[]=student&include[]=email&per_page=100")
+    extra = "&include[]=enrollments" if include_enrollments else ""
+    return client.get_all(f"/courses/{course_id}/users?enrollment_type[]=student&include[]=email&per_page=100{extra}")
 
 
 def course_csv(client, course_id, students=None):

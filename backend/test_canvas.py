@@ -610,5 +610,174 @@ class ScheduledSyncProofTests(unittest.TestCase):
         self.assertEqual(self.proof()["status"], "succeeded")
 
 
+
+class CanvasActivityTests(unittest.TestCase):
+    setUp = SyncTests.setUp
+
+    def person(self, user_id=100, seconds=19200, last="2026-10-01T12:00:00Z", **overrides):
+        enrollment = {"id": 1, "user_id": user_id, "course_id": 4436, "type": "StudentEnrollment",
+                      "enrollment_state": "active", "total_activity_time": seconds, "last_activity_at": last,
+                      **overrides}
+        return {"id": user_id, "name": "Not persisted", "email": "private@example.test", "enrollments": [enrollment]}
+
+    def test_pagination_reuses_users_and_includes_enrollments_without_per_student_calls(self):
+        from canvas_activity import activity_record
+        data = course()
+        for student in data["students"]:
+            student["enrollments"] = self.person(student["id"])["enrollments"]
+        fake = FakeCanvas({"4436": data}, page_size=1)
+        users = course_students(CanvasClient(BASE, "t", opener=fake), "4436", include_enrollments=True)
+        record = activity_record("4436", users, "2026-10-02T12:00:00Z")
+        self.assertEqual(set(record["students"]), {"100", "101", "102"})
+        self.assertEqual(len(fake.calls), 3)
+        self.assertTrue(all("/courses/4436/users?" in c and "include[]=enrollments" in c for c in fake.calls))
+
+    def test_multiple_enrollments_use_max_not_sum_and_match_user_course_and_role(self):
+        from canvas_activity import activity_record
+        person = self.person(seconds=600)
+        person["enrollments"] += [
+            self.person(seconds=900, last="2026-10-02T09:00:00-03:00", id=2, course_section_id=20)["enrollments"][0],
+            self.person(seconds=99999, course_id=999)["enrollments"][0],
+            self.person(seconds=99999, user_id=200)["enrollments"][0],
+            self.person(seconds=99999, type="TeacherEnrollment")["enrollments"][0],
+            self.person(seconds=99999, enrollment_state="deleted")["enrollments"][0],
+        ]
+        result = activity_record("4436", [person, person], "2026-10-03T12:00:00Z")
+        self.assertEqual(result["students"], {"100": {"total_activity_time": 900, "last_activity_at": "2026-10-02T12:00:00+00:00"}})
+        self.assertNotIn("private", json.dumps(result))
+        self.assertNotIn("name", json.dumps(result))
+
+    def test_zero_is_valid_and_missing_invalid_or_null_values_are_not_zero(self):
+        from canvas_activity import activity_record
+        for seconds, expected in ((0, 0), (None, None), (-1, None), (True, None), ("0", None), (1.5, None)):
+            with self.subTest(seconds=seconds):
+                result = activity_record(4436, [self.person(seconds=seconds, last=None)], "2026-10-03T12:00:00Z")
+                self.assertEqual(result["students"]["100"], {"total_activity_time": expected, "last_activity_at": None})
+        for date in (None, "invalid", "2026-02-30T12:00:00Z", "2026-10-01T12:00:00", "2027-01-01T00:00:00Z"):
+            with self.subTest(date=date):
+                result = activity_record(4436, [self.person(last=date)], "2026-10-03T12:00:00Z")
+                self.assertIsNone(result["students"]["100"]["last_activity_at"])
+
+    def test_unavailable_fields_preserve_previous_but_explicit_null_is_a_collection(self):
+        from canvas_activity import save_activity
+        save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+        before = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
+        self.assertFalse(save_activity(self.repo, 4436, [{"id": 100}], "2026-10-03T12:00:00Z"))
+        self.assertEqual(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA"), before)
+        self.assertTrue(save_activity(self.repo, 4436, [self.person(seconds=None, last=None)], "2026-10-03T12:00:00Z"))
+        self.assertIsNone(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")["students"]["100"]["total_activity_time"])
+
+    def execute_activity(self, data, at="2026-10-03T12:00:00Z", opener=None):
+        fake = opener or FakeCanvas({"4436": data})
+        with patch("canvas_sync._now", return_value=at):
+            return run(self.repo, CanvasClient(BASE, "synthetic-token", opener=fake))
+
+    def test_activity_updates_when_grades_and_publication_are_unchanged(self):
+        data = course()
+        data["students"][0]["enrollments"] = self.person()["enrollments"]
+        self.assertEqual(self.execute_activity(data), ({"BRSA0267": "published"}, []))
+        publications = self.repo.list("COHORT#BRSA0267", "PUB#")
+        data["students"][0]["enrollments"][0].update(total_activity_time=20000, last_activity_at="2026-10-04T11:00:00Z")
+        self.assertEqual(self.execute_activity(data, "2026-10-04T12:00:00Z"), ({"BRSA0267": "unchanged"}, []))
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "PUB#"), publications)
+        stored = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
+        self.assertEqual(stored["students"]["100"]["total_activity_time"], 20000)
+        self.assertEqual(stored["collectedAt"], "2026-10-04T12:00:00+00:00")
+
+    def test_include_permission_or_network_failure_does_not_block_grades_or_erase_activity(self):
+        from canvas_activity import save_activity
+        for error in (urllib.error.HTTPError("safe", 403, "Denied", {}, None), urllib.error.URLError("unavailable")):
+            with self.subTest(error=type(error).__name__):
+                self.setUp()
+                save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+                old = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
+                fake = FakeCanvas({"4436": course()})
+                def opener(request, timeout=None):
+                    if "include[]=enrollments" in request.full_url:
+                        raise error
+                    return fake(request, timeout)
+                with patch("canvas.time.sleep"), self.assertLogs(level="WARNING"):
+                    self.assertEqual(self.execute_activity(course(), opener=opener), ({"BRSA0267": "published"}, []))
+                self.assertEqual(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA"), old)
+
+    def test_metric_storage_failure_does_not_block_grade_publication_or_log_payload(self):
+        data = course()
+        data["students"][0]["enrollments"] = self.person()["enrollments"]
+        original = self.repo.put
+        def put(pk, *args, **kwargs):
+            if pk.startswith("CANVAS_ACTIVITY#"):
+                raise RuntimeError("private@example.test secret-token")
+            return original(pk, *args, **kwargs)
+        with patch.object(self.repo, "put", side_effect=put), self.assertLogs(level="WARNING") as logs:
+            self.assertEqual(self.execute_activity(data), ({"BRSA0267": "published"}, []))
+        self.assertNotIn("private", " ".join(logs.output))
+        self.assertNotIn("secret-token", " ".join(logs.output))
+
+    def test_activity_syncs_once_per_course_even_without_auto_sync(self):
+        data = course()
+        data["students"][0]["enrollments"] = self.person()["enrollments"]
+        self.repo.put("COHORT#BRSA0267", "METADATA", {"code": "BRSA0267", "current": None, "canvasCourseId": "4436", "autoSync": False})
+        self.repo.put("COHORT#OUTRA", "METADATA", {"code": "OUTRA", "current": None, "canvasCourseId": "4436", "autoSync": False})
+        fake = FakeCanvas({"4436": data}, page_size=100)
+        self.assertEqual(self.execute_activity(data, opener=fake), ({}, []))
+        self.assertEqual(len([c for c in fake.calls if "/users?" in c]), 1)
+        self.assertIsNotNone(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA"))
+        self.assertEqual(self.repo.list("COHORT#BRSA0267", "PUB#"), [])
+
+    def test_dynamodb_round_trip_keeps_course_isolation_and_only_activity_fields(self):
+        import boto3
+        from moto import mock_aws
+        from repository import Repository
+        from canvas_activity import save_activity, instructor_activity, student_activity
+        with mock_aws(), patch.dict("os.environ", {"AWS_DEFAULT_REGION": "us-east-1",
+                                                  "TABLE_NAME": "activity-test", "IMPORTS_BUCKET": "imports-test"}):
+            table = boto3.resource("dynamodb", region_name="us-east-1").create_table(
+                TableName="activity-test", BillingMode="PAY_PER_REQUEST",
+                KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}],
+                AttributeDefinitions=[{"AttributeName": k, "AttributeType": "S"} for k in ("PK", "SK")])
+            repo = Repository()
+            save_activity(repo, 4436, [self.person(seconds=0, last=None)], "2026-10-03T12:00:00Z")
+            save_activity(repo, 9999, [self.person(seconds=100, course_id=9999)], "2026-10-03T12:00:00Z")
+            row = student_activity(instructor_activity(repo, 4436), 100)["canvasActivity"]
+            self.assertEqual(row, {"totalActivityTime": 0, "lastActivityAt": None,
+                                   "collectedAt": "2026-10-03T12:00:00+00:00"})
+            self.assertEqual(student_activity(instructor_activity(repo, 9999), 100)["canvasActivity"]["totalActivityTime"], 100)
+            self.assertIsNone(instructor_activity(repo, "other"))
+            stored = table.scan()["Items"]
+            self.assertEqual(len(stored), 2)
+            self.assertNotIn("private", json.dumps(stored))
+            self.assertNotIn("Not persisted", json.dumps(stored))
+            self.assertEqual({r["PK"] for r in stored}, {"CANVAS_ACTIVITY#4436", "CANVAS_ACTIVITY#9999"})
+
+    def test_only_authorized_teacher_report_exposes_metrics_and_matching_course(self):
+        from canvas_activity import save_activity
+        self.execute_activity(course())
+        save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+        teacher = Portal(self.repo, {"sub": "teacher", "email": "teacher@example.test", "groups": ["instructor"]})
+        admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
+        path = "/cohorts/BRSA0267/report"
+        with self.assertRaises(APIError) as refused:
+            teacher.dispatch("GET", path, {})
+        self.assertEqual(refused.exception.status, 403)
+        self.repo.put("USER#teacher", "TEACH#BRSA0267", {"code": "BRSA0267"})
+        before = admin.dispatch("GET", path, {})
+        for actor in (teacher, admin):
+            report = actor.dispatch("GET", path, {})
+            self.assertEqual(report["students"][0]["canvasActivity"]["totalActivityTime"], 19200)
+            self.assertEqual(report["canvasEngagement"]["courseId"], "4436")
+        student = Portal(self.repo, {"sub": "student", "email": "aluno0@example.test", "groups": []})
+        own = student.dispatch("GET", path, {})
+        self.assertNotIn("canvasActivity", json.dumps(own))
+        self.assertNotIn("canvasEngagement", own)
+        before = admin.dispatch("GET", path, {})  # binding above legitimately changes portalLinked
+        metadata = self.repo.get("COHORT#BRSA0267", "METADATA")
+        self.repo.put("COHORT#BRSA0267", "METADATA", {**metadata, "canvasCourseId": "other-course"})
+        old_backend_shape = admin.dispatch("GET", path, {})
+        self.assertNotIn("canvasEngagement", old_backend_shape)
+        self.assertTrue(all("canvasActivity" not in s for s in old_backend_shape["students"]))
+        for a, b in zip(before["students"], old_backend_shape["students"]):
+            self.assertEqual({k: v for k, v in a.items() if k != "canvasActivity"}, b)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -25,11 +25,11 @@ const ACTIVITIES = [
   { id: "a1", name: "254-NF- KC Introdução à rede", kind: "kc", active: true, completed: 4, pending: 1, needsReview: 3, average: 61 },
   { id: "a2", name: "255--Lab - Sub-redes", kind: "lab", active: true, completed: 5, pending: 0, needsReview: 1, average: 90 },
 ];
-const KEYS = ["me", "cohorts", "code", "report", "filter", "search", "sort", "focusDraft", "studentView"];
+const KEYS = ["me", "cohorts", "code", "report", "filter", "search", "sort", "focusDraft", "studentView", "canvasActivityFilter"];
 function withState(values, fn) {
   const saved = Object.fromEntries(KEYS.map((key) => [key, state[key]]));
   Object.assign(state, { me: { roles: ["instructor"], email: "instrutor@example.test" }, cohorts: [{ code: "BRSA0267", canTeach: true, autoSync: true }], code: "BRSA0267",
-    filter: "all", search: "", sort: "name", focusDraft: null, studentView: null }, values);
+    filter: "all", search: "", sort: "name", canvasActivityFilter: "all", focusDraft: null, studentView: null }, values);
   try { return fn(); } finally { Object.assign(state, saved); }
 }
 const report = (students = ROSTER, extra = {}) => ({ students, activities: ACTIVITIES, publication: { id: "p1", publishedAt: "2026-10-03T09:01:28Z" }, thresholds: { kc: 70, lab: 95 },
@@ -162,8 +162,8 @@ test("E4-U7: tabela semântica (legenda, cabeçalhos de coluna e de linha, papé
   assert.match(searched, /value="&quot;&gt;&lt;script&gt;"/);
   assert.match(searched, /Nenhum aluno encontrado para “&quot;&gt;&lt;script&gt;”\./);
   const table = (page().match(/<table[\s\S]*<\/table>/) || [""])[0];
-  assert.match(table, /^<table role="table"><caption class="sr-only">Alunos da turma BRSA0267: médias, atividades sem nota e situação<\/caption>/);
-  assert.equal((table.match(/<th scope="col" role="columnheader"/g) || []).length, 6);
+  assert.match(table, /^<table role="table"><caption class="sr-only">Alunos da turma BRSA0267: médias, atividades sem nota, situação e atividade registrada no Canvas<\/caption>/);
+  assert.equal((table.match(/<th scope="col" role="columnheader"/g) || []).length, 8);
   assert.equal((table.match(/<th scope="row" role="rowheader" class="tp-name">/g) || []).length, 7);
   assert.equal((table.match(/<tr class="tp-row" role="row">/g) || []).length, 7);
   assert.match(table, /Média KC <small>referência 70%<\/small>/);
@@ -177,4 +177,53 @@ test("E4-U8: carregamento e erro na composição do painel; o erro mantém o tí
   assert.equal(loading, '<div class="teacher-home"><section class="panel empty" role="status">Carregando sua turma…</section></div>');
   const error = withState({}, () => teacher.teacherHomeState('<section class="panel empty" role="alert">x</section>', true));
   assert.match(error, /^<div class="teacher-home"><div class="page-heading"><div><h1>Painel da BRSA0267<\/h1><\/div><\/div><section class="panel empty" role="alert">/);
+});
+
+const COLLECTION = "2026-10-20T12:00:00Z";
+const activity = (seconds, last) => ({ totalActivityTime: seconds, lastActivityAt: last, collectedAt: COLLECTION });
+
+test("Canvas: tempo zero, ausente, inválido, acumulado e datas em Brasília", () => {
+  assert.equal(teacher.canvasTimeText(19200), "5h 20min");
+  assert.equal(teacher.canvasTimeText(0), "0min");
+  assert.equal(teacher.canvasTimeText(30), "<1min");
+  for (const v of [null, undefined, NaN, Infinity, -1, "0"]) assert.equal(teacher.canvasTimeText(v), "Sem informação");
+  assert.equal(teacher.canvasDateText("2026-10-20T01:00:00Z", true), "19/10/2026, 22:00");
+  for (const v of [null, "invalid", "2026-02-30T00:00:00Z", "2026-10-20T01:00:00"]) assert.equal(teacher.canvasDateText(v), "Sem informação");
+});
+
+test("Canvas: mediana só dos ativos, zero válido e ausência fora dos inativos; sete dias é o limite", () => {
+  const at = Date.parse(COLLECTION), week = 7 * 86400000;
+  const rows = [row("1", "Zero", { canvasActivity: activity(0, new Date(at - 1000).toISOString()) }),
+    row("2", "Antigo", { canvasActivity: activity(19200, new Date(at - week).toISOString()) }),
+    row("3", "Sem dado", { canvasActivity: activity(null, null) }),
+    row("4", "Saiu", { ...WITHDRAWN, canvasActivity: activity(999999, "2020-01-01T00:00:00Z") })];
+  assert.deepEqual(teacher.canvasEngagementSummary(rows, at), { median: 9600, recent: 1, inactive: 1, unknown: 1, timeKnown: 2 });
+  assert.equal(teacher.canvasActivityStatus(row("5", "Futuro", { canvasActivity: activity(0, "2099-01-01T00:00:00Z") }), at), "unknown");
+  assert.equal(teacher.canvasEngagementSummary([]).median, null);
+});
+
+test("Canvas: filtro combina com Crítico/Atenção e busca; ordenação mantém desistentes ao fim e ausência após datas", () => {
+  const now = Date.now(), old = new Date(now - 8 * 86400000).toISOString(), older = new Date(now - 20 * 86400000).toISOString();
+  const rows = [row("1", "Crítica antiga", { status: "critical", canvasActivity: activity(0, old) }),
+    row("2", "Atenção antiga", { status: "attention", canvasActivity: activity(10, older) }),
+    row("3", "Crítica sem dado", { status: "critical" }), row("4", "Saiu", { ...WITHDRAWN, canvasActivity: activity(0, older) })];
+  withState({ report: report(rows), canvasActivityFilter: "inactive", filter: "critical" }, () => {
+    assert.deepEqual(teacher.filteredStudents().map((r) => r.id), ["1"]);
+    state.filter = "attention"; assert.deepEqual(teacher.filteredStudents().map((r) => r.id), ["2"]);
+    state.search = "zzz"; assert.deepEqual(teacher.filteredStudents(), []);
+  });
+  withState({ report: report(rows), sort: "last-activity" }, () => assert.deepEqual(teacher.filteredStudents().map((r) => r.id), ["2", "1", "3", "4"]));
+});
+
+test("Canvas: relatório antigo, coleta desatualizada e CSV pt-BR com duas colunas novas", () => {
+  assert.match(strip(page()), /Engajamento no Canvas.*ainda não disponibilizou.*Coleta ainda não disponível/);
+  const sample = row("1", "Aluno", { canvasActivity: activity(0, "2026-10-20T01:00:00Z") });
+  const html = page({ report: report([sample], { canvasEngagement: { collectedAt: "2020-01-01T00:00:00Z" } }) });
+  assert.match(strip(html), /Coleta desatualizada/);
+  assert.match(html, /<time datetime="2026-10-20T01:00:00Z"/);
+  const csv = teacher.studentsCsv([sample, row("2", "Sem dado")]);
+  assert.ok(csv.startsWith("\ufeff"));
+  assert.match(csv, /"Última atividade no Canvas \(Brasília\)";"Tempo no Canvas"/);
+  assert.match(csv, /"19\/10\/2026, 22:00";"0min"/);
+  assert.match(csv, /"Sem informação";"Sem informação"$/);
 });

@@ -11,6 +11,7 @@ import logging
 import os
 
 from canvas import CanvasClient, CanvasError, course_catalog, course_csv, course_students, token_expires_at
+from canvas_activity import save_activity
 from portal import APIError, save_catalog, save_roster, sync_from_canvas
 from grades import ValidationError
 from repository import Conflict, Repository
@@ -58,7 +59,18 @@ def run(repo, client, event=None, clock=None):
             # Matrícula gravada a cada execução, com ou sem autoSync e mesmo que as notas não mudem
             # (integrity.py). Se o Canvas falhar, o ROSTER anterior fica como está.
             try:
-                rosters[course] = course_students(client, course)
+                try:
+                    rosters[course] = course_students(client, course, include_enrollments=True)
+                except CanvasError:
+                    # Falha do include não bloqueia o caminho de notas já existente.
+                    logging.warning("Atividade Canvas indisponível; preservando a coleta anterior.")
+                    rosters[course] = course_students(client, course)
+                else:
+                    try:
+                        save_activity(repo, course, rosters[course], _now())
+                    except Exception:
+                        # Métricas são auxiliares. Sem payload, e-mail, token ou exceção no log.
+                        logging.warning("Coleta de atividade Canvas não salva; notas seguem normalmente.")
                 save_roster(repo, course, rosters[course])
             except CanvasError as err:
                 rosters[course] = err
