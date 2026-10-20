@@ -3,6 +3,9 @@ description: >-
   Envia releases/<id>/ com If-None-Match e confere os objetos remotos. Não ativa, não sobrescreve e não apaga.
   Requer Python preparado por setup-deploy-python antes das credenciais da role de deploy (OIDC).
 inputs:
+  built-release-id:
+    description: "Release ID produzido pela construção e validado antes do OIDC"
+    required: true
   expected-main-sha:
     description: "SHA esperado da main (do gate: confirmado pelo operador ou o commit do CI); o HEAD atual é revalidado antes da primeira escrita"
     required: true
@@ -26,6 +29,7 @@ runs:
       name: Publica com If-None-Match e confere hashes, MIME e cache remotos
       shell: bash
       env:
+        BUILT_RELEASE_ID: ${{ inputs.built-release-id }}
         EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}
         GH_TOKEN: ${{ github.token }}
         RELEASE_DIR: ${{ inputs.release-dir }}

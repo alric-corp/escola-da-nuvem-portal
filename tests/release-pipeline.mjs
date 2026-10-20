@@ -88,7 +88,7 @@ test("workflow: gatilhos automático (CI verde na main) e manual, padrão prepar
   assert.equal(inputs.expected_main_sha.required, true);
   assert.equal(inputs.s3_probe.default, false);
   assert.equal(inputs.allow_config_change.default, false);
-  assert.deepEqual(Object.keys(inputs).sort(), ["allow_config_change", "confirm_release_id", "expected_active_release",
+  assert.deepEqual(Object.keys(inputs).sort(), ["allow_config_change", "approved_manifest_sha256", "approved_release_id", "confirm_release_id", "expected_active_release",
     "expected_main_sha", "operation", "release_id", "s3_probe", "source"]);
   // expected_main_sha só é comparado no gate; nenhum checkout recebe ref, repository ou SHA.
   for (const [name, job] of Object.entries(jobs)) {
@@ -108,7 +108,9 @@ test("workflow: gatilhos automático (CI verde na main) e manual, padrão prepar
     assert.match(line, /^\s+(EXPECTED_MAIN_SHA|expected-main-sha): \$\{\{ (needs|steps)\.gate\.outputs\.expected-main-sha \}\}$/, line);
   }
   assert.deepEqual(jobs.gate.outputs, { operation: "${{ steps.gate.outputs.operation }}", source: "${{ steps.gate.outputs.source }}",
-    "expected-main-sha": "${{ steps.gate.outputs.expected-main-sha }}" });
+    "expected-main-sha": "${{ steps.gate.outputs.expected-main-sha }}",
+    "approved-release-id": "${{ steps.gate.outputs.approved-release-id }}",
+    "approved-manifest-sha256": "${{ steps.gate.outputs.approved-manifest-sha256 }}" });
   assert.equal(steps("gate").at(-1).id, "gate");
 });
 
@@ -268,7 +270,7 @@ test("HEAD da main revalidado no gate, depois da aprovação e imediatamente ant
   assert.equal(probe.env.GH_TOKEN, "${{ github.token }}");
   assert.equal(probe.env.EXPECTED_MAIN_SHA, GATE_OUT("expected-main-sha"));
   // Os scripts chamam a guarda antes de escrever: publicação, ativação/rollback e sonda.
-  assert.match(read(".github/scripts/publish-release.py"), /publish_release\([^)]*before_write=main_head_guard\(\)\)/);
+  assert.match(read(".github/scripts/publish-release.py"), /publish_release\([^)]*before_write=main_head_guard\(\), approve=approve\)/);
   assert.match(read(".github/scripts/release_cli.py"), /before_write=main_head_guard\(\)\)/);
   const access = read(".github/scripts/verify-access.py");
   assert.ok(access.indexOf("main_head_guard()()") > 0 && access.indexOf("main_head_guard()()") < access.indexOf("results = probe("));
@@ -287,6 +289,7 @@ test("workflow: variables lidas são as do contrato e o kill switch fica no repo
 test("publicação e ativação: build sem credencial, pacote revalidado, deploy ativa só depois de publicar e registro preservado", () => {
   assert.ok(!steps("build").some((s) => usesOf(s) === AWS_ACTION));
   assert.deepEqual(steps("build").map((s) => s.uses || s.run).slice(2), ["./.github/actions/build-frontend", "./.github/actions/validate-release",
+    'python3 -B .github/scripts/check-publication-approval.py --release-dir "$RELEASE_DIR"',
     "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"]);
   const publish = steps("publish");
   const order = (predicate) => publish.findIndex(predicate);
@@ -362,4 +365,40 @@ test("CI roda as suítes da pipeline: histórico completo, mutações da release
   assert.deepEqual(bootstrap.steps.filter((s) => s.run).map((s) => s.run),
     ["terraform fmt -check -recursive", "terraform init -backend=false", "terraform validate", "terraform test",
       "python3 ../../tests/contracts/bootstrap_mutations.py"]);
+});
+
+test("aprovação externa: gate, build e pacote recebido vinculados antes do OIDC e da escrita", () => {
+  const keys = { APPROVED_RELEASE_ID: "approved_release_id", APPROVED_MANIFEST_SHA256: "approved_manifest_sha256" };
+  for (const [key, input] of Object.entries(keys)) {
+    assert.equal(workflow.on.workflow_dispatch.inputs[input].required, false);
+    assert.equal(workflow.on.workflow_dispatch.inputs[input].type, "string");
+    assert.equal(steps("gate").at(-1).env[key], `\${{ inputs.${input} }}`);
+    for (const job of ["build", "publish"]) assert.equal(jobs[job].env[key], GATE_OUT(input.replaceAll("_", "-")));
+  }
+  for (const name of ["build", "publish"]) {
+    const check = steps(name).findIndex(s => /check-publication-approval\.py/.test(s.run || ""));
+    assert.ok(check > 1, name);
+    assert.equal(steps(name)[check].if, undefined);
+    assert.equal(steps(name)[check]["continue-on-error"], undefined);
+    assert.equal(jobs[name].env.OPERATION, GATE_OUT("operation"));
+    assert.equal(jobs[name].env.SOURCE, GATE_OUT("source"));
+    assert.equal(jobs[name].env.EXPECTED_MAIN_SHA, GATE_OUT("expected-main-sha"));
+    assert.equal(steps(name)[check].env.BUILT_RELEASE_ID, name === "build"
+      ? "${{ steps.build.outputs.release-id }}" : "${{ needs.build.outputs.release-id }}");
+    if (name === "publish") assert.ok(check < steps(name).findIndex(s => usesOf(s) === AWS_ACTION));
+    else assert.ok(check < steps(name).findIndex(s => usesOf(s) === "actions/upload-artifact"));
+  }
+  assert.equal(steps("publish").find(s => s.uses === "./.github/actions/publish-release").with["built-release-id"],
+    "${{ needs.build.outputs.release-id }}");
+  assert.equal(actions["publish-release"].inputs["built-release-id"].required, true);
+  assert.equal(actions["publish-release"].runs.steps.at(-1).env.BUILT_RELEASE_ID, "${{ inputs.built-release-id }}");
+  const cli = read(".github/scripts/publish-release.py");
+  assert.match(cli, /authorize_write\(/);
+  assert.match(cli, /approve=approve/);
+  assert.ok(cli.indexOf("check_package(args.release_dir") < cli.indexOf("s3, _, _ = aws_clients"));
+  const core = read(".github/scripts/frontend_release.py");
+  const publication = core.slice(core.indexOf("def publish_release("), core.indexOf("def remote_manifest("));
+  assert.match(publication, /\*, approve\)/, "callback obrigatório, sem default que permita omissão");
+  assert.ok(publication.indexOf("approve(manifest, assets, pointer, manifest_bytes)") < publication.indexOf("_put_release_object("));
+  assert.match(publication, /\("manifest.json", manifest_bytes, MIME\[".json"\]\)/);
 });

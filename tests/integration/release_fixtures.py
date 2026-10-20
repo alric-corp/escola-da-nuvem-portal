@@ -139,6 +139,7 @@ def load_script(name):
 
 def repo_env(**overrides):
     env = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "EXPECTED_MAIN_SHA": SHA,
+           "APPROVED_RELEASE_ID": RID, "APPROVED_MANIFEST_SHA256": "a" * 64,
            "OPERATION": "prepare", "SOURCE": "main", "GITHUB_REPOSITORY": REPO, "DEPLOY_ENABLED": "true"}
     env.update(overrides)
     return {k: v for k, v in env.items() if v is not None}
