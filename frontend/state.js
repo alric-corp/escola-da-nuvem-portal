@@ -12,6 +12,7 @@ export let state = {
   senderError: "",
   senderLoading: false,
   sort: "name",
+  canvasActivityFilter: "all",
   teacherFilters: null,
   acknowledgeRemoved: false,
   importLoading: false,

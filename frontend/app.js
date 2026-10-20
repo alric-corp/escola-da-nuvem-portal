@@ -60,7 +60,7 @@ function saveContext() {
   if (!state.me || demo || state.studentView) return;
   localStorage.setItem("avanca.context", JSON.stringify({ owner: state.me.email, code: state.code,
     view: ["student-pending", "reminders-batch"].includes(state.view) ? "overview" : state.view,
-    filter: state.filter, search: state.search, sort: state.sort, activityKind: state.activityKind, activityModule: state.activityModule }));
+    filter: state.filter, search: state.search, sort: state.sort, canvasActivityFilter: state.canvasActivityFilter, activityKind: state.activityKind, activityModule: state.activityModule }));
 }
 function persistStudentView() {
   try {
@@ -852,7 +852,7 @@ async function boot() {
       try {
         const context = JSON.parse(localStorage.getItem("avanca.context") || "null");
         if (context?.owner === state.me.email) {
-          for (const key of ["code", "view", "filter", "search", "sort", "activityKind", "activityModule"])
+          for (const key of ["code", "view", "filter", "search", "sort", "canvasActivityFilter", "activityKind", "activityModule"])
             if (typeof context[key] === "string") state[key] = context[key];
         }
       } catch { /* Ignore a damaged navigation preference. */ }
@@ -1035,7 +1035,7 @@ const actions = {
   "reminders-batch": (button) => remindersHandlers.openBatch(button.dataset.ids),
   "send-reminders-batch": () => sendReminderBatch(),
   "clear-filters": () => {
-    Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name" });
+    Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name", canvasActivityFilter: "all" });
     render();
   },
   "export-csv": () => {
@@ -1224,7 +1224,7 @@ document.addEventListener("click", (event) => {
     const previousView = state.view;
     const returning = ["student-pending", "reminders-batch", "activity-overview"].includes(state.view) && button.dataset.view === "overview";
     if (state.view === "overview" && button.dataset.view === "activity-overview")
-      state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort };
+      state.teacherFilters = { search: state.search, filter: state.filter, sort: state.sort, canvasActivityFilter: state.canvasActivityFilter };
     state.view = button.dataset.view;
     state.search = "";
     state.activityKind = "all";
@@ -1313,6 +1313,7 @@ document.addEventListener("change", (event) => {
       state.focusDraft = null;
       state.filter = "all";
       state.sort = "name";
+      state.canvasActivityFilter = "all";
       state.studentQuery = "";
       state.studentResults = null;
       state.studentSearchError = "";
@@ -1324,6 +1325,7 @@ document.addEventListener("change", (event) => {
         await loadReport();
       }
     });
+  if (target.id === "canvas-activity-filter") { state.canvasActivityFilter = target.value; render(); }
   if (target.id === "student-sort") { state.sort = target.value; render(); }
   if (["fb-filter-status", "fb-filter-type", "fb-filter-cohort"].includes(target.id)) {
     busy(null, () => adminFeedbackHandlers.setFilter(target.id.slice("fb-filter-".length), target.value));

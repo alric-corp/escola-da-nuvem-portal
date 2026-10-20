@@ -73,7 +73,7 @@ test("A: zero desistentes mantém cartões, filtros, tabela e ordenação atuais
   ]);
   assert.deepEqual(options(html, "status-filter"), [["all", "Todos os status"], ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"],
     ["no-portal", "Ainda não entraram no portal"], ["ok", "Médias na referência"], ["attention", "Atenção"], ["critical", "Crítico"]]);
-  assert.doesNotMatch(strip(html), /desistente|Ativos|withdrawn/i);
+  assert.doesNotMatch(strip(html.match(/<section class="tp-overview"[\s\S]*?<\/section>/)[0]), /desistente|Ativos|withdrawn/i);
   assert.deepEqual(teacherRows(html).map((r) => r.name), ["Abel Sem Média", "Alice Saiu", "Ana Ativa", "Bruno Atenção", "Caio Saiu", "Carla Crítica"]);
   const expected = { all: ["Abel Sem Média", "Alice Saiu", "Ana Ativa", "Bruno Atenção", "Caio Saiu", "Carla Crítica"], ok: ["Ana Ativa", "Caio Saiu"],
     attention: ["Bruno Atenção"], critical: ["Alice Saiu", "Carla Crítica"], pending: ["Abel Sem Média", "Alice Saiu", "Bruno Atenção", "Carla Crítica"],
@@ -313,7 +313,7 @@ test("Ver por atividade reflete só as estatísticas do backend, com ou sem desi
   assert.match(strip(withMarks), /002 LAB Rede .* LAB 0% 100% — —/);
 });
 
-// C7.2.4. CSV exportado pelo portal (não o CSV de entrada do Canvas): coluna Participação sempre presente, no fim, com
+// C7.2.4. CSV exportado pelo portal (não o CSV de entrada do Canvas): coluna Participação sempre presente, na décima posição, com
 // Ativo ou Desistente; Situação continua sendo a situação acadêmica. O export segue a população filtrada da tela.
 const { studentsCsv } = await import("../frontend/pages/teacher.js");
 const { pendingPage } = await import("../frontend/pages/reminders.js");
@@ -321,9 +321,11 @@ const OLD_HEADER = ["Nome", "E-mail", "Média KC (%)", "Média LAB (%)", "Média
 const parseCsv = (csv) => csv.replace(/^﻿/, "").split("\r\n").map((line) => line.split(";").map((cell) => cell.replace(/^"|"$/g, "").replaceAll('""', '"')));
 const exportOf = (students, values = {}) => withState({ report: report(students), ...values }, () => parseCsv(studentsCsv(filteredStudents())));
 
-test("CSV A: sem marcas, a única mudança é a coluna Participação no fim, com Ativo para todos", () => {
-  const [header, ...rows] = exportOf(rowsWith());
-  assert.deepEqual(header, [...OLD_HEADER, "Participação"]);
+test("CSV A: sem marcas, Participação continua na décima coluna, com Ativo para todos", () => {
+  const [header, ...exported] = exportOf(rowsWith());
+  const rows = exported.map((r) => r.slice(0, 10));
+  assert.ok(exported.every((r) => r.length === 12 && r[10] === "Sem informação" && r[11] === "Sem informação"));
+  assert.deepEqual(header, [...OLD_HEADER, "Participação", "Última atividade no Canvas (Brasília)", "Tempo no Canvas"]);
   assert.equal(rows.length, 6);
   assert.ok(rows.every((r) => r.length === 10 && r[9] === "Ativo"));
   assert.deepEqual(rows.find((r) => r[0] === "Alice Saiu"), ["Alice Saiu", "alice@example.test", "30", "40", "35", "20", "4", "Crítico", "Não", "Ativo"]);
@@ -346,7 +348,7 @@ test("CSV B–F: misto em Todos, Ativos e Desistentes, com Situação acadêmica
 test("CSV G: escape de fórmula, aspas e ponto e vírgula continua igual, também na linha do desistente", () => {
   const tricky = [{ ...BASE[0], id: "9", name: '=SOMA(1;2) "x"', email: "+a@example.test", ...WITHDRAWN }];
   const csv = withState({ report: report(tricky) }, () => studentsCsv(filteredStudents()));
-  assert.equal(csv.split("\r\n")[1], `"'=SOMA(1;2) ""x""";"'+a@example.test";"80";"96";"88";"100";"0";"Médias na referência";"Sim";"Desistente"`);
+  assert.equal(csv.split("\r\n")[1], `"'=SOMA(1;2) ""x""";"'+a@example.test";"80";"96";"88";"100";"0";"Médias na referência";"Sim";"Desistente";"Sem informação";"Sem informação"`);
 });
 
 // Detalhe do aluno: uma só ação de participação, conforme o status que o servidor devolveu na prévia; o título tem

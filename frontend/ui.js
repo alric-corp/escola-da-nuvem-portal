@@ -120,7 +120,8 @@ export function notice(message, error = false) {
 // agendamento do Terraform (infra/terraform/canvas-sync.tf, cron(0 6,18 * * ? *) em
 // America/Sao_Paulo); a API não expõe o horário, então mude os dois juntos.
 export const canvasSyncHours = [6, 18];
-const syncZone = "America/Sao_Paulo";
+export const canvasTimeZone = "America/Sao_Paulo";
+const syncZone = canvasTimeZone;
 
 // Próximo horário de verificação a partir de agora, como "hoje às 18h" / "amanhã às 6h".
 export function nextCanvasSync(now = new Date()) {

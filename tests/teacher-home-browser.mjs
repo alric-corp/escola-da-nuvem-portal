@@ -163,7 +163,7 @@ test("P1: composição — tabela com largura (52rem de painel), linhas empilhad
     if (m.statusesSide) assert.ok(m.sameRow, `${id}: números das situações alinhados`);
     assert.equal(m.frame, width <= 390 || text > 1 ? "0px" : "1px", `${id}: moldura da Situação da turma`);
     // O cabeçalho da coluna existe para a leitura assistiva em todos os modos.
-    assert.deepEqual(await page.locator(".tp-table thead th").allTextContents(), ["Aluno", "Média KC referência 70%", "Média LAB referência 95%", "Sem nota", "Situação", "Ação"]);
+    assert.deepEqual(await page.locator(".tp-table thead th").allTextContents(), ["Aluno", "Média KC referência 70%", "Média LAB referência 95%", "Sem nota", "Situação", "Última atividade no Canvas Horário de Brasília", "Tempo no Canvas Acumulado no curso", "Ação"]);
     assert.deepEqual(errors, []);
     await context.close();
   }
@@ -558,6 +558,74 @@ test("P10: o clique no Sair da conta chega ao Sair no tablet e no desktop estrei
       `${id}: ${p.peca} da conta em ${Math.round(p.left)}–${Math.round(p.right)} px, fora da barra (${Math.round(m.inner.left)}–${Math.round(m.inner.right)} px)`);
     assert.deepEqual(teclado, ["logout"], `${id}: Espaço no Sair`);
     if (o.oneLine) assert.ok(m.sair.top < m.avatar.bottom && m.sair.bottom > m.avatar.top, `${id}: com texto normal a conta fica numa linha (iniciais, nome e Sair)`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+const engagedReport = () => report([
+  row("1", "Aluno Recente", { canvasActivity: { totalActivityTime: 0, lastActivityAt: "2026-10-10T12:00:00Z" } }),
+  row("2", "Aluno Atenção", { status: "attention", kc: 60, canvasActivity: { totalActivityTime: 19200, lastActivityAt: "2026-09-30T01:00:00Z" } }),
+  row("3", "Aluno Crítico", { status: "critical", kc: 40, lab: 50, canvasActivity: { totalActivityTime: 3600, lastActivityAt: "2026-10-01T12:00:00Z" } }),
+  row("4", "Aluno Sem Dado", { status: "critical", kc: 40, lab: 50 }),
+  row("5", "Aluno Desistente", { participationStatus: "WITHDRAWN", canvasActivity: { totalActivityTime: 999999, lastActivityAt: "2020-01-01T12:00:00Z" } }),
+], { canvasEngagement: { courseId: "4436", collectedAt: "2026-10-11T09:00:00Z" } });
+
+test("Canvas: resumo, atividade por aluno, filtro combinado, ordenação, CSV e limpar filtros", async () => {
+  const { context, page, errors } = await open({ data: engagedReport });
+  const summary = page.locator(".tp-engagement");
+  assert.deepEqual(await summary.locator("dd").allTextContents(), ["1h 0min", "1", "2"]);
+  assert.match(await summary.innerText(), /1 aluno ativo sem informação/);
+  assert.match(await summary.innerText(), /não representa necessariamente tempo de estudo efetivo/);
+  await page.getByRole("combobox", { name: "Atividade no Canvas", exact: true }).focus();
+  await page.locator("#canvas-activity-filter").selectOption("inactive");
+  assert.equal(await page.evaluate(() => document.activeElement.id), "canvas-activity-filter", "filtro preserva o foco após render");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => document.activeElement.id), "student-sort", "próximo controle alcançável por teclado");
+  await page.locator("#status-filter").selectOption("critical");
+  assert.deepEqual(await page.locator(".tp-student").allTextContents(), ["Aluno Crítico"]);
+  await page.locator("#search").fill("ausente");
+  await page.waitForTimeout(200);
+  assert.match(await page.locator(".tp-empty").innerText(), /Nenhum aluno encontrado/);
+  await page.getByRole("button", { name: "Limpar busca e filtros" }).click();
+  assert.equal(await page.locator("#canvas-activity-filter").inputValue(), "all");
+  await page.locator("#student-sort").selectOption("last-activity");
+  assert.deepEqual(await page.locator(".tp-student").allTextContents(), ["Aluno Atenção", "Aluno Crítico", "Aluno Recente", "Aluno Sem Dado", "Aluno Desistente"]);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Exportar CSV/ }).click();
+  const csv = await readFile(await (await download).path(), "utf8");
+  assert.ok(csv.startsWith("\ufeff"));
+  assert.match(csv, /Última atividade no Canvas \(Brasília\)/);
+  assert.match(csv, /29\/09\/2026, 22:00/);
+  assert.match(csv, /"0min"/);
+  assert.match(csv, /"Sem informação";"Sem informação"/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("Canvas: Crítico vermelho, Atenção âmbar e referência verde-água; desktop/mobile com dados e sem cortes", async () => {
+  for (const width of [1440, 390, 320]) {
+    const { context, page, errors } = await open({ width, data: engagedReport });
+    const colors = await page.evaluate(() => {
+      const token = (name) => { const el = document.createElement("span"); el.style.color = `var(${name})`; document.body.append(el); const c = getComputedStyle(el).color; el.remove(); return c; };
+      const danger = token("--color-danger"), warning = token("--color-warning"), success = token("--color-success");
+      const critical = document.querySelector('.tp-filter.is-critical > span');
+      return { danger, warning, success, count: getComputedStyle(document.querySelector('.tp-filter.is-critical > strong')).color,
+        criticalRing: getComputedStyle(critical, "::before").backgroundImage,
+        attentionRing: getComputedStyle(document.querySelector('.tp-filter.is-attention > span'), "::before").backgroundImage,
+        criticalBar: getComputedStyle(document.querySelector('.tp-scale .is-critical')).backgroundColor,
+        okBar: getComputedStyle(document.querySelector('.tp-scale .is-ok')).backgroundColor,
+        status: getComputedStyle(document.querySelector('.tp-state.is-critical')).color,
+        overflow: [...document.querySelectorAll('.tp-last-activity,.tp-canvas-time')].filter((el) => el.scrollWidth > el.clientWidth + 1).map(el=>el.className) };
+    });
+    assert.equal(colors.count, colors.danger); assert.equal(colors.status, colors.danger); assert.equal(colors.criticalBar, colors.danger);
+    assert.ok(colors.criticalRing.includes(colors.danger)); assert.ok(colors.attentionRing.includes(colors.warning)); assert.equal(colors.okBar, colors.success);
+    assert.deepEqual(colors.overflow, [], `${width}: novas células sem cortes`);
+    assert.deepEqual(await clipped(page), [], `${width}: controles sem cortes`);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await page.locator(".tp-last-activity time").first().getAttribute("aria-label").then(x=>x.endsWith("(Brasília)")), true);
+    // Evidência visual opcional, com dados inteiramente fictícios e sem tokens.
+    if (process.env.TEACHER_SCREENSHOTS && width !== 320) await page.screenshot({ path: path.join(process.env.TEACHER_SCREENSHOTS, width === 1440 ? "desktop.png" : "mobile.png"), fullPage: true });
     assert.deepEqual(errors, []);
     await context.close();
   }

@@ -247,7 +247,7 @@ try {
     await context.close();
   }
 
-  // CSV exportado pelo portal: coluna Participação no fim, em Todos e em Desistentes; Situação continua acadêmica.
+  // CSV exportado pelo portal: Participação mantém a posição, antes de Canvas; Situação continua acadêmica.
   {
     const { context, tab, log } = await open({ marks: { 2: "WITHDRAWN" } });
     const exportCsv = async (count) => {
@@ -256,13 +256,13 @@ try {
       return (await readFile(await (await download).path(), "utf8")).replace(/^﻿/, "").split("\r\n");
     };
     const all = await exportCsv(3);
-    assert.match(all[0], /"Situação";"Entrou no portal";"Participação"$/);
+    assert.match(all[0], /"Situação";"Entrou no portal";"Participação";"Última atividade no Canvas \(Brasília\)";"Tempo no Canvas"$/);
     assert.deepEqual(all.slice(1).map((line) => line.split(";").map((c) => c.replace(/"/g, ""))).map((c) => [c[0], c[7], c[9]]),
       [["Ana Ativa", "Médias na referência", "Ativo"], ["Carla Crítica", "Crítico", "Ativo"], ["Bruno Atenção", "Atenção", "Desistente"]]);
     await tab.locator("#status-filter").selectOption("withdrawn");
     const withdrawn = await exportCsv(1);
     assert.equal(withdrawn.length, 2);
-    assert.match(withdrawn[1], /^"Bruno Atenção";.*;"Atenção";"Não";"Desistente"$/);
+    assert.match(withdrawn[1], /^"Bruno Atenção";.*;"Atenção";"Não";"Desistente";"Sem informação";"Sem informação"$/);
     assert.deepEqual(log.errors, []);
     await context.close();
   }

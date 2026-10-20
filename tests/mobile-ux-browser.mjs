@@ -201,8 +201,8 @@ try {
     }
   }
 
-  // Painel do instrutor no desktop: a situação ("Médias na referência", "Atenção", "Crítico") e "Não entrou no portal"
-  // não quebram linha; a coluna da ação existe (com nome para a leitura assistiva) e "Ver pendências" continua dentro da
+  // Painel do instrutor no desktop: com as duas colunas de Canvas, a situação pode ocupar até duas linhas sem corte;
+  // "Não entrou no portal" permanece em uma linha. A ação tem nome assistivo e "Ver pendências" continua dentro da
   // tela; a tabela não precisa de rolagem própria mesmo com o nome real mais longo já visto em produção (58 caracteres).
   // Em 1024 px (menos de 52rem de painel) a lista já é a de linhas empilhadas: as mesmas garantias valem.
   const realLongName = "Allysson Borges - Allysson Roberto Borges Lima De Moraes";
@@ -214,7 +214,12 @@ try {
       range.selectNodeContents(el);
       return range.getClientRects().length <= 1;
     }));
-    assert.ok(await oneLine(page.locator(".tp-row .tp-state")), `situação em uma linha em ${width}px`);
+    assert.ok(await page.locator(".tp-row .tp-state").evaluateAll((els) => els.every((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size <= 2
+        && el.scrollWidth <= el.clientWidth + 1;
+    })), `situação legível em até duas linhas em ${width}px`);
     assert.ok(await oneLine(page.locator(".tp-row .tp-tag")), `"Não entrou no portal" em uma linha em ${width}px`);
     assert.equal(await page.locator(".tp-table thead th.tp-action").textContent(), "Ação", `coluna da ação existe em ${width}px`);
     assert.ok(await insideViewport(page.locator(".tp-action .text-link")), `Ver pendências visível em ${width}px`);
