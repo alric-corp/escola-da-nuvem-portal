@@ -4,8 +4,11 @@ import hashlib
 import io
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -282,6 +285,85 @@ class PublicationApprovalTests(unittest.TestCase):
     def test_main_advancing_still_prevents_every_put(self):
         self.github.head = "e5" * 20
         self.assert_no_put()
+
+    def test_workflow_composite_shell_passes_public_origin_to_real_publisher(self):
+        """Resolve o YAML real e executa shell + CLI; somente GitHub/AWS são simulados."""
+        from test_frontend_release_head import load_workflow
+
+        workflow = load_workflow()
+        result = subprocess.run([
+            "node", "--input-type=module", "-e",
+            "import bundle from 'playwright-core/lib/utilsBundle'; import {readFileSync} from 'node:fs';"
+            "console.log(JSON.stringify(bundle.yaml.parse(readFileSync(process.argv[1], 'utf8'))));",
+            str(ROOT / ".github/actions/publish-release/action.yml"),
+        ], cwd=ROOT, capture_output=True, text=True, check=True)
+        action = json.loads(result.stdout)
+        job = workflow["jobs"]["publish"]
+        call = next(s for s in job["steps"] if s.get("uses") == "./.github/actions/publish-release")
+        step = action["runs"]["steps"][-1]
+        harness = Path(self.tmp_case.name) / "publisher-harness.py"
+        trace = Path(self.tmp_case.name) / "publication-trace.json"
+        harness.write_text('''import json, os, runpy, sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+import boto3
+from moto import mock_aws
+from release_fixtures import block_network, FakeGitHub, BUCKET, REGION
+import release_cli
+block_network()
+sys.argv = sys.argv[1:]
+if sys.argv[0] == "-B": sys.argv.pop(0)
+with mock_aws():
+    real = boto3.client("s3", region_name=REGION, aws_access_key_id="test", aws_secret_access_key="test")
+    real.create_bucket(Bucket=BUCKET)
+    s3 = MagicMock(wraps=real)
+    github = FakeGitHub()
+    with patch.object(release_cli, "aws_clients", return_value=(s3, None, None)), \\
+            patch.object(release_cli, "github_get", side_effect=lambda path, env=None: github(path)):
+        try:
+            runpy.run_path(sys.argv[0], run_name="__main__")
+        finally:
+            Path(os.environ["TEST_TRACE"]).write_text(json.dumps({
+                "origin": os.environ.get("PUBLIC_ORIGIN"),
+                "puts": [{"key": c.kwargs["Key"], "condition": c.kwargs["IfNoneMatch"]}
+                         for c in s3.put_object.call_args_list]}))
+''')
+        for operation, automatic, missing_origin in (("publish", False, False), ("deploy", False, False),
+                                                       ("deploy", True, False), ("publish", False, True)):
+            with self.subTest(operation=operation, automatic=automatic, missing_origin=missing_origin):
+                self.approve_current()
+                self.env.update(OPERATION=operation, GITHUB_EVENT_NAME="workflow_run" if automatic else "workflow_dispatch")
+                if automatic:
+                    self.env.update(APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
+                self.write_event(ci_run_event() if automatic else None)
+                context = {"vars.PUBLIC_ORIGIN": ORIGIN, "vars.FRONTEND_BUCKET": BUCKET, "vars.AWS_REGION": REGION,
+                           "github.token": "synthetic-token", "runner.temp": self.tmp_case.name,
+                           "needs.build.outputs.release-id": self.env["BUILT_RELEASE_ID"]}
+                context.update({"needs.gate.outputs." + k.lower().replace("_", "-"): self.env[k]
+                                for k in ("OPERATION", "SOURCE", "EXPECTED_MAIN_SHA", "APPROVED_RELEASE_ID", "APPROVED_MANIFEST_SHA256")})
+
+                def resolve(value):
+                    return re.sub(r"\$\{\{ ([\w.-]+) \}\}", lambda m: context[m[1]], value)
+
+                context.update({"inputs." + k: resolve(v) for k, v in call["with"].items()})
+                env = child_env(**self.env)
+                env.pop("PUBLIC_ORIGIN", None)  # precisa vir do workflow → input → env da composite
+                env.update({k: resolve(v) for k, v in job["env"].items()})
+                env.update({k: resolve(v) for k, v in step["env"].items()})
+                if missing_origin:
+                    env.pop("PUBLIC_ORIGIN", None)
+                env.update(TEST_TRACE=str(trace), PYTHONPATH=str(ROOT / "tests/integration"))
+                # O shell da action roda sem alteração; o Python usa a CLI real sob Moto, sem rede externa.
+                shell = f'python3() {{ {shlex.quote(sys.executable)} -B {shlex.quote(str(harness))} "$@"; }}\n'
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", shell + step["run"]],
+                                        cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
+                observed = json.loads(trace.read_text())
+                self.assertEqual(result.returncode == 0, not missing_origin, result.stdout + result.stderr)
+                self.assertEqual(len(observed["puts"]), 0 if missing_origin else 32)
+                if not missing_origin:
+                    self.assertEqual(observed["origin"], ORIGIN)
+                    self.assertTrue(all(c["condition"] == "*" for c in observed["puts"]))
+                    self.assertTrue(observed["puts"][-1]["key"].endswith("/manifest.json"))
 
     def test_bytes_sent_are_the_approved_snapshot_despite_disk_changes_in_head_guard(self):
         raw = (self.dir / "manifest.json").read_bytes()
