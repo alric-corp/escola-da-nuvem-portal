@@ -346,6 +346,8 @@ test("TR10: detalhes preservam notas/participação/histórico e substituem o mo
   assert.match(strip(pages.reminderPreview(cases.delivered)), /Entregue ao servidor/);
   assert.match(strip(pages.reminderPreview(cases.sent)), /entrega ainda não confirmada/);
   assert.match(strip(pages.reminderPreview(cases.unknown)), /Resultado do envio incerto/);
+  assert.match(strip(pages.reminderPreview(cases.sending)), /Aguarde e atualize o status da entrega/);
+  assert.doesNotMatch(strip(pages.reminderPreview(cases.sending)), /tentar novamente/);
   assert.match(strip(pages.reminderPreview(cases.ativo)), /Nenhum lembrete registrado/);
   assert.match(strip(pages.reminderPreview(cases.desligado)), /Informações de entrega indisponíveis/);
   assert.equal(withState({ view: "student-pending", pendingPreview: null, pendingError: "Falha <x>." }, () => sha(pages.pendingPage())), "b2cc1f646b06236d74a81a71605b3432003ea19b17ce199ad0cb3259246810f7");

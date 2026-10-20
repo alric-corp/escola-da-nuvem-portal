@@ -180,7 +180,7 @@ export function reminderPreview(p) {
   const withdrawn = isWithdrawn(p) ? '<p role="status"><strong>Aluno desistente.</strong> Lembretes estão desativados.</p>' : "";
   const status = p.delivery?.status;
   const deliveryLabels = { sent: "Aceito pelo serviço de envio; entrega ainda não confirmada.",
-    sending: "Envio em processamento. Atualize o status antes de tentar novamente.",
+    sending: "Envio em processamento. Aguarde e atualize o status da entrega.",
     unknown: "Resultado do envio incerto. Não reenvie para evitar duplicação; procure a coordenação.",
     failed: "O serviço rejeitou a tentativa. Consulte a coordenação.",
     delivered: "Entregue ao servidor de e-mail do destinatário. Isso não confirma leitura ou chegada à caixa de entrada.",
