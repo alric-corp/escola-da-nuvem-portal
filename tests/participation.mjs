@@ -160,17 +160,16 @@ test("H: Notas da turma usa só ativos nos cartões e mantém o desistente na ta
   assert.deepEqual(classRows(render(["4", "5"], { classFilter: "ok" })).map((r) => r.name), ["Ana Ativa"]);
 });
 
-// I. Detalhe do aluno: desistente vê o aviso e o envio fica desabilitado, com ou sem envio habilitado na instalação.
-test("I: prévia individual de desistente avisa e desabilita o envio", () => {
+// I. Detalhe do aluno: consulta sem envio manual, preservando o aviso de desistência.
+test("I: detalhes não oferecem envio manual e preservam o aviso de desistente", () => {
   const preview = (extra = {}) => ({ student: { id: "4", name: "Alice Saiu", email: "alice@example.test" }, publicationId: "p1", publishedAt: "2026-10-03T09:01:28Z",
     previewHash: "h", delivery: null, ses: { ready: true, reason: "Remetente confirmado." }, activities: [{ id: "k1", name: "001 KC", kind: "kc", state: "pending" }],
     message: { from: "instrutor@example.test", to: "alice@example.test", subject: "Podemos ajudar?", text: "Olá, Alice!" }, ...extra });
-  const sendButton = (html) => html.match(/<button class="button primary" data-action="send-reminder"[^>]*>/)[0];
   const active = reminderPreview(preview());
-  assert.doesNotMatch(sendButton(active), /disabled/);
+  assert.doesNotMatch(active, /data-action="(?:send-reminder|copy-reminder)"|email-preview/);
   assert.doesNotMatch(strip(active), /desistente/i);
   const withdrawn = reminderPreview(preview(WITHDRAWN));
-  assert.match(sendButton(withdrawn), /disabled/);
+  assert.doesNotMatch(withdrawn, /data-action="send-reminder"/);
   assert.match(strip(withdrawn), /Aluno desistente\. Lembretes estão desativados\./);
   const disabledInstallation = reminderPreview(preview({ ...WITHDRAWN, message: undefined }));
   assert.match(strip(disabledInstallation), /Aluno desistente\. Lembretes estão desativados\./);

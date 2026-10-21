@@ -1,6 +1,6 @@
 // Teste isolado com API fictícia. Nunca envia e-mail nem acessa dados AWS.
 // Cobre os todos de prioridade baixa: 10 (detalhe do aluno), 16 (próximos passos por
-// data de liberação e gráfico de evolução), 18 (exportar CSV e copiar mensagem) e 19
+// data de liberação e gráfico de evolução), 18 (exportar CSV; detalhes sem composição manual) e 19
 // (busca sem acento).
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -26,7 +26,6 @@ let browser;
 try {
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1200 }, acceptDownloads: true });
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -130,10 +129,11 @@ try {
   await page.getByRole("heading", { name: "Histórico do aluno", exact: true }).waitFor();
   assert.equal(await page.locator("section:has(h2:text('Histórico do aluno')) tbody tr").count(), 2);
 
-  // 18: copiar mensagem da prévia.
-  await page.getByRole("button", { name: "Copiar mensagem", exact: true }).click();
-  await page.getByText("Mensagem copiada.", { exact: true }).waitFor();
-  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "Podemos ajudar?\n\nOlá, João Silva!");
+  // Lembretes automáticos: o detalhe não oferece modelo nem envio/cópia manuais.
+  await page.getByRole("heading", { name: "Lembretes automáticos", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Copiar mensagem", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true }).count(), 0);
+  assert.equal(await page.locator(".email-preview").count(), 0);
 
   // 16: aluno vê a atividade liberada mais recentemente primeiro e o gráfico com KC, LAB e referências.
   role = "student";
@@ -148,7 +148,7 @@ try {
   assert.match(await page.locator(".evolution svg").innerHTML(), /KC 70%[\s\S]*LAB 95%/);
 
   assert.deepEqual(errors, []);
-  console.log("Ferramentas do instrutor: busca sem acento, CSV, detalhe do aluno, copiar mensagem, próximos passos e evolução OK.");
+  console.log("Ferramentas do instrutor: busca sem acento, CSV, detalhe do aluno sem envio manual, próximos passos e evolução OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise((resolve) => server.close(resolve));

@@ -157,29 +157,17 @@ try {
     await context.close();
   }
 
-  // Detalhe de um desistente: aviso e envio desabilitado. Corrida: o aluno estava ativo na tela e foi marcado em
-  // outro lugar; o envio recebe 409, o aviso mostra a mensagem do servidor e o detalhe recarregado já vem desistente.
+  // Detalhe é somente consulta: desistentes mantêm o aviso e ativos também não recebem botão de envio.
   {
     const { context, tab, log } = await open();
     await tab.getByRole("button", { name: "Ver pendências de Alice Saiu", exact: true }).click();
-    await tab.getByRole("heading", { name: "Pendências de Alice Saiu", exact: true }).waitFor();
     await tab.getByText("Aluno desistente. Lembretes estão desativados.", { exact: true }).waitFor();
-    assert.ok(await tab.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true }).isDisabled());
+    assert.equal(await tab.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true }).count(), 0);
     await tab.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
     await tab.getByRole("button", { name: "Ver pendências de Ana Ativa", exact: true }).click();
-    await tab.getByRole("heading", { name: "Pendências de Ana Ativa", exact: true }).waitFor();
-    const send = tab.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true });
-    assert.ok(await send.isEnabled());
-    log.handle = ({ route, entry }) => {
-      if (!entry.path.endsWith("/send-reminder")) return;
-      log.marks["1"] = "WITHDRAWN";
-      return route.fulfill({ status: 409, json: { error: "Aluno marcado como desistente nesta turma: lembretes desativados." } });
-    };
-    await send.click();
-    await tab.getByText("Aluno desistente. Lembretes estão desativados.", { exact: true }).waitFor();
-    assert.ok(await tab.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true }).isDisabled());
-    assert.deepEqual(await noticeTexts(tab), [{ error: true, text: "Aluno marcado como desistente nesta turma: lembretes desativados." }]);
-    assert.equal(calls(log, "send-reminder").length, 1);
+    await tab.getByRole("heading", { name: "Lembretes automáticos", exact: true }).waitFor();
+    assert.equal(await tab.getByRole("button", { name: "Enviar e-mail para este aluno", exact: true }).count(), 0);
+    assert.equal(calls(log, "send-reminder").length, 0);
     assert.deepEqual(log.errors, []);
     await context.close();
   }

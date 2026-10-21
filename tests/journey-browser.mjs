@@ -120,7 +120,7 @@ try {
   await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
   await page.getByRole("searchbox").fill("Ana");
   await page.getByRole("button", { name: "Ver pendências de Ana Teste" }).click();
-  await page.getByRole("heading", { name: "Prévia do lembrete" }).waitFor();
+  await page.getByRole("heading", { name: "Lembretes automáticos" }).waitFor();
   assert.equal(sent, 0);
   await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
   assert.equal(await page.getByRole("searchbox").inputValue(), "Ana");
@@ -149,16 +149,15 @@ try {
   await page.getByText("Remetente confirmado.", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Ir ao painel da turma" }).click();
   await page.getByRole("button", { name: "Ver pendências de Ana Teste" }).click();
-  await page.getByRole("heading", { name: "Prévia do lembrete" }).waitFor();
+  await page.getByRole("heading", { name: "Lembretes automáticos" }).waitFor();
   assert.equal(await page.evaluate(() => window.injected), undefined);
-  acceptDialog = false;
-  await page.getByRole("button", { name: "Enviar e-mail para este aluno" }).click();
+  assert.equal(await page.getByRole("button", { name: "Enviar e-mail para este aluno" }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Copiar mensagem" }).count(), 0);
   assert.equal(sent, 0);
-  acceptDialog = true;
-  await page.getByRole("button", { name: "Enviar e-mail para este aluno" }).click();
+  delivery = { status: "sent" }; // entrega efetuada externamente pela automação
+  await page.getByRole("button", { name: "Atualizar status do envio" }).click();
   await page.getByText("Aceito pelo serviço de envio; entrega ainda não confirmada.", { exact: true }).waitFor();
-  assert.equal(sent, 1);
-  assert.equal(await page.getByRole("button", { name: "Enviar e-mail para este aluno" }).isDisabled(), true);
+  assert.equal(sent, 0, "consultar não envia e-mail");
   delivery = { status: "bounced" };
   await page.getByRole("button", { name: "Atualizar status do envio" }).click();
   await page.getByText("E-mail devolvido. Confira o endereço do aluno com a coordenação.", { exact: true }).waitFor();
