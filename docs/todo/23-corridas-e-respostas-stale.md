@@ -11,8 +11,8 @@ usuário já ter mudado de contexto e sobrescrever uma visualização mais nova.
 A C7.2 já resolveu participação/desistentes e está concluída e ativada em
 produção. Essa funcionalidade não faz parte deste TODO.
 
-Os pontos abaixo vêm do roadmap. A caracterização RED/GREEN da C7.4 está
-registrada ao final; a revisão transversal continua pendente.
+Os pontos abaixo preservam o roadmap e a caracterização RED/GREEN histórica
+da C7.4. A revisão transversal desta missão está na consolidação de 21/10/2026.
 
 ## Registro original das pendências (histórico da C7.4)
 
@@ -173,6 +173,7 @@ A revisão abrange os fluxos acima e seus callers atuais, inclusive navegação 
 ### Regressões e pendência real
 
 - `tests/report-context.mjs`: funções reais do app, promises controladas e testes de sucesso/erro/identidade; `tests/report-context-browser.mjs`: navegação real no Chromium em 375/1440 px. A versão original do app servida em área temporária falha nos quatro cenários do Guia; a correção passa.
+- A revisão final do guard acrescentou 12 controles de expiração em `/me`, `/cohorts` e notas da turma. Cinco falhavam na primeira revisão deste PR: invalidar o boot também suprimia o aviso global da própria expiração; o preflight das notas não possui `status`. Os catches preservam 401/mensagem de expiração somente quando não há sessão; erro antigo com outra pessoa autenticada continua ignorado. O módulo completo passa 30/30. Essa regressão foi corrigida antes da integração, sem mudar a camada de autenticação.
 - `tests/batch-stale-context.mjs`, `tests/feedback-async-context.mjs`, reforços de `tests/feedback-lifecycle.mjs` e `tests/import-lifecycle-browser.mjs` preservam também os controles positivos atuais.
 - `tests/stale-responses.mjs` e os contratos de arquitetura foram adaptados ao novo guard, sem remover as verificações de ordem, identidade, sucesso e erro. Mutações continuam em cópias temporárias; a remoção conjunta das duas proteções de `loadMine` mantém o controle histórico, apesar de agora separadas pela invalidação de galerias.
 - Descartar a resposta na UI não desfaz uma operação recebida pelo servidor. Nenhum POST é repetido ou cancelado; os testes de mutação usam somente dados fictícios.

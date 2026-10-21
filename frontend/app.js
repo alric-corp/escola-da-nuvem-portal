@@ -178,7 +178,11 @@ async function loadClassReport(value) {
   const current = () => request === classReportRequest && readContext === context && state.me === owner && state.classReport === previous;
   let data;
   try { data = await api.cohorts.classReport(code); }
-  catch (err) { if (current() || (!state.me && err.status === 401)) throw err; return; }
+  catch (err) {
+    // Expiração da sessão é um aviso global, inclusive quando o preflight não fornece status.
+    if (current() || (!state.me && (err.status === 401 || err.message === "Sua sessão expirou. Entre novamente."))) throw err;
+    return;
+  }
   if (!current()) return;
   if (state.classReport?.cohort !== data.cohort) {
     state.classFilter = "all";
@@ -906,7 +910,9 @@ async function boot() {
     if (state.view === "feedback" && !state.studentView) await feedbackHandlers.loadMine();
     if (state.view === "admin-feedback" && admin() && !state.studentView) await adminFeedbackHandlers.load(true);
   } catch (err) {
-    if (!current()) return;
+    // expireSession invalida o próprio boot; seu aviso global continua na entrada pública.
+    const expired = !state.me && (err.status === 401 || err.message === "Sua sessão expirou. Entre novamente.");
+    if (!current() && !expired) return;
     state.bootError = err.message || "Não foi possível consultar sua conta.";
     render();
   }

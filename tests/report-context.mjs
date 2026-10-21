@@ -78,13 +78,16 @@ test("notas da turma: retorno A→Guia→A não revalida a leitura anterior", as
   assert.equal(h.state.classReport, null);
 });
 
-function boots() {
+function boots({ holdCohorts = false } = {}) {
   const state = { me: person("inicial"), code: "TURMA-A", view: "overview", cohorts: [], studentView: null, pendingStudentId: "" };
-  const calls = [], resets = [];
-  const api = { me: { get: () => { const d = deferred(); calls.push(d); return d.promise; } }, cohorts: { list: async () => ({ cohorts: [{ code: "TURMA-A" }] }) } };
+  const calls = [], cohortCalls = [], resets = [];
+  const api = { me: { get: () => { const d = deferred(); calls.push(d); return d.promise; } }, cohorts: { list: async () => {
+    if (!holdCohorts) return { cohorts: [{ code: "TURMA-A" }] };
+    const d = deferred(); cohortCalls.push(d); return d.promise;
+  } } };
   const reset = { invalidateReads() {}, resetForUser: (id) => resets.push(id), resetDraftsForUser: (id) => resets.push(id), discardDrafts() {}, hasUnpublishedCsv: () => false };
   return new Function("h", `
-    const { state, api, calls, reset, resets } = h;
+    const { state, api, calls, cohortCalls, reset, resets } = h;
     let bootRequest = 0, reportRequest = 0, sessionGeneration = 0, importFailure = null;
     const remindersHandlers = reset, feedbackHandlers = reset, importHandlers = reset, adminFeedbackHandlers = reset;
     const demo = false, config = {}, studentViews = ["overview", "course-guide"];
@@ -96,8 +99,8 @@ function boots() {
     ${source("expireSession")}
     ${source("signOut")}
     ${source("boot", true)}
-    return { state, calls, resets, boot, expire: expireSession, logout: signOut };
-  `)({ state, api, calls, reset, resets });
+    return { state, calls, cohortCalls, resets, boot, expire: expireSession, logout: signOut };
+  `)({ state, api, calls, cohortCalls, reset, resets });
 }
 test("boot: resposta /me antiga não substitui usuário e relatório do boot mais recente", async () => {
   const h = boots(), a = h.boot(), b = h.boot();
@@ -118,3 +121,63 @@ test("boot: erro antigo não deixa bootError sobre um sucesso novo", async () =>
   h.calls[0].reject(new Error("erro A")); await a;
   assert.equal(h.state.bootError, "");
 });
+
+const expiredMessage = "Sua sessão expirou. Entre novamente.";
+const expiredError = (status) => Object.assign(new Error(expiredMessage), { status });
+async function bootStage(h, stage, user) {
+  const job = h.boot();
+  if (stage === "me") return { job, request: h.calls.at(-1) };
+  h.calls.at(-1).resolve(person(user));
+  await Promise.resolve();
+  assert.ok(h.cohortCalls.length, "a segunda leitura do boot deve ter começado");
+  return { job, request: h.cohortCalls.at(-1) };
+}
+
+for (const stage of ["me", "cohorts"]) {
+  for (const status of [401, undefined]) {
+    const reason = status === 401 ? "401" : "preflight sem status";
+    test(`boot /${stage}: ${reason} atual mantém o aviso global após expireSession`, async () => {
+      const h = boots({ holdCohorts: stage === "cohorts" });
+      const pending = await bootStage(h, stage, "A");
+      // A API chama expireSession antes de rejeitar a mesma leitura; o guard mudou de geração.
+      h.expire();
+      pending.request.reject(expiredError(status));
+      await pending.job;
+      assert.equal(h.state.me, null);
+      assert.equal(h.state.bootError, expiredMessage, "a landing continua explicando por que é preciso entrar novamente");
+    });
+    test(`boot /${stage}: ${reason} antigo não avisa nem altera a sessão B autenticada`, async () => {
+      const h = boots({ holdCohorts: stage === "cohorts" });
+      const old = await bootStage(h, stage, "A"), next = await bootStage(h, stage, "B");
+      next.request.resolve(stage === "me" ? person("B") : { cohorts: [{ code: "TURMA-A" }] });
+      await next.job;
+      old.request.reject(expiredError(status));
+      await old.job;
+      assert.equal(h.state.me.email, person("B").email);
+      assert.equal(h.state.report.owner, person("B").email);
+      assert.equal(h.state.bootError, "");
+    });
+  }
+}
+
+for (const status of [401, undefined]) {
+  const reason = status === 401 ? "401" : "preflight sem status";
+  test(`notas da turma: ${reason} atual devolve o aviso global quando a sessão terminou`, async () => {
+    const h = reports(); h.state.classReport = { cohort: "TURMA-A" };
+    const pending = h.classLoad();
+    h.change({ me: null, classReport: null });
+    h.calls[0].reject(expiredError(status));
+    await assert.rejects(pending, { message: expiredMessage });
+    assert.equal(h.state.classReport, null);
+  });
+  test(`notas da turma: ${reason} antigo é ignorado com a sessão B autenticada`, async () => {
+    const h = reports(); h.state.classReport = { cohort: "TURMA-A" };
+    const pending = h.classLoad();
+    h.change({ me: person("B") });
+    const before = h.renders();
+    h.calls[0].reject(expiredError(status));
+    await assert.doesNotReject(pending);
+    assert.equal(h.renders(), before);
+    assert.equal(h.state.me.email, person("B").email);
+  });
+}

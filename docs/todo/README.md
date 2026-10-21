@@ -93,7 +93,7 @@ Consolidação dos TODOs 23–25 a partir da main `9058941`; os números abaixo 
 
 | Comando | Resultado |
 | --- | --- |
-| `npm test` | 485 testes aprovados, zero falhas/skips |
+| `npm test` | 497 testes aprovados, zero falhas/skips |
 | `npm run test:browser` | 255 testes/entradas aprovados, zero falhas/skips; os módulos de importação também incluem os novos cenários internos controlados |
 | `python3 tests/contracts/stale_mutations.py` | Controles aprovados, 28 mutações mortas, zero sobreviventes; mantém os 21 controles históricos e acrescenta 7 |
 | `python3 tests/contracts/lifecycle_mutations.py` | Controles aprovados, 44 mutações mortas, zero sobreviventes; preserva os controles existentes e acrescenta 5 |
