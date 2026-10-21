@@ -13,7 +13,7 @@ com seu histórico e evidências de implementação.
 | 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Pendente — otimização por vínculo entregue; scan global permanece |
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
-| 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Proposta delimitada preparada — implementação no próximo PR |
+| 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Implementado neste PR — bundle, contratos e CI; aguardando integração |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
@@ -67,8 +67,7 @@ preservados e full plan final somente ACM conhecido. AUTO-6 não iniciada.
 ## Notas de contexto
 
 API-1 e API-2 estão concluídas e commitadas; os registros ficam em
-[historico/api-1.md](../historico/api-1.md) e [historico/api-2.md](../historico/api-2.md). O TODO 22 guarda uma evolução futura e
-não as reabre.
+[historico/api-1.md](../historico/api-1.md) e [historico/api-2.md](../historico/api-2.md). O TODO 22 organiza as fontes e a geração do contrato neste PR, sem reabri-las.
 
 A C7.2 e a C7.3 continuam concluídas. Na revisão de 21/10/2026, a implantação
 existente da C7.4/C7.5 foi comprovada na release `9058941ffa4d-301af4d0e066`
@@ -81,9 +80,9 @@ correspondente à implantação já relatada no PR #10. Veja as evidências em
 Após a integração do [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12), a pendência de publicação dos TODOs [23 — Concorrência](concluido/23-corridas-e-respostas-stale.md) e [24 — UX e lifecycle](concluido/24-melhorias-ux-e-lifecycle.md) foi encerrada. A conferência curta de 21/10/2026 encontrou a release ativa `e99c93f56932-0a4e45d446a9`, source `e99c93f569329279b79847916fdb5dbd92fbd670`, e cinco arquivos de runtime idênticos à revisão e aos hashes/tamanhos do manifesto. O [deploy automático 39600814952](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39600814952) concluiu publicação, ativação e smoke. Os dois registros foram movidos para `concluido/`, preservando o histórico e as limitações. Não houve novo deploy, revisão funcional ou reabertura de participação/desistentes, AUTO-5, domínio próprio ou TODO 25.
 
 
-## Validação executada em 21/10/2026
+## Validação histórica — consolidação do PR #12 (21/10/2026)
 
-Consolidação dos TODOs 23–25 a partir da main `9058941`; os números abaixo são novas execuções desta missão, não reutilização de CI histórico.
+Consolidação dos TODOs 23–25 a partir da main `9058941`: os números abaixo foram executados naquela missão e são preservados como histórico. Não são as contagens da implementação do TODO 22; seus resultados estão no documento e no PR correspondente.
 
 | Comando | Resultado |
 | --- | --- |
@@ -95,4 +94,4 @@ Consolidação dos TODOs 23–25 a partir da main `9058941`; os números abaixo 
 | Python 3.12, `python -B -m unittest discover -s tests/integration` | 218 aprovados, Moto sem AWS real |
 | Recorte TODO 25, `backend.test_journey tests.integration.test_hygiene` | 25 aprovados (já contidos nas suítes anteriores, não somados a elas) |
 
-As novas regressões cobrem dados, erros, finally/loading, lista/cursor, troca de turma/tela/usuário, A→B→A e retornos legítimos; usam promises controladas, sem sleeps arbitrários. Uma proteção publicação/nova seleção é explicitamente defensiva: a UI normalmente bloqueia a seleção durante a publicação. As únicas atualizações de caracterização deliberada são o isolamento de confirmação/loading entre pessoas e o guard mais forte do lote; as verificações anteriores foram preservadas. Sem novos recursos AWS, alterações de backend ou implementação do TODO 22.
+As novas regressões cobrem dados, erros, finally/loading, lista/cursor, troca de turma/tela/usuário, A→B→A e retornos legítimos; usam promises controladas, sem sleeps arbitrários. Uma proteção publicação/nova seleção é explicitamente defensiva: a UI normalmente bloqueia a seleção durante a publicação. As únicas atualizações de caracterização deliberada são o isolamento de confirmação/loading entre pessoas e o guard mais forte do lote; as verificações anteriores foram preservadas. Naquela missão, não houve novos recursos AWS, alterações de backend ou implementação do TODO 22.

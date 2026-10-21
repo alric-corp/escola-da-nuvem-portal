@@ -404,6 +404,15 @@ class CommandLineTests(unittest.TestCase):
         self.assertEqual(sorted(releases), ["baseline", "modern"])
         self.assertEqual(releases["modern"].name[:12], self.head[:12])
         self.assertEqual(releases["baseline"].name[:12], BASELINE_SHA[:12])
+        modern_manifest = json.loads((releases["modern"] / "manifest.json").read_bytes())
+        base_manifest = json.loads((releases["baseline"] / "manifest.json").read_bytes())
+        historical_app = WORK / "cli-base" / "app"
+        self.assertFalse((historical_app / "openapi" / "src").exists(), "o snapshot histórico não depende das fontes novas")
+        self.assertEqual(modern_manifest["api"]["openapi_sha256"],
+                         hashlib.sha256((self.clone / "openapi" / "portal.yaml").read_bytes()).hexdigest())
+        self.assertEqual(base_manifest["api"]["openapi_sha256"],
+                         hashlib.sha256((historical_app / "openapi" / "portal.yaml").read_bytes()).hexdigest())
+        self.assertNotEqual(modern_manifest["api"]["openapi_sha256"], base_manifest["api"]["openapi_sha256"])
         for mode, release in releases.items():
             with self.subTest(mode):
                 check = self.run_script("validate-release.py", "--release-dir", str(release), "--public-origin", ORIGIN)
