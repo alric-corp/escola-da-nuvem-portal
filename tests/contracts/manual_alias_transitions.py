@@ -11,6 +11,8 @@ import shutil
 import subprocess
 import tempfile
 
+from terraform_mutations import bundle_openapi, copy_openapi_sources, openapi_inputs
+
 
 ROOT = Path(__file__).resolve().parents[2]
 MODULE = ROOT / "infra" / "terraform"
@@ -28,7 +30,7 @@ def main():
     native = NATIVE.read_text()
     gate = 'AUTOMATIC_REMINDERS_ENABLED   = "true"'
     reference = "function_version = var.manual_recovery_target_version"
-    sources = list(MODULE.glob("*.tf")) + [NATIVE, ROOT / "openapi" / "portal.yaml"]
+    sources = list(MODULE.glob("*.tf")) + [NATIVE, ROOT / "openapi" / "portal.yaml"] + openapi_inputs()
     hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}
     providers = MODULE / ".terraform" / "providers"
     assert providers.is_dir(), "Run terraform init -backend=false first"
@@ -75,7 +77,9 @@ def main():
             for name in ("backend", "frontend"):
                 (project / name).symlink_to(ROOT / name, target_is_directory=True)
             (project / "openapi").mkdir()
-            shutil.copyfile(ROOT / "openapi" / "portal.yaml", project / "openapi" / "portal.yaml")
+            copy_openapi_sources(project)
+            bundle_openapi(project, env)
+            assert (project / "openapi" / "portal.yaml").read_bytes() == (ROOT / "openapi" / "portal.yaml").read_bytes(), "Clean source bundle diverged"
             for name, worker_source, manual_source, test_source, diagnostic in cases:
                 (module / "automatic-reminders.tf").write_text(worker_source)
                 (module / "manual-recovery.tf").write_text(manual_source)
@@ -92,7 +96,7 @@ def main():
                 print(name + ": PASS", flush=True)
     finally:
         assert {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources} == hashes, "Original sources changed"
-    print("2 transition suites passed; 5 mutations rejected; original sources unchanged")
+    print("2 transition suites passed; 5 mutations rejected; contract regenerated from modular sources; original sources unchanged")
 
 
 if __name__ == "__main__":

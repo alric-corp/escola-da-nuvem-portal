@@ -1,0 +1,201 @@
+paths:
+  /cohorts:
+    get:
+      operationId: listCohorts
+      summary: Listar turmas acessíveis
+      tags:
+        - cohorts
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+    post:
+      operationId: createCohort
+      summary: Criar turma
+      tags:
+        - cohorts
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  description: Convertido para string, aparado e convertido para maiúsculas; 3–32 caracteres A-Z, 0-9
+                    ou hífen.
+                name:
+                  description: Convertido para string e aparado; 1–100 caracteres. Na ausência, usa code.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/participation:
+    post:
+      operationId: setParticipation
+      summary: Alterar participação na turma
+      description: Requer permissão de instrutor na turma. expectedStatus deve corresponder ao estado
+        atual antes da verificação de idempotência. Ausência de registro equivale a ACTIVE. Pedir o
+        status atual retorna 200 sem escrita; updatedAt é null para ACTIVE sem registro. Não remove
+        notas nem dados do Canvas.
+      tags:
+        - cohorts
+      x-portal-backend-operation: Portal._set_participation
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas.yaml#/ParticipationRequest
+      responses:
+        "200":
+          description: Operação concluída; estrutura detalhada continua caracterizada pelos testes do backend.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas.yaml#/ParticipationResponse
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/settings:
+    post:
+      operationId: saveSettings
+      summary: Salvar configurações da turma
+      tags:
+        - cohorts
+      x-portal-backend-operation: Portal._set_cohort_settings
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - thresholds
+                - canvasCourseId
+                - autoSync
+              additionalProperties: false
+              properties:
+                thresholds:
+                  description: "Objeto com kc e lab, limites entre 1 e 100. Schema permissivo: Python também aceita
+                    true como número 1."
+                canvasCourseId:
+                  type: string
+                  nullable: true
+                  minLength: 1
+                  maxLength: 10
+                  description: Dígitos segundo o Python; obrigatório e não vazio quando autoSync=true.
+                autoSync:
+                  type: boolean
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout

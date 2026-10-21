@@ -5,22 +5,25 @@ da API-2 ainda aguardando aprovação. Foram conferidos os **21 TODOs**
 originais contra código, testes, histórico Git e relatórios existentes:
 **18 concluídos, 1 parcial e 2 pendentes**.
 
-Os 18 documentos dessa revisão estão em `docs/todo/concluido/`. Em 21/10/2026, o TODO 25 também foi encerrado, totalizando 19 documentos numerados concluídos; os demais ficam em `docs/todo/`.
+Os 18 documentos dessa revisão estão em `docs/todo/concluido/`. Em 21/10/2026, os TODOs 23, 24 e 25 também foram encerrados, totalizando 21 documentos numerados concluídos; os demais ficam em `docs/todo/`.
 Os IDs foram preservados. O [backlog ativo](../README.md) mantém
 os itens que ainda precisam de decisão ou trabalho.
 
 “Concluído” significa que a implementação do escopo entregue está presente
-no repositório. Não significa uma nova certificação de produção: esta revisão
-não consultou AWS, Canvas nem contas de alunos. Relatos de implantação nos
-documentos individuais continuam sendo evidências históricas.
+no repositório. Não significa uma certificação funcional universal de produção.
+A revisão original não consultou AWS, Canvas nem contas de alunos; as conferências
+posteriores de publicação estão identificadas nos documentos individuais, com
+suas fontes e limitações. Não houve novo deploy nesta atualização documental.
 
 ## Encerramento adicional — 21/10/2026
 
 | ID | Código / testes nesta revisão | Implantação comprovada |
 | --- | --- | --- |
+| [23 — Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Revisão transversal, ownership/contexto e regressões RED/GREEN/mutações preservados | PR #12 integrado em `e99c93f`; deploy automático [39600814952](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39600814952) aprovado; ponteiro e cinco módulos públicos conferidos contra revisão e manifesto. Sem nova revisão funcional. |
+| [24 — Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | C7.5 e correções delimitadas de CSV, lista administrativa e anexos, com histórico de testes preservado | Mesma release ativa `e99c93f56932-0a4e45d446a9`; arquivos publicados idênticos ao commit integrado e ao manifesto. Sem acesso a contas ou dados de alunos. |
 | [25 — Higiene do backend](25-higiene-do-backend.md) | Relógio da prévia, limites de expiração, compilação e Content-Disposition revalidados em 25 testes Python 3.12; sem nova alteração de backend | ZIP da Lambda `identity` e integração API Gateway conferidos somente por leitura; `portal.py` e `feedback.py` idênticos à revisão implantada `302bb3c` e à main `9058941`. Evidências e limites no documento. |
 
-Os TODOs [23](../23-corridas-e-respostas-stale.md) e [24](../24-melhorias-ux-e-lifecycle.md) têm implementação histórica e implantação comprovadas; novas correções desta revisão aguardam publicação pelo fluxo existente, portanto permanecem no backlog ativo.
+A pendência de publicação dos TODOs [23](23-corridas-e-respostas-stale.md) e [24](24-melhorias-ux-e-lifecycle.md) foi encerrada pela conferência somente leitura da release do PR #12. O [TODO 25](25-higiene-do-backend.md) permanece concluído e seu documento não foi alterado por essa conferência.
 
 ## Mapa dos 18 concluídos
 

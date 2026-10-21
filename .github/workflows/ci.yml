@@ -27,6 +27,8 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
+      - name: Verifica o bundle OpenAPI
+        run: npm run openapi:check
       - name: Testes do backend
         run: python -m unittest discover -s backend
       - name: Testes de integração (Moto, sem AWS real)
@@ -56,6 +58,8 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
+      - name: Verifica o bundle OpenAPI
+        run: npm run openapi:check
       - name: Testes de unidade (sem navegador)
         run: npm test
       - name: Instala o Chromium do Playwright
@@ -84,6 +88,15 @@ jobs:
         working-directory: infra/terraform
     steps:
       - uses: actions/checkout@v7
+      # Node verifica as fontes no CI; o Terraform continua lendo apenas o YAML versionado.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - run: npm ci
+        working-directory: .
+      - name: Verifica o bundle OpenAPI
+        run: npm run openapi:check
+        working-directory: .
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"

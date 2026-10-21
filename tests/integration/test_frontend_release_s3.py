@@ -388,11 +388,21 @@ class ReleaseS3Tests(unittest.TestCase):
         self.activate("m1", mode="rollback", expected_active=rid("m1_config3"))
 
     def test_rollback_to_the_baseline_restores_the_root_config_read(self):
-        # openapi/portal.yaml e frontend/api.js não mudaram desde 1daab31: mesmo contrato, sem confirmação extra.
+        # TODO 22 muda a serialização do bundle; equivalência semântica não substitui a confirmação do hash bruto.
         self.legacy_up_to_baseline()
         self.publish("m1")
         self.activate("m1")
-        record = self.activate("baseline", mode="rollback", expected_active=rid("m1"))
+        target = fr.load_release_dir(R["baseline"])[0]
+        active = fr.load_release_dir(R["m1"])[0]
+        self.assertLessEqual(set(target["api"]["routes"]), set(active["api"]["routes"]))
+        self.assertNotEqual(target["api"]["openapi_sha256"], active["api"]["openapi_sha256"])
+        etag, invalidations, spy = self.index()[0], len(self.invalidations()), Spy(self.s3)
+        with self.assertRaisesRegex(fr.ReleaseError, "Contratos OpenAPI diferentes"):
+            self.activate("baseline", mode="rollback", expected_active=rid("m1"), s3=spy)
+        self.assertEqual(spy.puts, [], "confirmação ausente produz zero PutObject")
+        self.assertEqual(self.index()[0], etag)
+        self.assertEqual(len(self.invalidations()), invalidations, "recusa não escreve nem invalida")
+        record = self.activate("baseline", mode="rollback", expected_active=rid("m1"), confirm_release_id=rid("baseline"))
         self.assertEqual(record["release_id"], rid("baseline"))
         status, _, body = s3_fetch(self.s3)(ORIGIN + "/config.json")
         self.assertEqual((status, json.loads(body)), (200, config("raiz")), "a baseline volta a ler a config da raiz")

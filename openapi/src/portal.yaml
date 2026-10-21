@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: Escola da Nuvem Portal API
+  version: 1.0.0
+  description: Contrato HTTP das rotas publicadas do portal. API-1 caracteriza o runtime existente;
+    validação e autorização de negócio permanecem no backend.
+tags:
+  - name: access
+  - name: cohorts
+  - name: grades
+  - name: reminders
+  - name: import
+  - name: feedback
+paths:
+  /access-request:
+    $ref: ./domains/access.yaml#/paths/~1access-request
+  /admin/feedback:
+    $ref: ./domains/feedback.yaml#/paths/~1admin~1feedback
+  /admin/feedback/{id}/status:
+    $ref: ./domains/feedback.yaml#/paths/~1admin~1feedback~1{id}~1status
+  /cohorts:
+    $ref: ./domains/cohorts.yaml#/paths/~1cohorts
+  /cohorts/{code}/class-report:
+    $ref: ./domains/grades.yaml#/paths/~1cohorts~1{code}~1class-report
+  /cohorts/{code}/display-name:
+    $ref: ./domains/access.yaml#/paths/~1cohorts~1{code}~1display-name
+  /cohorts/{code}/focus-activities:
+    $ref: ./domains/grades.yaml#/paths/~1cohorts~1{code}~1focus-activities
+  /cohorts/{code}/instructors:
+    $ref: ./domains/access.yaml#/paths/~1cohorts~1{code}~1instructors
+  /cohorts/{code}/participation:
+    $ref: ./domains/cohorts.yaml#/paths/~1cohorts~1{code}~1participation
+  /cohorts/{code}/pending-preview:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1pending-preview
+  /cohorts/{code}/pending-preview-batch:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1pending-preview-batch
+  /cohorts/{code}/preview:
+    $ref: ./domains/import.yaml#/paths/~1cohorts~1{code}~1preview
+  /cohorts/{code}/publish:
+    $ref: ./domains/import.yaml#/paths/~1cohorts~1{code}~1publish
+  /cohorts/{code}/reminder-settings:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1reminder-settings
+  /cohorts/{code}/report:
+    $ref: ./domains/grades.yaml#/paths/~1cohorts~1{code}~1report
+  /cohorts/{code}/restore:
+    $ref: ./domains/import.yaml#/paths/~1cohorts~1{code}~1restore
+  /cohorts/{code}/revoke-instructor:
+    $ref: ./domains/access.yaml#/paths/~1cohorts~1{code}~1revoke-instructor
+  /cohorts/{code}/send-reminder:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1send-reminder
+  /cohorts/{code}/send-reminders:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1send-reminders
+  /cohorts/{code}/settings:
+    $ref: ./domains/cohorts.yaml#/paths/~1cohorts~1{code}~1settings
+  /cohorts/{code}/student-view:
+    $ref: ./domains/grades.yaml#/paths/~1cohorts~1{code}~1student-view
+  /cohorts/{code}/students-search:
+    $ref: ./domains/access.yaml#/paths/~1cohorts~1{code}~1students-search
+  /cohorts/{code}/unlink-student:
+    $ref: ./domains/access.yaml#/paths/~1cohorts~1{code}~1unlink-student
+  /cohorts/{code}/verify-sender:
+    $ref: ./domains/reminders.yaml#/paths/~1cohorts~1{code}~1verify-sender
+  /feedback:
+    $ref: ./domains/feedback.yaml#/paths/~1feedback
+  /feedback/{feedbackId}/attachments:
+    $ref: ./domains/feedback.yaml#/paths/~1feedback~1{feedbackId}~1attachments
+  /feedback/{feedbackId}/attachments/{attachmentId}:
+    $ref: ./domains/feedback.yaml#/paths/~1feedback~1{feedbackId}~1attachments~1{attachmentId}
+  /feedback/{feedbackId}/attachments/{attachmentId}/complete:
+    $ref: ./domains/feedback.yaml#/paths/~1feedback~1{feedbackId}~1attachments~1{attachmentId}~1complete
+  /me:
+    $ref: ./domains/access.yaml#/paths/~1me
+  /requests:
+    $ref: ./domains/access.yaml#/paths/~1requests
+  /requests/{userId}/reject:
+    $ref: ./domains/access.yaml#/paths/~1requests~1{userId}~1reject
+components:
+  securitySchemes:
+    PortalJwt:
+      $ref: ./components/securitySchemes.yaml#/PortalJwt
+  responses:
+    BadRequest:
+      $ref: ./components/responses.yaml#/BadRequest
+    Unauthorized:
+      $ref: ./components/responses.yaml#/Unauthorized
+    Forbidden:
+      $ref: ./components/responses.yaml#/Forbidden
+    NotFound:
+      $ref: ./components/responses.yaml#/NotFound
+    Conflict:
+      $ref: ./components/responses.yaml#/Conflict
+    PayloadTooLarge:
+      $ref: ./components/responses.yaml#/PayloadTooLarge
+    TooManyRequests:
+      $ref: ./components/responses.yaml#/TooManyRequests
+    InternalError:
+      $ref: ./components/responses.yaml#/InternalError
+    ServiceUnavailable:
+      $ref: ./components/responses.yaml#/ServiceUnavailable
+    SuccessObject:
+      $ref: ./components/responses.yaml#/SuccessObject
+    BadGateway:
+      $ref: ./components/responses.yaml#/BadGateway
+    GatewayTimeout:
+      $ref: ./components/responses.yaml#/GatewayTimeout
+  schemas:
+    ErrorResponse:
+      $ref: ./components/schemas.yaml#/ErrorResponse
+    GatewayErrorResponse:
+      $ref: ./components/schemas.yaml#/GatewayErrorResponse
+    ParticipationRequest:
+      $ref: ./components/schemas.yaml#/ParticipationRequest
+    ParticipationResponse:
+      $ref: ./components/schemas.yaml#/ParticipationResponse
