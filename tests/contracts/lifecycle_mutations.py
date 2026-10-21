@@ -20,7 +20,7 @@ PAGE_MINE = "frontend/pages/feedback.js"
 PAGE_ADMIN = "frontend/pages/admin-feedback.js"
 FILES = (ADMIN, FEEDBACK, IMPORT, APP, PAGE_MINE, PAGE_ADMIN)
 SUITES = {  # ordem de tentativa: a primeira que falhar por asserção mata a mutação
-    "unit": ["node", "--test", "--test-reporter=tap", "tests/feedback-lifecycle.mjs"],
+    "unit": ["node", "--test", "--test-reporter=tap", "tests/feedback-lifecycle.mjs", "tests/feedback-async-context.mjs"],
     "arch": ["node", "--test", "--test-reporter=tap", "tests/architecture.mjs"],
     "browser": ["node", "tests/feedback-lifecycle-browser.mjs"],
 }
@@ -68,6 +68,11 @@ MUTATIONS = [
     ("foco-sem-restaurar-ao-voltar", APP, None, '    restoreFocus(`[data-fb-open="${CSS.escape(opened)}"]`, ".fb-open");\n', ""),
     ("foco-sem-restaurar-ao-abrir-anexos", APP, None, ".then(() => restoreFocus(toggle));", ";"),
     ("foco-sem-restaurar-ao-fechar-anexos", APP, None, "      feedbackHandlers.closeAttachments(id);\n      restoreFocus(toggle);\n", "      feedbackHandlers.closeAttachments(id);\n"),
+    ("admin-reset-sem-invalidar-leitura", ADMIN, "resetForUser", "  adminFeedbackRequest++;\n", ""),
+    ("import-reset-sem-invalidar-leituras", IMPORT, "resetDraftsForUser", "    draftRequests.clear();\n", ""),
+    ("csv-antigo-substitui-selecao", IMPORT, "selectCsv", "  if (draftRequests.get(code) !== request) return;\n", ""),
+    ("previa-antiga-substitui-atual", IMPORT, "previewImport", "  if (!current()) return;\n", ""),
+    ("previa-finally-antigo-encerra-atual", IMPORT, "previewImport", "if (current() && state.code === code)", "if (state.code === code)"),
 ]
 
 

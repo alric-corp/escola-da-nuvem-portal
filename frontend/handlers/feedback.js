@@ -10,6 +10,7 @@ import { notice } from "../ui.js";
 let render = null;
 let syncContext = () => {};
 let mineRequest = 0;
+let galleryContext = 0;
 
 export function configure(options) {
   render = options.render;
@@ -42,6 +43,12 @@ export function resetForUser(email) {
 
 export function invalidateReads() {
   mineRequest++;
+  galleryContext++;
+  // Uma galeria ainda em trânsito perde o dono ao sair do contexto, inclusive em A → B → A.
+  // Listas e links já carregados permanecem guardados; nenhum ObjectURL de upload é liberado aqui.
+  for (const gallery of Object.values(state.feedbackAttachments)) {
+    if (gallery.loading) { gallery.open = false; gallery.loading = false; }
+  }
   // Trocar a referência impede também callbacks antigos de preencher a lista do novo contexto.
   state.myFeedback = { items: [], nextCursor: null, loading: false, error: "" };
 }
@@ -187,7 +194,7 @@ async function uploadImages(feedbackId, entries, progress) {
       failed++;
     }
   }
-  progress("");
+  if (owned()) progress("");
   return failed;
 }
 
@@ -218,19 +225,24 @@ export function removeFile(id) {
 }
 
 export async function retryUploads(inline = false) {
+  const epoch = userEpoch;
   state.feedbackSending = true;
   state.feedbackUpload.failed = false;
   render();
   try {
-    if (await sendFormImages()) {
+    const attached = await sendFormImages();
+    if (epoch !== userEpoch) return;
+    if (attached) {
       state.feedbackSent = sentAs;
       if (!inline) notice("Imagens anexadas ao feedback.");
     }
   } finally {
-    state.feedbackSending = false;
-    render();
+    if (epoch === userEpoch) {
+      state.feedbackSending = false;
+      render();
+    }
   }
-  await loadMine();
+  if (epoch === userEpoch) await loadMine();
 }
 
 export function discardUploads() {
@@ -242,22 +254,34 @@ export function discardUploads() {
 
 // Galeria de anexos, usada pelo autor e pelo detalhe do admin (a composição fica em app.js).
 export async function loadAttachments(feedbackId) {
+  syncContext();
+  const epoch = userEpoch, context = galleryContext, owner = state.me, code = state.code, view = state.view;
   const g = state.feedbackAttachments[feedbackId] = { ...state.feedbackAttachments[feedbackId], open: true, loading: true, error: "", items: [], urls: {} };
+  const current = () => epoch === userEpoch && context === galleryContext && state.me === owner &&
+    state.code === code && state.view === view &&
+    state.feedbackAttachments[feedbackId] === g && g.open;
   render();
   try {
-    g.items = (await api.feedback.attachments(feedbackId)).items;
+    const response = await api.feedback.attachments(feedbackId);
+    if (!current()) return;
+    g.items = response.items;
     // No máximo 3: um link temporário por imagem visível, só quando a galeria abre.
-    for (const a of g.items) g.urls[a.attachmentId] = (await api.feedback.attachmentUrl(feedbackId, a.attachmentId)).downloadUrl;
+    for (const a of g.items) {
+      if (!current()) return;
+      const response = await api.feedback.attachmentUrl(feedbackId, a.attachmentId);
+      if (!current()) return;
+      g.urls[a.attachmentId] = response.downloadUrl;
+    }
   } catch (err) {
-    g.error = err.message || "Não foi possível carregar as imagens.";
+    if (current()) g.error = err.message || "Não foi possível carregar as imagens.";
   } finally {
-    g.loading = false;
-    render();
+    if (current()) { g.loading = false; render(); }
   }
 }
 
 // Fechar só esconde: lista e links continuam guardados; abrir de novo busca tudo outra vez.
 export function closeAttachments(id) {
   state.feedbackAttachments[id].open = false;
+  state.feedbackAttachments[id].loading = false;
   render();
 }

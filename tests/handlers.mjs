@@ -12,9 +12,9 @@ const remindersHandlers = await import("../frontend/handlers/reminders.js");
 const apiModule = await import("../frontend/api.js");
 const { notice } = await import("../frontend/ui.js");
 
-// A troca de usuário zera arquivo e prévia, mas não acknowledgeRemoved nem importLoading (comportamento
-// anterior à extração, sem teste de navegador direto para importLoading).
-test("resetDraftsForUser descarta os rascunhos e preserva acknowledgeRemoved e importLoading", () => {
+// Troca real de usuário também limpa andamento/confirmação da importação. Antes estes dois
+// campos eram herdados; a mesma pessoa continua conservando seu rascunho e a operação atual.
+test("resetDraftsForUser isola rascunhos, confirmação e andamento entre usuários", () => {
   const keys = ["code", "csv", "filename", "preview", "dirty", "acknowledgeRemoved", "importLoading"];
   const saved = Object.fromEntries(keys.map((key) => [key, direct[key]]));
   try {
@@ -25,14 +25,16 @@ test("resetDraftsForUser descarta os rascunhos e preserva acknowledgeRemoved e i
     importHandlers.resetDraftsForUser("primeiro@example.test");
     assert.equal(direct.csv, "a,b");
     assert.equal(direct.preview, preview);
+    assert.equal(direct.importLoading, true, "mesma pessoa preserva o andamento");
+    assert.equal(direct.acknowledgeRemoved, true, "mesma pessoa preserva a confirmação");
     direct.csv = "";
     assert.ok(importHandlers.hasUnpublishedCsv());
     direct.csv = "a,b";
     importHandlers.resetDraftsForUser("segundo@example.test");
     assert.deepEqual({ csv: direct.csv, filename: direct.filename, preview: direct.preview, dirty: direct.dirty },
       { csv: "", filename: "", preview: null, dirty: false });
-    assert.equal(direct.importLoading, true);
-    assert.equal(direct.acknowledgeRemoved, true);
+    assert.equal(direct.importLoading, false);
+    assert.equal(direct.acknowledgeRemoved, false);
     assert.ok(!importHandlers.hasUnpublishedCsv());
   } finally {
     importHandlers.discardDrafts();

@@ -36,7 +36,7 @@ async function scenario(fn) {
     adminFeedback: fresh().admin(), myFeedback: fresh().mine(), feedbackFiles: [], feedbackAttachments: {}, feedbackCardUpload: {},
     feedbackDraft: { type: "", title: "", description: "" }, feedbackUpload: { feedbackId: null, progress: "", failed: false },
     feedbackSending: false, feedbackSent: false, feedbackOrigin: "" });
-  feedback.configure({ render }); adminFeedback.configure({ render });
+  feedback.configure({ render }); adminFeedback.configure({ render }); importHandlers.configure({ render });
   api.setTransport((path, options = {}) => new Promise((resolve, reject) => calls.push({ path, body: options.body, method: options.method, resolve, reject })));
   // Vigia: uma operação que ficou sem dono (promise de A nunca resolvida) falha o cenário em vez de travar a suíte.
   let timer;
@@ -44,7 +44,7 @@ async function scenario(fn) {
   try { await Promise.race([fn({ calls, urls, notices, renders: () => renders }), watchdog]); }
   finally {
     realClearTimeout(timer);
-    feedback.configure({ render: null }); adminFeedback.configure({ render: null });
+    feedback.configure({ render: null }); adminFeedback.configure({ render: null }); importHandlers.configure({ render: null });
     api.setTransport(() => { throw new Error("Rede não autorizada no teste"); });
     URL.createObjectURL = original.create; URL.revokeObjectURL = original.revoke;
     feedback.resetForUser?.(""); adminFeedback.resetForUser?.("");
@@ -418,3 +418,110 @@ test("D: slot de A já pronto depois da troca não mostra \"Imagem anexada\" a B
   assert.equal(calls.length, before);
   assert.deepEqual(notices, [], "nenhum aviso de A aparece para B");
 }));
+
+
+// Revisão TODO 23/24: cada promise continua vinculada ao usuário/rascunho que a iniciou.
+for (const nextCode of ["BRSA0267", "BRSA0268"]) {
+  test(`C7.5 CSV: leitura de A não preenche arquivo nem Map de B (${nextCode})`, () => scenario(async ({ renders }) => {
+    importHandlers.resetDraftsForUser("csv-a@example.test");
+    const reading = deferred();
+    const selected = importHandlers.selectCsv({ name: "privado-a.csv", size: 20, text: () => reading.promise });
+    importHandlers.resetDraftsForUser("csv-b@example.test");
+    Object.assign(state, { code: nextCode, csv: "arquivo de B", filename: "b.csv", preview: { id: "b" }, dirty: true, acknowledgeRemoved: true, importLoading: false });
+    const before = renders();
+    reading.resolve("arquivo privado de A"); await selected;
+    assert.deepEqual([state.csv, state.filename, state.preview, state.dirty, state.acknowledgeRemoved], ["arquivo de B", "b.csv", { id: "b" }, true, true]);
+    assert.equal(renders(), before, "resposta sem dono não redesenha a tela de B");
+    state.csv = "";
+    assert.equal(importHandlers.hasUnpublishedCsv(), false, "nenhum rascunho privado de A renasce no Map");
+  }));
+}
+
+test("C7.5 CSV: a seleção mais recente vence uma leitura anterior no mesmo curso", () => scenario(async () => {
+  importHandlers.resetDraftsForUser("csv-latest@example.test");
+  const reading = deferred();
+  const old = importHandlers.selectCsv({ name: "antigo.csv", size: 20, text: () => reading.promise });
+  await importHandlers.selectCsv({ name: "atual.csv", size: 20, text: async () => "arquivo atual" });
+  reading.resolve("arquivo antigo"); await old;
+  assert.deepEqual([state.csv, state.filename], ["arquivo atual", "atual.csv"]);
+}));
+
+test("C7.5 CSV: falha de leitura do usuário anterior é descartada após a troca", () => scenario(async ({ renders }) => {
+  importHandlers.resetDraftsForUser("csv-error-a@example.test");
+  const reading = deferred();
+  const old = importHandlers.selectCsv({ name: "antigo.csv", size: 20, text: () => reading.promise });
+  importHandlers.resetDraftsForUser("csv-error-b@example.test");
+  const before = renders();
+  reading.reject(new Error("Falha privada do arquivo de A"));
+  await assert.doesNotReject(old);
+  assert.equal(renders(), before);
+}));
+
+test("C7.5 importação: troca real de usuário limpa andamento e confirmação; mesma pessoa preserva", () => scenario(async () => {
+  importHandlers.resetDraftsForUser("import-reset-a@example.test");
+  Object.assign(state, { csv: "A", filename: "a.csv", preview: { id: "a" }, dirty: true, acknowledgeRemoved: true, importLoading: true });
+  importHandlers.resetDraftsForUser("import-reset-a@example.test");
+  assert.deepEqual([state.csv, state.importLoading, state.acknowledgeRemoved], ["A", true, true]);
+  importHandlers.resetDraftsForUser("import-reset-b@example.test");
+  assert.deepEqual([state.csv, state.filename, state.preview, state.dirty, state.importLoading, state.acknowledgeRemoved], ["", "", null, false, false, false]);
+}));
+
+for (const outcome of ["success", "error"]) {
+  test(`C7.5 prévia: ${outcome} de A não altera nem finaliza a prévia de B com mesmo CSV`, () => scenario(async ({ calls, renders, notices }) => {
+    importHandlers.resetDraftsForUser(`preview-a-${outcome}@example.test`);
+    Object.assign(state, { csv: "mesmo CSV", filename: "notas.csv", preview: null, importLoading: false, dirty: false });
+    const old = importHandlers.previewImport(), oldCall = calls.at(-1);
+    importHandlers.resetDraftsForUser(`preview-b-${outcome}@example.test`);
+    Object.assign(state, { csv: "mesmo CSV", filename: "notas.csv", preview: { id: "previa de B" }, importLoading: true, dirty: true, acknowledgeRemoved: true });
+    const before = renders();
+    if (outcome === "success") oldCall.resolve({ id: "previa privada de A", activities: [] });
+    else oldCall.reject(new Error("Falha privada de A"));
+    await assert.doesNotReject(old);
+    assert.deepEqual([state.preview, state.importLoading, state.dirty, state.acknowledgeRemoved], [{ id: "previa de B" }, true, true, true]);
+    assert.equal(renders(), before);
+    assert.deepEqual(notices, []);
+  }));
+}
+
+test("C7.5 prévia: A1 → outra turma → A2 não restaura resultado nem finally de A1", () => scenario(async ({ calls, renders, notices }) => {
+  importHandlers.resetDraftsForUser("preview-roundtrip@example.test");
+  Object.assign(state, { csv: "CSV A", filename: "a.csv", preview: null, importLoading: false });
+  const first = importHandlers.previewImport(), firstCall = calls.at(-1);
+  importHandlers.saveDraft(); state.code = "BRSA0268"; importHandlers.restoreDraft();
+  importHandlers.saveDraft(); state.code = "BRSA0267"; importHandlers.restoreDraft();
+  const second = importHandlers.previewImport(), secondCall = calls.at(-1), before = renders();
+  firstCall.resolve({ id: "A1", activities: [] }); await first;
+  assert.equal(state.preview, null, "A2 ainda está pendente");
+  assert.equal(state.importLoading, true, "finally de A1 não encerra A2");
+  assert.equal(renders(), before); assert.deepEqual(notices, []);
+  secondCall.resolve({ id: "A2", activities: [] }); await second;
+  assert.equal(state.preview.id, "A2"); assert.equal(state.importLoading, false);
+}));
+
+// Arranjo defensivo do handler: a tela normalmente desabilita seleção durante a publicação.
+test("C7.5 publicação (defensivo): resposta anterior não apaga uma nova seleção na mesma turma", () => scenario(async ({ calls }) => {
+  importHandlers.resetDraftsForUser("publish-new-draft@example.test");
+  globalThis.confirm = () => true;
+  const preview = { draft: { id: "d-old", filename: "old.csv" }, count: 1, activities: [], changes: { studentsRemoved: [] } };
+  Object.assign(state, { csv: "CSV antigo", filename: "old.csv", preview, dirty: false, acknowledgeRemoved: false });
+  const publishing = importHandlers.publish(), call = calls.at(-1);
+  await importHandlers.selectCsv({ name: "novo.csv", size: 20, text: async () => "CSV novo" });
+  call.resolve({ publication: { id: "p-old" } });
+  assert.equal(await publishing, false, "não navega ao painel como se o rascunho novo tivesse sido publicado");
+  assert.deepEqual([state.csv, state.filename, state.preview], ["CSV novo", "novo.csv", null]);
+}));
+
+for (const outcome of ["success", "error"]) {
+  test(`C7.5 admin: ${outcome} de leitura anterior não aplica finally/render na fila de outro usuário`, () => scenario(async ({ calls, renders }) => {
+    adminFeedback.resetForUser(`admin-a-${outcome}@example.test`);
+    const old = adminFeedback.load(true), call = calls.at(-1);
+    adminFeedback.resetForUser(`admin-b-${outcome}@example.test`);
+    const b = state.adminFeedback; Object.assign(b, { items: [item("b")], loading: true, error: "Erro atual de B" });
+    const before = renders();
+    if (outcome === "success") call.resolve({ items: [item("privado-a")], nextCursor: "cursor-a", summary: { NEW: 1 } });
+    else call.reject(new Error("Falha privada de A"));
+    await old;
+    assert.deepEqual([b.items.map((row) => row.id), b.loading, b.error], [["b"], true, "Erro atual de B"]);
+    assert.equal(renders(), before, "a leitura de A não redesenha a fila de B");
+  }));
+}

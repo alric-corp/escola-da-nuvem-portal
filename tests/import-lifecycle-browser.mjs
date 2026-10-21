@@ -156,7 +156,7 @@ try {
     console.log("Importação: rascunho por turma, corpo da prévia e seleção preservada OK.");
   }
 
-  // Outro usuário no mesmo carregamento: rascunhos descartados; acknowledgeRemoved não é zerado pelo boot.
+  // Outro usuário no mesmo carregamento: rascunhos e confirmação da pessoa anterior são descartados.
   {
     const { tab, log, calls } = await openPortal({
       role: "admin", emails: ["admin@example.test", "outro.admin@example.test"],
@@ -184,7 +184,7 @@ try {
     // Expansão 8: o aviso de quem salvou não aparece para quem entrou; a espera é pela pessoa nova no topo (o boot terminou).
     await tab.locator(".session-context small").filter({ hasText: "outro.admin@example.test" }).waitFor();
     assert.equal(calls("GET", "/me").length, 2);
-    assert.deepEqual(await importState(tab), { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: true });
+    assert.deepEqual(await importState(tab), { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: false });
     await openImport(tab);
     assert.equal(await filename(tab), "Nenhum arquivo selecionado");
     assert.equal(await hasPreview(tab), false);
@@ -193,7 +193,7 @@ try {
     assert.equal(await filename(tab), "Nenhum arquivo selecionado");
     assert.deepEqual(await leaveWithUnload(tab, log), []);
     assert.deepEqual(log.errors, []);
-    console.log("Importação: troca de usuário descarta rascunhos e mantém acknowledgeRemoved OK.");
+    console.log("Importação: troca de usuário descarta rascunhos, andamento e confirmação OK.");
   }
 
   // Sair com arquivo não publicado: confirmação, inclusive quando o arquivo está no rascunho de outra turma.
@@ -449,6 +449,68 @@ try {
     // Publicado e sem outros rascunhos: fechar não pede confirmação.
     assert.deepEqual(await leaveWithUnload(tab, log), []);
     console.log("Importação: publicar com 409 mantém o rascunho e permite tentar de novo OK.");
+  }
+
+  // File.text pode terminar depois de /me mudar. A nova pessoa não herda esse CSV nem um draft oculto.
+  {
+    const { tab, log } = await openPortal({ role: "admin", emails: ["csv-a@example.test", "csv-b@example.test"],
+      respond: ({ method, endpoint }) => {
+        if (method === "POST" && endpoint === `/cohorts/${A}/settings`) return { json: {} };
+        if (endpoint === "/requests") return { json: { requests: [] } };
+        if (endpoint === `/cohorts/${A}/instructors`) return { json: { instructors: [] } };
+      } });
+    await tab.evaluate(() => {
+      const original = File.prototype.text;
+      File.prototype.text = function () {
+        if (this.name !== "lento-a.csv") return original.call(this);
+        window.__csvReadStarted = true;
+        return new Promise((resolve) => { window.__finishCsvRead = () => original.call(this).then(resolve); });
+      };
+    });
+    await openImport(tab);
+    await tab.locator("#csv-file").setInputFiles({ name: "lento-a.csv", mimeType: "text/csv", buffer: Buffer.from(csvA) });
+    await tab.waitForFunction(() => window.__csvReadStarted);
+    await tab.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
+    await tab.getByRole("button", { name: "Salvar configurações", exact: true }).click();
+    await tab.locator(".session-context small").filter({ hasText: "csv-b@example.test" }).waitFor();
+    await openImport(tab); await selectCsv(tab, "atual-b.csv", csvB);
+    await tab.evaluate(() => window.__finishCsvRead()); await flushNetwork(tab);
+    assert.deepEqual(await importState(tab), { csv: csvB, filename: "atual-b.csv", preview: null, dirty: false, acknowledgeRemoved: false });
+    await switchCohort(tab, B); await openImport(tab);
+    assert.equal(await filename(tab), "Nenhum arquivo selecionado", "nenhum CSV de A no Map de B");
+    await switchCohort(tab, A); await openImport(tab); assert.equal(await filename(tab), "atual-b.csv");
+    assert.deepEqual(log.errors, []); await tab.close();
+    console.log("Importação C7.5: File.text de outro usuário não reaparece no DOM nem no Map OK.");
+  }
+
+  // Mesma turma, nome e bytes: a identidade da operação ainda distingue A da nova conferência de B.
+  {
+    const arrived = [deferred(), deferred()], gates = [deferred(), deferred()]; let previews = 0;
+    const { tab, log } = await openPortal({ role: "admin", emails: ["preview-a@example.test", "preview-b@example.test"],
+      respond: async ({ method, endpoint }) => {
+        if (endpoint === `/cohorts/${A}/preview`) { const n = previews++; arrived[n].resolve(); await gates[n].promise; return { json: preview(A, n + 1) }; }
+        if (method === "POST" && endpoint === `/cohorts/${A}/settings`) return { json: {} };
+        if (endpoint === "/requests") return { json: { requests: [] } };
+        if (endpoint === `/cohorts/${A}/instructors`) return { json: { instructors: [] } };
+      } });
+    await openImport(tab); await selectCsv(tab, "notas.csv", csvA);
+    await tab.getByRole("button", { name: "Conferir arquivo" }).click(); await arrived[0].promise;
+    await tab.getByRole("button", { name: "Turmas e acessos", exact: true }).click();
+    await tab.getByRole("button", { name: "Salvar configurações", exact: true }).click();
+    await tab.locator(".session-context small").filter({ hasText: "preview-b@example.test" }).waitFor();
+    await openImport(tab); await selectCsv(tab, "notas.csv", csvA);
+    await tab.getByRole("button", { name: "Conferir arquivo" }).click(); await arrived[1].promise;
+    const oldFinished = tab.waitForEvent("requestfinished", (request) => request.url().endsWith(`/cohorts/${A}/preview`));
+    gates[0].resolve(); await oldFinished; await flushNetwork(tab);
+    assert.equal((await importState(tab)).preview, null);
+    assert.equal(await tab.evaluate(async () => (await import("/state.js")).state.importLoading), true, "finally de A não encerra a conferência de B");
+    assert.equal(await tab.locator("#timp-check-status").isVisible(), true);
+    assert.doesNotMatch(await notices(tab).innerText(), /Prévia pronta/);
+    gates[1].resolve(); await tab.getByText(`Prévia ${A}-2`, { exact: true }).waitFor();
+    assert.equal(await tab.evaluate(async () => (await import("/state.js")).state.importLoading), false);
+    assert.equal((await importState(tab)).preview, `draft-${A}-2`);
+    assert.deepEqual(log.errors, []); await tab.close();
+    console.log("Importação C7.5: prévia/finally de A não encerram a nova conferência de B OK.");
   }
 } finally {
   if (browser) await browser.close();

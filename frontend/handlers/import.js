@@ -11,7 +11,10 @@ export function configure(options) {
 }
 
 const drafts = new Map();
+// Uma leitura/conferência por rascunho: uma seleção nova invalida a anterior sem cancelar pedidos de outra turma.
+const draftRequests = new Map();
 let draftOwner = "";
+let draftEpoch = 0;
 
 // Resultado das validações de integridade calculadas pelo backend (backend/integrity.py). A tela só
 // apresenta: a publicação é recalculada e bloqueada no servidor, com ou sem esta prévia.
@@ -19,13 +22,15 @@ export function blockedByIntegrity(p) {
   return !!p?.integrity?.critical?.length;
 }
 
-// Outro usuário na mesma aba: descarta os rascunhos do anterior. acknowledgeRemoved e
-// importLoading ficam como estão, como antes da extração.
+// Outro usuário na mesma aba: descarta arquivo, confirmação e andamento do anterior;
+// a mesma pessoa conserva o rascunho e as operações atuais.
 export function resetDraftsForUser(email) {
   if (draftOwner !== email) {
     drafts.clear();
+    draftRequests.clear();
+    draftEpoch++;
     draftOwner = email;
-    Object.assign(state, { csv: "", filename: "", preview: null, dirty: false });
+    Object.assign(state, { csv: "", filename: "", preview: null, dirty: false, acknowledgeRemoved: false, importLoading: false });
   }
 }
 
@@ -47,12 +52,17 @@ export function hasUnpublishedCsv() {
 
 export function discardDrafts() {
   drafts.clear();
+  draftRequests.clear();
+  draftEpoch++;
   state.csv = "";
 }
 
 export async function selectCsv(file) {
   const code = state.code;
   if (!file) return;
+  const request = {};
+  draftRequests.set(code, request);
+  state.importLoading = false;
   state.preview = null;
   state.csv = "";
   state.filename = "";
@@ -60,7 +70,10 @@ export async function selectCsv(file) {
     render();
     throw new Error("Selecione um CSV de até 2 MB.");
   }
-  const csv = await file.text();
+  let csv;
+  try { csv = await file.text(); }
+  catch (err) { if (draftRequests.get(code) === request) throw err; return; }
+  if (draftRequests.get(code) !== request) return;
   if (state.code !== code) {
     drafts.set(code, { csv, filename: file.name, preview: null, dirty: false, acknowledgeRemoved: false });
     return;
@@ -96,20 +109,27 @@ export async function previewImport() {
     body.activeIds = state.preview.activities
       .filter((a) => a.active)
       .map((a) => a.id);
+  const request = {};
+  draftRequests.set(code, request);
+  const current = () => draftRequests.get(code) === request;
   state.importLoading = true;
   render();
   let preview;
   try {
     preview = await api.cohorts.previewImport(code, body);
+  } catch (err) {
+    if (current()) throw err;
+    return;
   } finally {
-    if (state.code === code) { state.importLoading = false; render(); }
+    if (current() && state.code === code) { state.importLoading = false; render(); }
   }
+  if (!current()) return;
   if (state.code !== code) {
-    if (drafts.get(code)?.csv === body.csv)
+    if (drafts.get(code)?.csv === body.csv && drafts.get(code)?.filename === body.filename)
       drafts.set(code, { ...drafts.get(code), preview, dirty: false, acknowledgeRemoved: false });
     return;
   }
-  if (state.csv !== body.csv) return;
+  if (state.csv !== body.csv || state.filename !== body.filename) return;
   state.preview = preview;
   state.dirty = false;
   state.acknowledgeRemoved = false;
@@ -134,7 +154,7 @@ function publishQuestion(preview, code) {
 // recarrega e avisa. Nos outros casos não há mais nada a fazer. started: chamado depois da confirmação e
 // antes do pedido (app.js mostra o andamento).
 export async function publish(started = () => {}) {
-  const code = state.code, preview = state.preview, owner = draftOwner;
+  const code = state.code, preview = state.preview, epoch = draftEpoch;
   if (!preview || state.dirty) return false;
   if (blockedByIntegrity(preview))
     throw new Error("Publicação bloqueada pelas validações de integridade. Confira os itens críticos da prévia.");
@@ -144,9 +164,10 @@ export async function publish(started = () => {}) {
   started();
   await api.cohorts.publish(code, { draftId: preview.draft.id, acknowledgeRemoved: state.acknowledgeRemoved });
   // Outra pessoa entrou na aba durante a publicação: os rascunhos e o arquivo na tela já são dela; nada muda nem é avisado.
-  if (draftOwner !== owner) return false;
-  drafts.delete(code);
+  if (draftEpoch !== epoch) return false;
+  if (drafts.get(code)?.preview === preview) drafts.delete(code);
   if (state.code !== code) { notice(`Atualização publicada na ${code}.`); return false; }
+  if (state.preview !== preview) return false;
   state.preview = null;
   state.csv = "";
   state.filename = "";

@@ -16,7 +16,8 @@ def run():
         work = pathlib.Path(directory)
         shutil.copytree(ROOT / "frontend", work / "frontend", ignore=shutil.ignore_patterns("dist", "config.json"))
         (work / "tests").mkdir()
-        for name in ("stale-responses.mjs", "stale-browser.mjs"):
+        node_suites = ("stale-responses.mjs", "report-context.mjs", "batch-stale-context.mjs", "feedback-async-context.mjs")
+        for name in (*node_suites, "stale-browser.mjs"):
             shutil.copyfile(ROOT / "tests" / name, work / "tests" / name)
         (work / "package.json").write_text('{"type":"module"}')
         (work / "node_modules").symlink_to(ROOT / "node_modules", target_is_directory=True)
@@ -28,7 +29,8 @@ def run():
                 (work / "frontend-dist" / "config.json").write_text("{}")
                 shutil.rmtree(work / "frontend" / "dist", ignore_errors=True)
                 shutil.move(work / "frontend-dist", work / "frontend" / "dist")
-            return subprocess.run(["node", "--test", "--test-reporter=tap", "tests/stale-browser.mjs" if browser else "tests/stale-responses.mjs"], cwd=work, capture_output=True, text=True, timeout=90)
+            suites = ("stale-browser.mjs",) if browser else node_suites
+            return subprocess.run(["node", "--test", "--test-reporter=tap", *("tests/" + name for name in suites)], cwd=work, capture_output=True, text=True, timeout=90)
 
         control = test()
         if control.returncode:
@@ -50,7 +52,8 @@ def run():
             ("pending-error", REMINDERS, "loadPending", "if (current()) {\n      state.pendingError", "if (true) {\n      state.pendingError", False),
             ("sender-invalidation", REMINDERS, "invalidateReads", "senderRequest++;", "", False),
             ("pending-invalidation", REMINDERS, "invalidateReads", "pendingRequest++;", "", False),
-            ("mine-invalidation", FEEDBACK, "invalidateReads", 'mineRequest++;\n  // Trocar a referência impede também callbacks antigos de preencher a lista do novo contexto.\n  state.myFeedback = { items: [], nextCursor: null, loading: false, error: "" };', "", False),
+            # As duas proteções originais agora estão separadas pela invalidação das galerias; remover ambas como antes.
+            ("mine-invalidation", FEEDBACK, "invalidateReads", ("mineRequest++;", 'state.myFeedback = { items: [], nextCursor: null, loading: false, error: "" };'), ("", ""), False),
             ("list-ownership", FEEDBACK, "loadMine", " && state.myFeedback === list", "", False),
             ("verify-sender-success", REMINDERS, "verifySender", "if (!current()) return;", "", False),
             ("verify-sender-error", REMINDERS, "verifySender", "if (current()) throw err;", "throw err;", False),
@@ -58,6 +61,13 @@ def run():
             ("send-error-after-refresh", REMINDERS, "sendReminder", "if (failure && current())", "if (failure)", False),
             ("navigation-render-hook", APP, "render", "  syncReadContext();", "", True),
             ("expired-session-hook", APP, "publicPage", "  syncReadContext();", "", True),
+            ("report-context-invalidation", APP, "syncReadContext", "  reportRequest++;\n", "", False),
+            ("boot-generation", APP, "boot", "const current = () => request === bootRequest;", "const current = () => true;", False),
+            ("class-report-success", APP, "loadClassReport", "  if (!current()) return;\n", "", False),
+            ("batch-invalidation", REMINDERS, "invalidateReads", "batchPreviewRequest++;", "", False),
+            ("batch-preview-owner", REMINDERS, "loadBatchPreview", "state.me === owner && ", "", False),
+            ("batch-send-owner", REMINDERS, "sendBatch", "state.me === owner && ", "", False),
+            ("retry-upload-finally", FEEDBACK, "retryUploads", "if (epoch === userEpoch) {", "if (true) {", False),
         ]
         results = []
         for name, file, function, old, new, browser in mutations:
@@ -67,9 +77,12 @@ def run():
             start = source.index("function " + function + "(")
             end = source.index("\n}", start) + 2
             block = source[start:end]
-            if block.count(old) != 1:
-                raise RuntimeError("Mutação ambígua ou ausente: " + name)
-            (work / file).write_text(source[:start] + block.replace(old, new, 1) + source[end:])
+            fragments = ((old, new),) if isinstance(old, str) else zip(old, new)
+            for before, after in fragments:
+                if block.count(before) != 1:
+                    raise RuntimeError("Mutação ambígua ou ausente: " + name)
+                block = block.replace(before, after, 1)
+            (work / file).write_text(source[:start] + block + source[end:])
             result = test(browser)
             killed = result.returncode != 0 and "not ok" in result.stdout and ("AssertionError" in result.stdout or "ERR_ASSERTION" in result.stdout)
             results.append({"mutation": name, "killed": killed, "suite": "browser" if browser else "node"})

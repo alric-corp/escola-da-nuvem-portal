@@ -472,14 +472,15 @@ test("batchPreviewRequest mora só no handler de Lembretes, incrementado antes d
     assert.doesNotMatch(read(`frontend/${file}`), /batchPreviewRequest/, file);
   assert.ok(!("batchPreviewRequest" in direct));
   assert.equal(remindersHandlers.batchPreviewRequest, undefined);
-  // A ordem é semântica (turma, contador, efeitos, request); a formatação não: compara o corpo sem espaços.
+  // TODO 23: sincronizar antes de capturar o dono evita que o render invalide a própria chamada legítima.
   const body = blockAfter(handler, /export\s+async\s+function\s+loadBatchPreview\s*\(\s*\)/).replace(/\s+/g, "");
-  const order = ["constcode=state.code", "constrequest=++batchPreviewRequest", 'state.batchError=""', "render()", "awaitapi.reminders.batchPreview("];
+  const order = ["syncContext()", "constcode=state.code", "request=++batchPreviewRequest", 'state.batchError=""', "render()", "awaitapi.reminders.batchPreview("];
   const at = order.map((step) => body.indexOf(step));
   assert.ok(at.every((i) => i >= 0), JSON.stringify(at));
   assert.deepEqual([...at].sort((a, b) => a - b), at, "fora de ordem: turma, contador, efeitos, request");
   assert.equal((body.match(/\+\+batchPreviewRequest/g) || []).length, 1);
-  assert.equal((body.match(/if\(request===batchPreviewRequest&&state\.code===code&&state\.view==="reminders-batch"\)/g) || []).length, 2);
+  assert.match(body, /constcurrent=\(\)=>request===batchPreviewRequest&&state\.me===owner&&state\.code===code&&state\.view==="reminders-batch"/);
+  assert.equal((body.match(/if\(current\(\)\)/g) || []).length, 2, "sucesso e erro só escrevem no contexto proprietário");
 });
 
 // Actions do app.js pelas propriedades reais do objeto: o V8 avalia só o literal (nenhuma action roda),

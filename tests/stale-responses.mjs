@@ -28,7 +28,7 @@ async function scenario(name, fn) {
     querySelector: () => ({ replaceChildren: (item) => notices.push(item.children[0].textContent) }) };
   globalThis.confirm = () => true; globalThis.setTimeout = () => 0;
   let renders = 0;
-  const sync = new Function("state", "remindersHandlers", "feedbackHandlers", `let readContext = []; ${syncSource}; return syncReadContext;`)(state, reminders, feedback);
+  const sync = new Function("state", "remindersHandlers", "feedbackHandlers", `let readContext = [], reportRequest = 0; ${syncSource}; return syncReadContext;`)(state, reminders, feedback);
   const render = () => { sync(); renders++; for (const b of buttons) b.isConnected = false; };
   const busy = new Function("notice", `${busySource}; return busy;`)((message) => notices.push(message));
   Object.assign(state, { code: "BRSA0267", view: m.view, me: { email: "teacher@example.test", roles: ["instructor"] }, studentView: null,
