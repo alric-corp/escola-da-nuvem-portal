@@ -38,6 +38,7 @@ class PublicationApprovalTests(unittest.TestCase):
         build(app, config())
         api = api_routes(app, cls.work)
         cls.modern = package("modern", SHA, app, api, cls.work / "modern-release")
+        cls.modern_object_count = len(json.loads((cls.modern / "manifest.json").read_bytes())["files"]) + 2
         base = archive_baseline(cls.work / "baseline")
         build(base)
         cls.baseline = package("baseline", BASELINE_SHA, base, api_routes(base, cls.work), cls.work / "base-release")
@@ -103,7 +104,7 @@ class PublicationApprovalTests(unittest.TestCase):
                 self.env["OPERATION"] = operation
                 self.write_event()
                 self.run_cli()
-                self.assertEqual(self.s3.put_object.call_count, 32)
+                self.assertEqual(self.s3.put_object.call_count, self.modern_object_count)
                 self.assertTrue(all(c.kwargs["IfNoneMatch"] == "*" for c in self.s3.put_object.call_args_list))
                 self.assertTrue(self.s3.put_object.call_args_list[-1].kwargs["Key"].endswith("/manifest.json"))
                 self.s3.put_object.reset_mock()
@@ -223,7 +224,7 @@ class PublicationApprovalTests(unittest.TestCase):
         self.env.update(GITHUB_EVENT_NAME="workflow_run", OPERATION="deploy", APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
         self.write_event(ci_run_event())
         self.run_cli()
-        self.assertEqual(self.s3.put_object.call_count, 32)
+        self.assertEqual(self.s3.put_object.call_count, self.modern_object_count)
 
     def test_forged_automatic_or_manual_context_never_disables_approval(self):
         original = dict(self.env)
@@ -359,7 +360,7 @@ with mock_aws():
                                         cwd=ROOT, env=env, capture_output=True, text=True, timeout=30)
                 observed = json.loads(trace.read_text())
                 self.assertEqual(result.returncode == 0, not missing_origin, result.stdout + result.stderr)
-                self.assertEqual(len(observed["puts"]), 0 if missing_origin else 32)
+                self.assertEqual(len(observed["puts"]), 0 if missing_origin else self.modern_object_count)
                 if not missing_origin:
                     self.assertEqual(observed["origin"], ORIGIN)
                     self.assertTrue(all(c["condition"] == "*" for c in observed["puts"]))

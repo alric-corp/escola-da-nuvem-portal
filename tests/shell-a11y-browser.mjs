@@ -40,7 +40,7 @@ const history = [
 const report = { cohort: "BRSA0267", publication: { id: "p1", publishedAt: "2026-10-09T21:00:00Z" }, updatedAt: "2026-10-10T21:04:00Z",
   updateKind: "canvas", thresholds: { kc: 70, lab: 95 }, student, history, focus: { activityIds: [], version: null } };
 const ROLES = { student: ["student"], instructor: ["instructor"], admin: ["admin", "instructor"] };
-const ADMIN_MENU = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks"];
+const ADMIN_MENU = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks", "Guia"];
 const RING = [0, 203, 221]; // --primary-hover, cor do contorno de foco
 
 let browser, origin;
@@ -130,7 +130,7 @@ test("A1: o seletor de turma mostra o código e o Sair continua visível, com te
   }
 });
 
-test("A2: os seis destinos do admin cabem sem sobreposição nem corte, na ordem, em 320 e 390 px, com texto normal e a 200%", async () => {
+test("A2: os sete destinos do admin cabem sem sobreposição nem corte, na ordem, em 320 e 390 px, com texto normal e a 200%", async () => {
   for (const o of [{ width: 320, height: 640 }, { width: 390, height: 844 }, { width: 320, height: 640, text: 2 }, { width: 390, height: 844, text: 2 }]) {
     const { context, page } = await open({ role: "admin", ...o });
     const items = await page.locator(".sidebar nav .nav-item").evaluateAll((els) => els.map((el) => {
@@ -142,7 +142,7 @@ test("A2: os seis destinos do admin cabem sem sobreposição nem corte, na ordem
         lines: Math.round(t.height / parseFloat(getComputedStyle(short).lineHeight)) };
     }));
     const id = label({ role: "admin", ...o });
-    assert.deepEqual(items.map((i) => i.text), ADMIN_MENU, `${id}: seis destinos, na ordem`);
+    assert.deepEqual(items.map((i) => i.text), ADMIN_MENU, `${id}: sete destinos, na ordem`);
     for (const i of items) {
       assert.ok(i.overflow <= 0.5, `${id}: "${i.text}" transborda ${i.overflow} px`);
       assert.ok(i.label.left >= i.item.left - 0.5 && i.label.right <= i.item.right + 0.5 && i.label.top >= i.item.top - 0.5 && i.label.bottom <= i.item.bottom + 0.5, `${id}: "${i.text}" fora do próprio item`);
@@ -160,7 +160,7 @@ test("A2: os seis destinos do admin cabem sem sobreposição nem corte, na ordem
     const visual = [...items].sort((p, q) => (Math.round(p.item.top) - Math.round(q.item.top)) || (p.item.left - q.item.left)).map((i) => i.text);
     assert.deepEqual(visual, ADMIN_MENU, `${id}: ordem visual`);
     const perRow = rows.map((t) => items.filter((i) => Math.round(i.item.top) === t).length);
-    if (!o.text) assert.deepEqual(perRow, [3, 3], `${id}: três colunas e duas linhas`);
+    if (!o.text) assert.deepEqual(perRow, [3, 3, 1], `${id}: três colunas e três linhas`);
     else assert.ok(perRow.every((n) => n <= 3) && perRow.length >= 2, `${id}: até três por linha (${perRow})`);
     await context.close();
   }
@@ -200,7 +200,7 @@ test("A4: em janelas baixas e com zoom, o contorno de foco dos controles da barr
       const ring = await ringOnScreen(page);
       assert.deepEqual(ring.bad, [], `${label(o)}: contorno de "${name}" incompleto`);
     }
-    assert.ok(seen >= 8, `${label(o)}: turma, seis destinos e Sair pelo teclado (${seen})`);
+    assert.ok(seen >= 9, `${label(o)}: turma, sete destinos e Sair pelo teclado (${seen})`);
     await context.close();
   }
 });
@@ -257,16 +257,16 @@ test("A6: o degradê acima da barra é de no máximo 16 px e não apaga indicado
   }
 });
 
-test("A7: o menu do aluno (quatro destinos) usa 12 px em uma linha, sem a compactação do menu do admin", async () => {
+test("A7: o menu do aluno (cinco destinos) preserva rótulos de 12 px inteiros em até duas linhas de itens", async () => {
   for (const [width, height] of [[320, 640], [375, 812], [390, 844]]) {
     const { context, page } = await open({ width, height });
     const items = await page.locator(".sidebar nav .nav-item").evaluateAll((els) => els.map((el) => {
       const short = el.querySelector(".nav-short"), s = getComputedStyle(short), r = el.getBoundingClientRect();
       return { text: short.textContent, font: parseFloat(s.fontSize), lines: Math.round(short.getBoundingClientRect().height / parseFloat(s.lineHeight)), top: Math.round(r.top) };
     }));
-    assert.equal(items.length, 4);
+    assert.equal(items.length, 5);
     for (const i of items) assert.ok(i.font >= 12 && i.lines === 1, `${width}px: "${i.text}" com ${i.font} px em ${i.lines} linha(s)`);
-    assert.equal(new Set(items.map((i) => i.top)).size, 1, `${width}px: quatro destinos numa linha`);
+    assert.equal(new Set(items.map((i) => i.top)).size, 2, `${width}px: cinco destinos em duas linhas, sem espremer os rótulos`);
     await context.close();
   }
 });

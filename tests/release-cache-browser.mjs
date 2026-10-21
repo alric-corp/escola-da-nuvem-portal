@@ -5,6 +5,7 @@
 // registradas. Não acessa a AWS nem a rede.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync,
   writeFileSync } from "node:fs";
@@ -18,7 +19,8 @@ const ORIGIN = "https://portal.example.test"; // origem pública fictícia da co
 const TMP = mkdtempSync(path.join(os.tmpdir(), "release-cache-"));
 const CLONE = path.join(TMP, "clone"), OUT = path.join(TMP, "releases"), BUCKET = path.join(TMP, "bucket");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".json": "application/json", ".png": "image/png" };
+  ".json": "application/json", ".png": "image/png", ".pdf": "application/pdf",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
 const config = (marker) => ({
   apiUrl: `https://api${marker}teste01.execute-api.us-east-1.amazonaws.com`,
   authDomain: `https://portal-teste-${marker}.auth.us-east-1.amazoncognito.com`,
@@ -187,6 +189,42 @@ test("links e imagens relativos ao documento resolvem contra a raiz", async () =
   assert.equal(await landing.page.locator('link[rel="icon"]').evaluate((l) => l.href), `${origin}/releases/${R1}/logo.png`);
   assert.deepEqual(responses.slice(before).filter((r) => r.status !== 200), [], "nenhum recurso ausente");
   await landing.close();
+});
+
+test("Guia do curso: documentos PDF/PPTX usam a release ativa, com bytes, MIME e cache do manifesto", async () => {
+  activate(R1);
+  const guide = await open();
+  try {
+    await guide.page.getByRole("button", { name: "Guia do curso", exact: true }).click();
+    await guide.page.getByRole("heading", { name: "Guia do curso", exact: true }).waitFor();
+    const inaugural = "documents/aula-inaugural-regras-curso.pptx";
+    const normativa = "documents/normativa-abono-faltas.pdf";
+    const documents = [[inaugural, await guide.page.locator(`a[href$="/${inaugural}"]`).first().getAttribute("href")]];
+    await guide.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
+    documents.push([normativa, await guide.page.locator(`a[href$="/${normativa}"]`).first().getAttribute("href")]);
+    const manifest = JSON.parse(readFileSync(path.join(releaseDir(R1), "manifest.json"), "utf8"));
+    for (const [rel, href] of documents) {
+      assert.equal(href, `${origin}/releases/${R1}/${rel}`, "URL relativa ao módulo, nunca à raiz do documento");
+      const response = await guide.page.request.get(href);
+      assert.equal(response.status(), 200);
+      const meta = manifest.files.find((file) => file.path === rel);
+      assert.ok(meta, "documento listado no manifesto");
+      assert.equal(response.headers()["content-type"], rel.endsWith(".pdf") ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+      assert.equal(response.headers()["cache-control"], meta.cache_control);
+      const bytes = await response.body();
+      assert.deepEqual(bytes, readFileSync(path.join(releaseDir(R1), rel)));
+      assert.equal(bytes.length, meta.size);
+      assert.equal(createHash("sha256").update(bytes).digest("hex"), meta.sha256);
+      assert.ok(rel.endsWith(".pdf") ? bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))
+        : bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])));
+      assert.equal((await guide.page.request.get(`${origin}/${rel}`)).status(), 403, "o guia não depende de documentos na raiz");
+    }
+    assert.deepEqual(guide.configs(), [`/releases/${R1}/config.json`]);
+    assert.deepEqual([guide.seen.errors, guide.seen.external], [[], []]);
+  } finally {
+    await guide.close();
+  }
 });
 
 test("HTML antigo em cache e duas releases ao mesmo tempo: cada página fica inteira na sua release", async () => {

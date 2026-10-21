@@ -17,6 +17,7 @@ export let state = {
   acknowledgeRemoved: false,
   importLoading: false,
   view: "overview",
+  guideTab: "rules",
   activityKind: "all",
   activityModule: "all",
   activityOverviewKind: "all",

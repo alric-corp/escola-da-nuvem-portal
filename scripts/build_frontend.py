@@ -5,10 +5,11 @@ import pathlib
 import shutil
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-FILES = ["index.html", "styles.css", "app.js", "api.js", "ui.js", "state.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js", "handlers/reminders.js", "handlers/signup-confirmation.js", "auth.js", "canvas-links.js", "student-journey.js", "participation.js", "demo.js", "logo.png",
+FILES = ["index.html", "styles.css", "app.js", "api.js", "ui.js", "state.js", "handlers/access.js", "handlers/import.js", "handlers/admin-feedback.js", "handlers/feedback.js", "handlers/reminders.js", "handlers/signup-confirmation.js", "auth.js", "canvas-links.js", "student-journey.js", "participation.js", "course-guide-content.js", "demo.js", "logo.png",
           "pages/landing.js", "pages/class-report.js", "pages/student.js", "pages/teacher.js", "pages/reminders.js",
           "pages/history.js", "pages/import.js", "pages/access.js", "pages/activities-overview.js",
-          "pages/feedback.js", "pages/admin-feedback.js", "pages/signup-confirmation.js"]
+          "pages/feedback.js", "pages/admin-feedback.js", "pages/signup-confirmation.js", "pages/course-guide.js",
+          "documents/normativa-abono-faltas.pdf", "documents/aula-inaugural-regras-curso.pptx"]
 
 
 def main():

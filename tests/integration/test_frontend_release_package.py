@@ -108,6 +108,15 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(files["styles.css"]["content_type"], "text/css; charset=utf-8")
         self.assertEqual(files["logo.png"]["content_type"], "image/png")
         self.assertEqual(files["config.json"]["content_type"], "application/json")
+        for name, mime, signature in (
+                ("normativa-abono-faltas.pdf", "application/pdf", b"%PDF-"),
+                ("aula-inaugural-regras-curso.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", b"PK\x03\x04")):
+            document = "documents/" + name
+            self.assertEqual(files[document]["content_type"], mime)
+            self.assertGreater(files[document]["size"], 100)
+            self.assertTrue((release / document).read_bytes().startswith(signature))
+        self.assertIn("course-guide-content.js", files)
+        self.assertIn("pages/course-guide.js", files)
         self.assertEqual(m["config"]["keys"], sorted(config()))
         self.assertEqual(m["document_relative"], ["logo.png"])
         self.assertGreaterEqual(len(m["api"]["routes"]), 30)
@@ -187,6 +196,22 @@ class PackageTests(unittest.TestCase):
         (tfvars / "x.tfvars").write_text("a = 1")
         with self.assertRaises(fr.ReleaseError):
             fr.collect_assets(tfvars, "modern", files + ["x.tfvars"])
+
+    def test_only_explicit_institutional_documents_are_built_and_invalid_pdfs_are_refused(self):
+        app = copy_app(WORK / "documents")
+        extra = app / "frontend/documents/anexo-nao-publicavel.pdf"
+        extra.write_bytes(b"%PDF-1.4\nnao publicar\n%%EOF\n")
+        dist = build(app, config())
+        self.assertFalse((dist / "documents/anexo-nao-publicavel.pdf").exists(), "o build não copia a pasta inteira")
+        files = fr.builder_files(app / "scripts/build_frontend.py")
+        for invalid in (b"", b"<html>AccessDenied</html>", b"%PDF-1.4\nsem final"):
+            with self.subTest(data=invalid):
+                (dist / "documents/normativa-abono-faltas.pdf").write_bytes(invalid)
+                with self.assertRaisesRegex(fr.ReleaseError, "Documento PDF vazio ou inválido"):
+                    fr.collect_assets(dist, "modern", files)
+        (dist / "documents/normativa-abono-faltas.pdf").unlink()
+        with self.assertRaisesRegex(fr.ReleaseError, "faltando.*normativa-abono-faltas.pdf"):
+            fr.collect_assets(dist, "modern", files)
 
     def test_tampered_manifest_assets_or_extra_files_are_refused(self):
         def tampered(edit):

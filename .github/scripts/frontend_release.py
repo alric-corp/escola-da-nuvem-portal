@@ -32,6 +32,8 @@ MIME = {
     ".css": "text/css; charset=utf-8",
     ".json": "application/json",
     ".png": "image/png",
+    ".pdf": "application/pdf",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 IMMUTABLE = "public, max-age=31536000, immutable"
 INDEX_CACHE = "no-cache"
@@ -109,8 +111,16 @@ def collect_assets(dist: Path, mode: str, files: list) -> dict:
             raise ReleaseError(f"Tipo de arquivo sem MIME definido: {rel}.")
         if rel.lower().endswith(FORBIDDEN_SUFFIXES):
             raise ReleaseError(f"Arquivo proibido na release: {rel}.")
-        assets[rel] = (dist / rel).read_bytes()
+        data = (dist / rel).read_bytes()
+        validate_document_bytes(rel, data)
+        assets[rel] = data
     return assets
+
+
+def validate_document_bytes(rel: str, data: bytes) -> None:
+    """Os PDFs explícitos do build precisam conter um PDF, não uma página de erro ou arquivo vazio."""
+    if rel.endswith(".pdf") and (not data.startswith(b"%PDF-") or b"%%EOF" not in data[-1024:]):
+        raise ReleaseError(f"Documento PDF vazio ou inválido: {rel}.")
 
 
 # ---------------------------------------------------------------- configuração pública
@@ -348,6 +358,7 @@ def load_release_dir(release_dir: Path, *, manifest_bytes=None) -> tuple:
         data = (release_dir / f["path"]).read_bytes()
         if sha256_hex(data) != f["sha256"] or md5_hex(data) != f["md5"] or len(data) != f["size"]:
             raise ReleaseError(f"Arquivo local diverge do manifesto: {f['path']}.")
+        validate_document_bytes(f["path"], data)
         assets[f["path"]] = data
     present = sorted(p.relative_to(release_dir).as_posix() for p in release_dir.rglob("*") if p.is_file())
     if present != sorted(set(assets) | {"manifest.json", "pointer.html"}):

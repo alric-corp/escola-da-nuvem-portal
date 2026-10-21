@@ -31,7 +31,8 @@ REGION = "us-east-1"
 PRE_FLOOR, MAIN_1, MAIN_2, OFF_MAIN = "0" * 40, "a1" * 20, "b2" * 20, "c3" * 20
 HISTORY = (PRE_FLOOR, BASELINE_SHA, MAIN_1, MAIN_2)
 MIME = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-        ".json": "application/json", ".png": "image/png"}
+        ".json": "application/json", ".png": "image/png", ".pdf": "application/pdf",
+        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"}
 
 
 def config(marker: str = "1") -> dict:

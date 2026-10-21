@@ -108,12 +108,12 @@ try {
   }));
 
   for (const width of [375, 768, 1440]) {
-    // Aluno: 4 itens no menu, Feedback a partir de Atividades, envio e "Meus feedbacks".
+    // Aluno: 5 itens no menu, Feedback a partir de Atividades, envio e "Meus feedbacks".
     {
       const { context, page, api } = await open("student", width);
       await page.getByRole("heading", { name: "Seu resumo" }).waitFor();
       const items = await navItems(page);
-      assert.deepEqual(items.map((i) => i.label), ["Meu desempenho", "Minhas atividades", "Meu histórico", "Feedback"]);
+      assert.deepEqual(items.map((i) => i.label), ["Meu desempenho", "Minhas atividades", "Meu histórico", "Feedback", "Guia do curso"]);
       assert.ok(items.every((i) => i.h >= 44 && !i.clipped && i.inside), `menu do aluno legível em ${width}px: ${JSON.stringify(items)}`);
       await page.getByRole("button", { name: "Minhas atividades", exact: true }).click();
       await page.getByRole("heading", { name: "Minhas atividades" }).waitFor();
@@ -162,13 +162,13 @@ try {
       assert.deepEqual([api.errors, api.dialogs], [[], 0]);
       await context.close();
     }
-    // Admin: 6 itens, resumo, filtros, detalhe, status e Visualizar como aluno.
+    // Admin: 7 itens, resumo, filtros, detalhe, status e Visualizar como aluno.
     {
       const { context, page, api } = await open("admin", width);
       await page.getByRole("button", { name: "Painel do instrutor", exact: true }).waitFor();
       const items = await navItems(page);
-      assert.equal(items.length, 6);
-      assert.equal(items.at(-1).label, "Feedbacks");
+      assert.equal(items.length, 7);
+      assert.equal(items.at(-1).label, "Guia do curso");
       assert.ok(items.every((i) => i.h >= 44 && !i.clipped && i.inside), `menu do admin em ${width}px: ${JSON.stringify(items)}`);
       assert.equal(await page.locator(".footer-feedback").count(), 1, "admin envia pelo link do rodapé");
       await page.getByRole("button", { name: "Feedbacks", exact: true }).click();
@@ -228,7 +228,7 @@ try {
       assert.deepEqual(api.viewCalls, [{ studentId: "101" }]);
       assert.match(await page.locator(".student-view-banner").innerText(), /Visualizando como: Ana Souza/);
       const viewNav = (await navItems(page)).map((i) => i.label);
-      assert.deepEqual(viewNav, ["Meu desempenho", "Minhas atividades", "Meu histórico"], "sem Feedback nem áreas de admin no modo aluno");
+      assert.deepEqual(viewNav, ["Meu desempenho", "Minhas atividades", "Meu histórico", "Guia do curso"], "sem Feedback nem áreas de admin no modo aluno");
       assert.equal(await page.locator(".footer-feedback").count(), 0);
       await page.reload();
       await page.getByRole("heading", { name: "Seu resumo" }).waitFor();

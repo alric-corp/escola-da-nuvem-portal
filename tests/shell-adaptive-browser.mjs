@@ -105,15 +105,15 @@ async function ringOnScreen(page) {
   }, { shot, points });
   return Object.entries(colors).filter(([, c]) => !c || c.some((v, i) => Math.abs(v - RING[i]) > 45)).map(([k, c]) => `${k}: ${c ? `rgb(${c})` : "fora da tela"}`);
 }
-const ADMIN = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks"];
+const ADMIN = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks", "Guia"];
 
 test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turma e antes da conta, sem área fixa acima de 22%", async () => {
   const o = { role: "admin", width: 320, height: 640, text: 2 };
   const { context, page, errors } = await open(o);
   const m = await layoutOf(page);
   assert.notEqual(m.position, "fixed", `${id(o)}: menu ainda fixo`);
-  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "seis destinos, na ordem");
-  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null], "aria-current na rota ativa");
+  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "sete destinos, na ordem");
+  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null, null], "aria-current na rota ativa");
   assert.ok(m.nav.top >= m.select.bottom - 0.5 && m.nav.bottom <= m.sair.top + 0.5 && m.nav.bottom <= m.main.top + 0.5, `${id(o)}: menu entre a turma e a conta, antes do conteúdo`);
   assert.ok(m.nav.left <= 0.5 && m.nav.right >= m.vw - 0.5, "menu na largura da tela");
   assert.ok(m.fixed.every((f) => f.share <= 0.22), `${id(o)}: área fixa grande: ${JSON.stringify(m.fixed)}`);
@@ -131,10 +131,10 @@ test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turm
     return [...document.querySelectorAll(".sidebar, .sidebar *, .topline, .topline *")].filter((el) => el.getClientRects().length && seen(el) && (el.getBoundingClientRect().right > innerWidth + 0.5 || el.getBoundingClientRect().left < -0.5)).map((el) => el.className || el.tagName);
   }), [], "casca sem rolagem lateral");
   await page.evaluate(() => scrollTo(0, 0));
-  // Teclado: logo → turma → seis destinos → Sair, e o contorno de cada destino inteiro (pixels).
+  // Teclado: logo → turma → sete destinos → Sair, e o contorno de cada destino inteiro (pixels).
   await page.locator(".skip-link").focus();
   const order = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.keyboard.press("Tab");
     const name = await page.evaluate(() => { const a = document.activeElement; return a.querySelector(".nav-short")?.textContent || a.getAttribute("aria-label") || a.id || (a.matches(".brand") ? "logo" : a.tagName); });
     order.push(name);
@@ -148,21 +148,26 @@ test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turm
   await context.close();
 });
 
-test("N2: com texto normal a barra continua fixa e compacta (aluno 4 destinos, admin 6), com reserva no fim da página", async () => {
+test("N2: cinco destinos do aluno têm barra compacta; sete do admin usam menu no fluxo", async () => {
   for (const o of [{ role: "student", width: 390, height: 844 }, { role: "student", width: 320, height: 640 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 320, height: 640 }]) {
     const { context, page } = await open(o);
     const m = await layoutOf(page);
-    assert.equal(m.position, "fixed", `${id(o)}`);
-    assert.equal(Math.round(m.nav.bottom), m.vh, `${id(o)}: barra no pé da tela`);
-    assert.ok(m.nav.height <= (o.role === "student" ? 64 : 120), `${id(o)}: barra com ${m.nav.height} px`);
-    assert.ok(Math.abs(m.padBottom - (Math.ceil(m.nav.height) + 16)) <= 1, `${id(o)}: reserva ${m.padBottom} para barra de ${m.nav.height}`);
+    assert.equal(m.position, o.role === "student" ? "fixed" : "static", `${id(o)}`);
+    if (o.role === "student") {
+      assert.equal(Math.round(m.nav.bottom), m.vh, `${id(o)}: barra no pé da tela`);
+      assert.ok(m.nav.height <= 120, `${id(o)}: barra com ${m.nav.height} px`);
+      assert.ok(Math.abs(m.padBottom - (Math.ceil(m.nav.height) + 16)) <= 1, `${id(o)}: reserva ${m.padBottom} para barra de ${m.nav.height}`);
+    } else {
+      assert.ok(m.nav.bottom <= m.main.top + 1, `${id(o)}: sete destinos antes do conteúdo`);
+      assert.ok(m.padBottom <= 24, `${id(o)}: sem reserva da barra fixa`);
+    }
     await context.close();
   }
 });
 
 // 3.3: o limite passou de 25%/23% para 22%/20% (só as linhas do menu, sem os recuos, como no app.js).
 test("N3: redimensionar troca o modo uma vez, sem oscilar, com faixa de tolerância entre 20% e 22%", async () => {
-  const o = { role: "admin", width: 320, height: 1200, text: 2 };
+  const o = { role: "student", width: 320, height: 1200, text: 2 };
   const { context, page } = await open(o);
   assert.deepEqual(await modeOverFrames(page), ["fixed"], "janela alta: barra fixa");
   const rows = await page.evaluate(() => { const nav = document.querySelector(".sidebar nav"), s = getComputedStyle(nav); return nav.getBoundingClientRect().height - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom); });
@@ -185,7 +190,7 @@ test("N3: redimensionar troca o modo uma vez, sem oscilar, com faixa de tolerân
 });
 
 test("N4: mudar o tamanho do texto com a página aberta troca o modo, nos dois sentidos", async () => {
-  const o = { role: "admin", width: 320, height: 640 };
+  const o = { role: "student", width: 320, height: 640 };
   const { context, page, setText } = await open(o);
   assert.deepEqual(await modeOverFrames(page), ["fixed"]);
   await setText(2);
@@ -199,8 +204,8 @@ test("N4: mudar o tamanho do texto com a página aberta troca o modo, nos dois s
   await context.close();
 });
 
-test("N5: zoom a 200% (janela de 640×400): admin no fluxo, aluno com barra fixa", async () => {
-  for (const [role, expected] of [["admin", "static"], ["student", "fixed"]]) {
+test("N5: zoom a 200% (janela de 640×400): menus preservam os limites de ocupação da janela", async () => {
+  for (const [role, expected] of [["admin", "static"], ["student", "static"]]) {
     const { context, page } = await open({ role, width: 640, height: 400 });
     assert.deepEqual(await modeOverFrames(page), [expected], role);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${role}: sem rolagem lateral`);
@@ -209,7 +214,7 @@ test("N5: zoom a 200% (janela de 640×400): admin no fluxo, aluno com barra fixa
 });
 
 test("N6: a troca de modo durante a leitura não faz o conteúdo saltar", async () => {
-  const { context, page } = await open({ role: "admin", width: 320, height: 1200, text: 2 });
+  const { context, page } = await open({ role: "student", width: 320, height: 1200, text: 2 });
   const anchor = page.locator("main h2").first();
   await anchor.evaluate((el) => { el.scrollIntoView(); scrollBy(0, -200); });
   await settle(page);
@@ -226,8 +231,8 @@ test("N6: a troca de modo durante a leitura não faz o conteúdo saltar", async 
 // cabe, sempre na ordem do DOM e do teclado: tudo numa linha; senão logo e turma numa linha e o Sair abaixo, à direita;
 // senão a turma em linha própria (largura toda) e o Sair abaixo, à direita. No fluxo, o Sair vem depois do menu (N1, N8).
 test("N7: cabeçalho do celular — uma linha quando cabe; senão logo e turma juntos e o Sair abaixo; senão turma em linha própria", async () => {
-  for (const [o, expected] of [[{ width: 390, height: 844 }, "linha"], [{ width: 320, height: 640 }, "linha"], [{ role: "admin", width: 320, height: 640 }, "linha"], [{ width: 640, height: 400 }, "linha"],
-    [{ width: 390, height: 844, text: 2 }, "linha"], [{ role: "admin", width: 412, height: 915, text: 2 }, "linha"], [{ width: 320, height: 640, text: 2 }, "sair-abaixo"],
+  for (const [o, expected] of [[{ width: 390, height: 844 }, "linha"], [{ width: 320, height: 640 }, "linha"], [{ role: "admin", width: 320, height: 640 }, "fluxo"], [{ width: 640, height: 400 }, "fluxo"],
+    [{ width: 390, height: 844, text: 2 }, "fluxo"], [{ role: "admin", width: 412, height: 915, text: 2 }, "fluxo"], [{ width: 320, height: 640, text: 2 }, "sair-abaixo"],
     [{ role: "admin", width: 320, height: 640, text: 2 }, "fluxo"], [{ width: 320, height: 640, text: 3 }, "quebrado"]]) {
     const { context, page } = await open(o);
     const m = await layoutOf(page);
@@ -250,16 +255,15 @@ test("N7: cabeçalho do celular — uma linha quando cabe; senão logo e turma j
   }
 });
 
-// 3.3: com o limite de 22%, o admin com texto a 200% em 390×844 (menu com 22,8% da janela) deixa de ter uma barra fixa
-// de ~200 px: o menu vai para o fluxo, com os mesmos seis destinos, ordem, teclado e contorno. Casos abaixo do limite
-// (aluno; texto normal; admin em 412×915 com 21%) continuam com a barra fixa.
-test("N8: limite de 22% — admin 390×844 com texto a 200% no fluxo; aluno, texto normal e 21% continuam com barra fixa", async () => {
+// O sétimo destino não vira uma terceira linha fixa: admin usa o menu no fluxo mesmo
+// com altura disponível. Os testes N3/N4 mantêm a histerese da barra do aluno.
+test("N8: admin com sete destinos permanece no fluxo mesmo em janela alta, com foco e ordem preservados", async () => {
   const o = { role: "admin", width: 390, height: 844, text: 2 };
   const { context, page, errors } = await open(o);
   const m = await layoutOf(page);
   assert.deepEqual(await modeOverFrames(page), ["static"], `${id(o)}: menu no fluxo, estável`);
-  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "seis destinos, na ordem");
-  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null], "aria-current na rota ativa");
+  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "sete destinos, na ordem");
+  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null, null], "aria-current na rota ativa");
   assert.ok(m.nav.top >= m.select.bottom - 0.5 && m.nav.bottom <= m.sair.top + 0.5 && m.nav.bottom <= m.main.top + 0.5, `${id(o)}: menu entre a turma e a conta, antes do conteúdo`);
   assert.ok(m.fixed.every((f) => f.share <= 0.22), `${id(o)}: área fixa grande: ${JSON.stringify(m.fixed)}`);
   assert.ok(m.padBottom <= 24, `${id(o)}: sem reserva da barra fixa (${m.padBottom} px)`);
@@ -270,7 +274,7 @@ test("N8: limite de 22% — admin 390×844 com texto a 200% no fluxo; aluno, tex
   assert.ok(m.sair.width >= 44 && m.sair.height >= 44 && Math.abs(m.sair.right - m.content.right) <= 1, `${id(o)}: Sair com 44 px, à direita`);
   await page.locator(".skip-link").focus();
   const order = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < 10; i++) {
     await page.keyboard.press("Tab");
     const name = await page.evaluate(() => { const a = document.activeElement; return a.querySelector(".nav-short")?.textContent || a.getAttribute("aria-label") || a.id || (a.matches(".brand") ? "logo" : a.tagName); });
     order.push(name);
@@ -281,17 +285,18 @@ test("N8: limite de 22% — admin 390×844 com texto a 200% no fluxo; aluno, tex
   assert.ok(last, "último controle visível ao receber foco");
   assert.deepEqual(errors, []);
   await context.close();
-  for (const p of [{ role: "admin", width: 412, height: 915, text: 2 }, { role: "admin", width: 390, height: 844 }, { role: "student", width: 390, height: 844 }, { role: "student", width: 390, height: 844, text: 2 }]) {
+  for (const p of [{ role: "admin", width: 412, height: 915, text: 2 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 390, height: 1600 }]) {
     const { context, page } = await open(p);
-    assert.deepEqual(await modeOverFrames(page), ["fixed"], `${id(p)}: barra fixa`);
+    assert.deepEqual(await modeOverFrames(page), ["static"], `${id(p)}: sete destinos no fluxo`);
     const n = await layoutOf(page);
-    assert.ok(Math.abs(n.padBottom - (Math.ceil(n.nav.height) + 16)) <= 1, `${id(p)}: reserva ${n.padBottom} para barra de ${n.nav.height}`);
+    assert.ok(n.padBottom <= 24, `${id(p)}: sem reserva artificial de barra fixa`);
+    assert.ok(n.nav.bottom <= n.main.top + 1, `${id(p)}: menu antes do conteúdo`);
     await context.close();
   }
 });
 
-test("N9: em 390×844 o admin troca de modo ao mudar o tamanho do texto (sem redimensionar) e ao redimensionar, sem o conteúdo saltar", async () => {
-  const o = { role: "admin", width: 390, height: 844 };
+test("N9: em 390×844 o aluno troca de modo ao mudar o tamanho do texto (sem redimensionar) e ao redimensionar, sem o conteúdo saltar", async () => {
+  const o = { role: "student", width: 390, height: 844 };
   const { context, page, setText } = await open(o);
   assert.deepEqual(await modeOverFrames(page), ["fixed"]);
   await setText(2);
@@ -303,7 +308,7 @@ test("N9: em 390×844 o admin troca de modo ao mudar o tamanho do texto (sem red
   await settle(page);
   assert.deepEqual(await modeOverFrames(page), ["fixed"], "texto normal de novo: fixa");
   await context.close();
-  const r = await open({ role: "admin", width: 390, height: 1200, text: 2 });
+  const r = await open({ role: "student", width: 390, height: 1200, text: 2 });
   assert.deepEqual(await modeOverFrames(r.page), ["fixed"], "janela alta: fixa");
   const anchor = r.page.locator("main h2").first();
   await anchor.evaluate((el) => { el.scrollIntoView(); scrollBy(0, -200); });
@@ -321,7 +326,7 @@ test("N9: em 390×844 o admin troca de modo ao mudar o tamanho do texto (sem red
 // próprios espaços; o topo mostra só a identidade (papel e e-mail inteiro, quebrando depois do "@", nunca no meio de uma
 // palavra) e o nome da página fica para a leitura assistiva (já está no item ativo do menu e no título). O título da tela
 // aparece na primeira tela. Com texto normal o topo continua como antes.
-test("N10: texto ampliado em tela estreita — casca compacta, identidade legível e título na primeira tela", async () => {
+test("N10: texto ampliado em tela estreita — casca compacta, identidade legível e título inteiro após a navegação", async () => {
   for (const o of [{ width: 320, height: 568, text: 2 }, { width: 320, height: 640, text: 2 }, { width: 390, height: 844, text: 2 }, { width: 320, height: 568, text: 1.5 },
     { role: "admin", width: 390, height: 844, text: 2 }, { role: "admin", width: 320, height: 640, text: 2 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
     const { context, page } = await open(o);
@@ -329,7 +334,12 @@ test("N10: texto ampliado em tela estreita — casca compacta, identidade legív
       await page.getByRole("button", { name: "Minhas atividades", exact: true }).click();
       await page.getByRole("heading", { name: "Minhas atividades", level: 1 }).waitFor();
       await settle(page);
-      await page.evaluate(() => scrollTo(0, 0));
+    } else {
+      await page.getByRole("button", { name: "Publicações da turma", exact: true }).click();
+      await page.getByRole("heading", { name: "Publicações da turma", level: 1 }).waitFor();
+      await page.getByRole("button", { name: "Painel do instrutor", exact: true }).click();
+      await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true, level: 1 }).waitFor();
+      await settle(page);
     }
     const m = await page.evaluate(() => {
       const nav = document.querySelector(".sidebar nav"), fixed = getComputedStyle(nav).position === "fixed", h1 = document.querySelector("main h1").getBoundingClientRect();
@@ -340,7 +350,7 @@ test("N10: texto ampliado em tela estreita — casca compacta, identidade legív
         if (prevTop !== null && top > prevTop + 2) breaks.push(text.slice(-1)); prevTop = top; text += node.data[i];
       }
       const loc = document.querySelector(".location-context"), lr = loc.getBoundingClientRect(), er = email.getBoundingClientRect();
-      return { compact: matchMedia("(max-width: 15em)").matches, pad: getComputedStyle(document.querySelector(".sidebar")).paddingLeft, h1Bottom: h1.bottom, limit: fixed ? nav.getBoundingClientRect().top : innerHeight,
+      return { compact: matchMedia("(max-width: 15em)").matches, pad: getComputedStyle(document.querySelector(".sidebar")).paddingLeft, h1Top: h1.top, h1Bottom: h1.bottom, flowing: !fixed, active: document.activeElement.tagName, scroll: scrollY, limit: fixed ? nav.getBoundingClientRect().top : innerHeight,
         email: text, breaks, emailInside: er.left >= 0 && er.right <= innerWidth, role: document.querySelector(".role-chip").getClientRects().length > 0,
         // Papel e e-mail no mesmo parágrafo: o e-mail começa na linha do papel.
         together: Math.abs(document.querySelector(".role-chip").getClientRects()[0].top - email.getClientRects()[0].top) < 4,
@@ -353,7 +363,9 @@ test("N10: texto ampliado em tela estreita — casca compacta, identidade legív
     });
     const label = id(o);
     assert.equal(m.pad, "16px", `${label}: espaço lateral da casca`);
-    assert.ok(m.h1Bottom <= m.limit, `${label}: título termina em ${Math.round(m.h1Bottom)} px, além da primeira tela (${Math.round(m.limit)} px)`);
+    // A navegação real dá foco ao título e ajusta a rolagem quando o menu no fluxo
+    // ficou mais alto. O teste não rola manualmente nem refaz o foco para fazê-lo caber.
+    assert.ok(m.h1Top >= 0 && m.h1Bottom <= m.limit, `${label}: título inteiro após a navegação (${Math.round(m.h1Top)}–${Math.round(m.h1Bottom)} / ${Math.round(m.limit)} px, active=${m.active}, scroll=${m.scroll})`);
     assert.ok(m.role && m.emailInside && m.overflowX <= (o.role === "admin" && o.width === 320 ? 18 : 0), `${label}: identidade inteira na tela`);
     assert.match(m.email, /@example\.test$/, `${label}: e-mail inteiro`);
     // Papel curto ("Aluno"): o e-mail começa na mesma linha. (O do admin ocupa a linha toda; o e-mail segue na próxima.)

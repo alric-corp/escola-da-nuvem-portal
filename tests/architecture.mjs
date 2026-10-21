@@ -15,7 +15,7 @@ const remindersHandlers = await import("../frontend/handlers/reminders.js");
 const feedbackPageModule = await import("../frontend/pages/feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
+const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "course-guide", "feedback", "history",
   "import", "landing", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
 const HANDLER_NAMES = ["access", "import", "admin-feedback", "feedback", "reminders", "signup-confirmation"];
@@ -76,7 +76,7 @@ test("state vem só de state.js: ui.js, api.js, as páginas e os handlers não o
   assert.ok("state" in (await import("../frontend/state.js")));
 });
 
-test("app.js e as 12 páginas importam state direto de state.js, e nenhum de ui.js", () => {
+test("app.js e as 13 páginas importam state direto de state.js, e nenhum de ui.js", () => {
   for (const file of CONSUMERS) {
     const imports = namedImports(file);
     const withState = [...imports].filter(([, names]) => names.has("state")).map(([from]) => from);
@@ -539,7 +539,7 @@ test("toda action do app.js tem gatilho: data-action no markup ou errorPanel", (
 // api.js e chamada só pelo app.js, a partir dos dois gatilhos do detalhe do aluno; handlers e telas do aluno não a
 // conhecem, e o modo "visualizar como aluno" não libera essas actions.
 const STUDENT_FACING = ["pages/student.js", "pages/history.js", "pages/landing.js", "pages/feedback.js", "pages/signup-confirmation.js", "student-journey.js", "canvas-links.js"];
-const RUNTIME = ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "participation.js", "student-journey.js", "canvas-links.js", ...PAGES, ...HANDLERS];
+const RUNTIME = ["app.js", "api.js", "ui.js", "state.js", "auth.js", "demo.js", "participation.js", "student-journey.js", "canvas-links.js", "course-guide-content.js", ...PAGES, ...HANDLERS];
 
 test("participation.js: regra pura, usada pelo app.js e pelas telas do instrutor, nunca pelas telas do aluno", async () => {
   assert.deepEqual(importsOf("participation.js"), []);
@@ -688,7 +688,7 @@ test("Lembretes: seção 37 do styles.css só tem seletores escopados às telas 
 // Expansão 8 (seção 38): estilos de Turmas e acessos ficam presos à tela (.admin-access). A área Feedbacks do admin e as outras
 // telas usam as mesmas peças genéricas (.button, .text-link, formulários) e não mudam.
 test("Turmas e acessos: seção 38 do styles.css só tem seletores escopados à tela", () => {
-  const selectors = cssRules(cssSection(read("frontend/styles.css"), "38. Expansão 8", "39. Expansão 9")).flatMap((r) => r.selectors);
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "38. Expansão 8", "39. Expansão 9", "40. Guia do curso")).flatMap((r) => r.selectors);
   assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
   assert.deepEqual(selectors.filter((s) => !/^(\.admin-access\b|\.layout:has\(\.admin-access\))/.test(s)), []);
 });
@@ -696,7 +696,7 @@ test("Turmas e acessos: seção 38 do styles.css só tem seletores escopados à 
 // Expansão 9 (seção 39): estilos de Feedbacks administrativos ficam presos à tela (.admin-feedback). O Feedback do aluno e o envio
 // pelo rodapé (feedback.js, as mesmas classes .fb-*, .feedback-list) e as outras telas não mudam.
 test("Feedbacks administrativos: seção 39 do styles.css só tem seletores escopados à tela", () => {
-  const selectors = cssRules(cssSection(read("frontend/styles.css"), "39. Expansão 9")).flatMap((r) => r.selectors);
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "39. Expansão 9", "40. Guia do curso")).flatMap((r) => r.selectors);
   assert.ok(selectors.length > 50, `seletores lidos: ${selectors.length}`);
   assert.deepEqual(selectors.filter((s) => !/^(\.admin-feedback\b|\.layout:has\(\.admin-feedback\))/.test(s)), []);
 });
@@ -801,4 +801,18 @@ test("consolidação: nenhuma declaração repete o valor da anterior com o mesm
   walk(css, "");
   assert.ok(last.size > 3000, `declarações lidas: ${last.size}`);
   assert.deepEqual(repeated, []);
+});
+
+// Guia estático: uma página sem I/O e um catálogo simples de conteúdo, sem ciclos ou novo roteador.
+test("Guia do curso só lê state, ui e o conteúdo centralizado, sem rede ou efeitos", () => {
+  assert.deepEqual(importsOf("pages/course-guide.js").sort(), ["course-guide-content.js", "state.js", "ui.js"]);
+  assert.doesNotMatch(codeOf("pages/course-guide.js"), /\bfetch\s*\(|\bapi\.|addEventListener|document\.(?:querySelector|getElement|createElement|body|addEventListener)|window\.|localStorage|sessionStorage|URLSearchParams/);
+  assert.ok(importsOf("app.js").includes("pages/course-guide.js"));
+  assert.doesNotMatch(codeOf("course-guide-content.js"), /\bfetch\s*\(|\bapi\.|localStorage|sessionStorage|document\.(?:querySelector|getElement|createElement|body|addEventListener)|window\./);
+});
+
+test("Guia do curso: seção 40 do CSS só alcança a nova página", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "40. Guia do curso")).flatMap((r) => r.selectors);
+  assert.ok(selectors.length >= 10, `seletores lidos: ${selectors.length}`);
+  assert.deepEqual(selectors.filter((s) => !/^(\.course-guide\b|\.layout:has\(\.course-guide\))/.test(s)), []);
 });

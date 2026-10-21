@@ -15,7 +15,8 @@ const manifest = JSON.parse(readFileSync(path.join(releaseDir, "manifest.json"),
 const id = manifest.release_id;
 const prefix = `/releases/${id}/`;
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".json": "application/json", ".png": "image/png" };
+  ".json": "application/json", ".png": "image/png", ".pdf": "application/pdf",
+  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
 // Raiz simulada: só o ponteiro e as dependências relativas ao documento (a baseline lê /config.json; demo usa {}).
 const rootFiles = { "/index.html": readFileSync(path.join(releaseDir, "pointer.html")), "/logo.png": readFileSync(path.join(releaseDir, "logo.png")) };
 if (manifest.document_relative.includes("config.json")) rootFiles["/config.json"] = Buffer.from("{}");
