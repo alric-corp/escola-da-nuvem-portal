@@ -20,6 +20,7 @@ let owner = null;
 export function resetForUser(email) {
   if (owner === email) return;
   owner = email;
+  adminFeedbackRequest++;
   state.adminFeedback = newAdminFeedback();
 }
 

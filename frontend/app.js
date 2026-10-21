@@ -33,14 +33,17 @@ signupConfirmationHandlers.configure({ render });
 let demoRole = "student",
   config = {};
 let reportRequest = 0;
+let bootRequest = 0;
+let classReportRequest = 0;
 let readContext = [];
 
-// Ownership das três leituras C7.4. Invalidar antes de desenhar evita exibir dados do
+// Ownership das leituras por contexto. Invalidar antes de desenhar evita exibir dados do
 // contexto anterior e impede A → B → A de ressuscitar respostas ainda em trânsito.
 function syncReadContext() {
   const next = [state.me, state.code, state.view, state.studentView, state.pendingStudentId];
   if (next.every((value, index) => value === readContext[index])) return;
   readContext = next;
+  reportRequest++;
   remindersHandlers.invalidateReads();
   feedbackHandlers.invalidateReads();
 }
@@ -170,7 +173,17 @@ async function loadClassReport(value) {
     .toUpperCase();
   if (!/^[A-Z0-9-]{3,32}$/.test(code))
     throw new Error("Informe um código de turma válido.");
-  const data = await api.cohorts.classReport(code);
+  syncReadContext();
+  const request = ++classReportRequest, context = readContext, owner = state.me, previous = state.classReport;
+  const current = () => request === classReportRequest && readContext === context && state.me === owner && state.classReport === previous;
+  let data;
+  try { data = await api.cohorts.classReport(code); }
+  catch (err) {
+    // Expiração da sessão é um aviso global, inclusive quando o preflight não fornece status.
+    if (current() || (!state.me && (err.status === 401 || err.message === "Sua sessão expirou. Entre novamente."))) throw err;
+    return;
+  }
+  if (!current()) return;
   if (state.classReport?.cohort !== data.cohort) {
     state.classFilter = "all";
     state.classSearch = "";
@@ -756,7 +769,8 @@ async function sendReminderBatch() {
 }
 
 async function loadReport() {
-  const code = state.code;
+  syncReadContext();
+  const code = state.code, owner = state.me;
   const request = ++reportRequest;
   const viewing = state.studentView;
   state.report = null;
@@ -768,13 +782,13 @@ async function loadReport() {
       const report = viewing
         ? await api.cohorts.studentView(code, { studentId: viewing.studentId })
         : await api.cohorts.report(code);
-      if (state.code !== code || request !== reportRequest || !state.me || state.studentView !== viewing) return;
+      if (state.code !== code || request !== reportRequest || state.me !== owner || state.studentView !== viewing) return;
       if (viewing) viewing.name = report.viewAs?.name || "";
       state.report = report;
       state.focusDraft = null;
     }
   } catch (err) {
-    if (state.code !== code || request !== reportRequest || state.studentView !== viewing) return;
+    if (state.code !== code || request !== reportRequest || state.me !== owner || state.studentView !== viewing) return;
     if (viewing && state.me) {
       await exitStudentView(`Não foi possível visualizar este aluno: ${err.message || "tente novamente."}`);
       return;
@@ -844,6 +858,8 @@ async function viewAsFromFeedback(id) {
 }
 
 async function boot() {
+  const request = ++bootRequest;
+  const current = () => request === bootRequest;
   remindersHandlers.invalidateReads();
   feedbackHandlers.invalidateReads();
   render();
@@ -851,7 +867,9 @@ async function boot() {
   try {
     const wasSignedIn = !!state.me;
     const person = personOf(state.me);
-    state.me = await api.me.get();
+    const me = await api.me.get();
+    if (!current()) return;
+    state.me = me;
     if (person && personOf(state.me) !== person) sessionGeneration++;
     importHandlers.resetDraftsForUser(state.me.email);
     feedbackHandlers.resetForUser(state.me.email);
@@ -867,7 +885,9 @@ async function boot() {
         }
       } catch { /* Ignore a damaged navigation preference. */ }
     }
-    state.cohorts = (await api.cohorts.list()).cohorts;
+    const cohorts = await api.cohorts.list();
+    if (!current() || state.me !== me) return;
+    state.cohorts = cohorts.cohorts;
     if (!wasSignedIn && !demo) {
       const resume = admin() ? storedStudentView() : null;
       if (resume && state.cohorts.some((c) => c.code === resume.code)) {
@@ -884,11 +904,15 @@ async function boot() {
     // A visualização como aluno continua sendo revalidada no servidor, inclusive ao retomar o guia.
     if (state.view === "course-guide" && !state.studentView) render();
     else await loadReport();
+    if (!current() || state.me !== me) return;
     if (state.view === "reminders" && teacher()) await remindersHandlers.loadSender();
     if (state.view === "access" && admin()) await accessHandlers.loadAccess();
     if (state.view === "feedback" && !state.studentView) await feedbackHandlers.loadMine();
     if (state.view === "admin-feedback" && admin() && !state.studentView) await adminFeedbackHandlers.load(true);
   } catch (err) {
+    // expireSession invalida o próprio boot; seu aviso global continua na entrada pública.
+    const expired = !state.me && (err.status === 401 || err.message === "Sua sessão expirou. Entre novamente.");
+    if (!current() && !expired) return;
     state.bootError = err.message || "Não foi possível consultar sua conta.";
     render();
   }
@@ -1125,6 +1149,7 @@ const actions = {
 // Chamado pela camada de rede quando não há sessão válida ou a API responde 401. A requisição
 // ainda falha em seguida, e o erro chega a quem chamou (busy/boot) como antes.
 function expireSession() {
+  bootRequest++;
   sessionGeneration++;
   saveContext();
   clearSession();
@@ -1136,6 +1161,9 @@ function expireSession() {
 
 function signOut() {
   if (importHandlers.hasUnpublishedCsv() && !confirm("Sair descarta os arquivos e prévias ainda não publicados. Deseja continuar?")) return;
+  bootRequest++;
+  reportRequest++;
+  sessionGeneration++;
   remindersHandlers.invalidateReads();
   feedbackHandlers.invalidateReads();
   importHandlers.discardDrafts();

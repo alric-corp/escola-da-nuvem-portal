@@ -1,16 +1,12 @@
 # 24 — Melhorias de UX e lifecycle
 
-**Status:** em andamento — C7.5 implementada e integrada à `main` (`b289b82`),
-com CI verde; implantação do frontend não confirmada. Permanece pendente até o
-fechamento e a validação da entrega.
+**Status:** C7.5 implementada, testada e **implantada**, confirmada na release `9058941ffa4d-301af4d0e066` em 21/10/2026. A revisão desta missão reproduziu lacunas adicionais no isolamento de CSV/prévia, finally da lista administrativa e retomada/galeria de anexos; estão corrigidas neste PR, **com implantação pendente**. O item continua no backlog por essa pendência específica.
 
 ## Contexto
 
-Pequenos problemas conhecidos que não justificaram interromper entregas
-prioritárias anteriores. Cada caso deve ser conferido ao retomar o trabalho;
-esta rodada apenas registra o backlog.
+O registro original reunia pequenos problemas que não interromperam entregas prioritárias anteriores. A C7.5 implementou as correções abaixo; esta revisão reexecutou seus testes e examinou as lacunas adicionais descritas na consolidação.
 
-## Pendências conhecidas
+## Pendências originais — resolvidas na C7.5
 
 - **Admin Feedback:** um 409 de mudança de status pode deixar select/badge
   inconsistentes.
@@ -84,10 +80,32 @@ continua com 21/21.
   (formulário, cartão, slot já pronto, troca durante o S3) e 5 mutações.
 - **Deploy do frontend pendente** e depende de aprovação própria. Nenhum commit, push, S3, CloudFront, Terraform ou Lambda.
 
-## Regra de execução futura
+## Regra original de execução (histórico)
 
 Não juntar todos os pontos em um commit gigante. Quando este TODO for
 retomado, dividir em subetapas pequenas conforme domínio e risco, com
 validação específica de cada comportamento.
 
 Não implementar nesta rodada documental.
+
+
+## Consolidação — 21/10/2026
+
+### Implementação, testes e implantação
+
+O estado histórico da C7.5 foi revalidado, sem refazer sua implementação: 409 recarrega a primeira página sem transformar conflito em sucesso, preserva detalhe quando possível; falha em “Carregar mais” conserva itens/cursor e a nova tentativa não duplica; o Map não mantém cópia velha do rascunho aberto; mesma pessoa mantém rascunhos; troca de usuário/logout limpa dados próprios; uploads não continuam suas etapas com a sessão de outra pessoa; ObjectURLs são liberadas nos caminhos de término sem revogação prematura; o foco perdido é restaurado sem roubar foco escolhido.
+
+A implantação anterior foi comprovada pelo [deploy 39543703472](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39543703472), manifesto da release ativa `9058941ffa4d-301af4d0e066` e leitura independente dos módulos publicados. Os arquivos de C7.5 coincidem byte a byte com a main `9058941`. Isso não comprova implantação das alterações feitas neste PR.
+
+### Novas lacunas demonstradas e correções delimitadas
+
+- **Importação:** `File.text()` antigo podia preencher arquivo/Map da pessoa seguinte, ou vencer uma seleção nova; erro de leitura antigo chegava fora de contexto. Prévia antiga de A (mesmo curso/nome/bytes) podia substituir a de B, e seu finally encerrava o loading atual. O reset também conservava confirmação/andamento de outro usuário. Agora seleção/conferência têm token local por curso, invalidado na troca de usuário/descarte; flags são isoladas somente ao trocar de pessoa. Rascunhos da mesma pessoa e a conclusão legítima para outra turma continuam cobertos.
+- **Publicação versus nova seleção:** proteção adicional comprovada em teste defensivo: resposta antiga não apaga uma seleção mais nova. A interface normalmente bloqueia selecionar durante publicação; não se apresenta esse arranjo como defeito reproduzido pelo caminho normal.
+- **Admin Feedback:** reset agora invalida também a geração da requisição; finally de A não redesenha o estado de B. Nenhuma nova política de paginação/status foi introduzida.
+- **Anexos:** retomada de upload não altera busy/lista de outro usuário; galerias antigas não continuam consultas de URL nem redesenham a nova sessão. A invalidação da composição também cobre sair/voltar ao mesmo contexto; uploads legítimos da mesma pessoa não são cancelados pela navegação. Detalhes no [TODO 23](23-corridas-e-respostas-stale.md).
+
+Regressões permanentes em `tests/feedback-lifecycle.mjs`, `tests/import-lifecycle-browser.mjs` e `tests/feedback-async-context.mjs`, com promises controladas e usuários fictícios. A caracterização antiga que preservava `acknowledgeRemoved/importLoading` entre pessoas foi substituída por asserções de isolamento, mantendo o teste de preservação para a mesma pessoa. Nenhuma asserção foi removida para obter CI verde.
+
+**Pendência real:** comprovar a publicação das novas correções após o merge pelo CI/CD existente, comparando commit/release e módulos servidos; só então arquivar este item. Não há implantação de backend necessária nem autorização de deploy manual nesta missão. Não houve alteração de layout, textos do produto, autenticação, regras acadêmicas ou agendamentos.
+
+Os resultados consolidados efetivamente executados nesta missão estão no [índice do backlog](README.md), separados dos números históricos acima.

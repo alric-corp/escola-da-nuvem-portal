@@ -13,10 +13,9 @@ com seu histórico e evidências de implementação.
 | 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Pendente — otimização por vínculo entregue; scan global permanece |
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
-| 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Guardado / evolução futura |
-| 23 | [Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Pendente — C7.3 concluída e deploy confirmado; C7.4 implementada e integrada à `main` (`cdb5e36`), CI verde, implantação não confirmada; revisão transversal pendente |
-| 24 | [Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | Pendente — C7.5 implementada e integrada à `main` (`b289b82`), CI verde, implantação não confirmada |
-| 25 | [Higiene do backend](25-higiene-do-backend.md) | Pendente — C7.6 implementada e integrada à `main` (`0db040d`, `8f6a2b2`), CI verde, implantação não confirmada |
+| 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Proposta delimitada preparada — implementação no próximo PR |
+| 23 | [Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Revisão transversal concluída; C7.4 implantada; correções adicionais neste PR, implantação pendente |
+| 24 | [Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | C7.5 implantada e revalidada; correções adicionais neste PR, implantação pendente |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
@@ -73,10 +72,33 @@ API-1 e API-2 estão concluídas e commitadas; os registros ficam em
 [historico/api-1.md](../historico/api-1.md) e [historico/api-2.md](../historico/api-2.md). O TODO 22 guarda uma evolução futura e
 não as reabre.
 
-A C7.2 foi concluída e ativada em produção. A C7.3 foi concluída e o deploy
-foi confirmado. A C7.4, a C7.5 e a C7.6 estão implementadas e integradas à
-`main`, com CI verde; a implantação delas não foi confirmada. O registro da
-[AUTO-5](../historico/automacoes/auto-5.md) informa que as três ficaram fora
-daquele deploy. Os TODOs 23, 24 e 25 seguem no backlog até que a implantação
-e as demais condições de encerramento sejam confirmadas. Os itens do backlog
-não reabrem participação/desistentes nem autorizam implementação ou deploy.
+A C7.2 e a C7.3 continuam concluídas. Na revisão de 21/10/2026, a implantação
+existente da C7.4/C7.5 foi comprovada na release `9058941ffa4d-301af4d0e066`
+([deploy](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39543703472)),
+com leitura dos módulos publicados. O TODO 25 foi encerrado: as duas correções
+C7.6 foram encontradas no ZIP da Lambda efetivamente integrada à API,
+correspondente à implantação já relatada no PR #10. Veja as evidências em
+[25 — Higiene do backend](concluido/25-higiene-do-backend.md).
+
+Os TODOs 23 e 24 permanecem aqui porque a revisão encontrou e corrigiu lacunas
+adicionais: a implantação dessas alterações ainda não foi comprovada. Seus
+documentos distinguem essa pendência da entrega histórica já publicada.
+A conferência não executou novo deploy e não reabriu participação/desistentes,
+AUTO-5, domínio próprio ou outros itens.
+
+
+## Validação executada em 21/10/2026
+
+Consolidação dos TODOs 23–25 a partir da main `9058941`; os números abaixo são novas execuções desta missão, não reutilização de CI histórico.
+
+| Comando | Resultado |
+| --- | --- |
+| `npm test` | 497 testes aprovados, zero falhas/skips |
+| `npm run test:browser` | 255 testes/entradas aprovados, zero falhas/skips; os módulos de importação também incluem os novos cenários internos controlados |
+| `python3 tests/contracts/stale_mutations.py` | Controles aprovados, 28 mutações mortas, zero sobreviventes; mantém os 21 controles históricos e acrescenta 7 |
+| `python3 tests/contracts/lifecycle_mutations.py` | Controles aprovados, 44 mutações mortas, zero sobreviventes; preserva os controles existentes e acrescenta 5 |
+| Python 3.12, `python -B -m unittest discover -s backend` | 317 aprovados |
+| Python 3.12, `python -B -m unittest discover -s tests/integration` | 218 aprovados, Moto sem AWS real |
+| Recorte TODO 25, `backend.test_journey tests.integration.test_hygiene` | 25 aprovados (já contidos nas suítes anteriores, não somados a elas) |
+
+As novas regressões cobrem dados, erros, finally/loading, lista/cursor, troca de turma/tela/usuário, A→B→A e retornos legítimos; usam promises controladas, sem sleeps arbitrários. Uma proteção publicação/nova seleção é explicitamente defensiva: a UI normalmente bloqueia a seleção durante a publicação. As únicas atualizações de caracterização deliberada são o isolamento de confirmação/loading entre pessoas e o guard mais forte do lote; as verificações anteriores foram preservadas. Sem novos recursos AWS, alterações de backend ou implementação do TODO 22.

@@ -20,6 +20,7 @@ let pendingRequest = 0;
 
 // A composição invalida leituras ao sair do contexto, mesmo sem iniciar outra chamada.
 export function invalidateReads() {
+  batchPreviewRequest++;
   senderRequest++;
   pendingRequest++;
   state.sender = null;
@@ -57,20 +58,21 @@ export async function loadPending(studentId) {
 }
 
 export async function loadBatchPreview() {
-  const code = state.code;
-  const request = ++batchPreviewRequest;
+  syncContext();
+  const code = state.code, owner = state.me, request = ++batchPreviewRequest;
+  const current = () => request === batchPreviewRequest && state.me === owner && state.code === code && state.view === "reminders-batch";
   state.batchError = "";
   state.batchPreview = null;
   state.batchResults = null;
   render();
   try {
     const preview = await api.reminders.batchPreview(code, { studentIds: state.batchIds });
-    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
+    if (current()) {
       state.batchPreview = preview;
       render();
     }
   } catch (err) {
-    if (request === batchPreviewRequest && state.code === code && state.view === "reminders-batch") {
+    if (current()) {
       state.batchError = err.message;
       render();
     }
@@ -115,11 +117,12 @@ function batchQuestion(code, p, approved) {
 // repetiria a tela (fechamento da Expansão 7). O aviso não afirma o desfecho: o lote pode voltar aceito, sem confirmação ou
 // interrompido por conflito.
 export async function sendBatch(started = () => {}, announce = () => true) {
-  const code = state.code, p = state.batchPreview;
+  syncContext();
+  const code = state.code, owner = state.me, p = state.batchPreview;
   // Uma nova prévia invalida também o resultado do envio anterior, mesmo com os mesmos alunos/publicação.
   // Sair do lote ou trocar de turma torna a resposta irrelevante para a tela, sem cancelar o envio no servidor.
   const request = batchPreviewRequest;
-  const current = () => request === batchPreviewRequest && state.code === code && state.view === "reminders-batch";
+  const current = () => request === batchPreviewRequest && state.me === owner && state.code === code && state.view === "reminders-batch";
   // Só quem a prévia exibida aprovou (sem motivo para pular), qualquer que seja o motivo dos demais: o lote nunca cresce
   // depois da prévia. O servidor revalida cada um e ainda pode pular quem mudou desde então.
   const approvedRecipientIds = p.recipients.filter((r) => !r.skip).map((r) => r.id);
@@ -133,7 +136,9 @@ export async function sendBatch(started = () => {}, announce = () => true) {
     render();
     if (announce()) notice("Chegou a resposta do envio em lote. Confira o resultado por aluno.");
   } catch (err) {
-    if (current()) throw err;
+    // A sessão vencida (preflight ou 401) leva ao aviso global existente, sem preencher dados do lote.
+    // Com outra pessoa autenticada, também esse erro antigo deixa de pertencer à tela atual.
+    if (current() || (!state.me && (err.status === 401 || err.message === "Sua sessão expirou. Entre novamente."))) throw err;
   }
 }
 
