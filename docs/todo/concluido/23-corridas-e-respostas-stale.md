@@ -1,7 +1,7 @@
 # 23 — Concorrência e respostas stale
 
-**Status:** revisão transversal delimitada concluída em 21/10/2026. C7.3/C7.4 já estão implantadas e foram verificadas na release `9058941ffa4d-301af4d0e066`. Lacunas adicionais foram reproduzidas e corrigidas neste PR; **a implantação dessas correções permanece pendente**. O item continua no backlog por essa pendência operacional, não por falta das implementações históricas. C7.5/C7.6: [24](24-melhorias-ux-e-lifecycle.md) e [25](concluido/25-higiene-do-backend.md).
-**Origem:** roadmap técnico C7 posterior à C7.2. O TODO 23 não está concluído.
+**Status:** concluído em 21/10/2026. A revisão transversal e as correções adicionais foram integradas pelo [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12) e sua publicação automática foi comprovada na release `e99c93f56932-0a4e45d446a9`, source `e99c93f569329279b79847916fdb5dbd92fbd670`. C7.5/C7.6: [24](24-melhorias-ux-e-lifecycle.md) e [25](25-higiene-do-backend.md). Os relatos de pendência abaixo são históricos; o encerramento ao fim registra a verificação posterior.
+**Origem:** roadmap técnico C7 posterior à C7.2. Histórico de implementação e revisão preservado abaixo.
 
 ## Contexto
 
@@ -179,4 +179,28 @@ A revisão abrange os fluxos acima e seus callers atuais, inclusive navegação 
 - Descartar a resposta na UI não desfaz uma operação recebida pelo servidor. Nenhum POST é repetido ou cancelado; os testes de mutação usam somente dados fictícios.
 - **Encerramento restante:** após integração/publicação pelo fluxo existente, conferir a release ativa e os hashes dos cinco arquivos de runtime alterados (`app.js` e handlers reminders/feedback/admin-feedback/import), relacionando-os ao commit integrado. Então mover o item para `concluido/`. Não é necessário novo deploy manual nem auditoria de infraestrutura.
 
-Os resultados consolidados efetivamente executados nesta missão estão no [índice do backlog](README.md), separados das evidências históricas da C7.4.
+Os resultados consolidados efetivamente executados nesta missão estão no [índice do backlog](../README.md), separados das evidências históricas da C7.4.
+
+
+## Encerramento da publicação em 21/10/2026
+
+A pendência de publicação foi encerrada por conferência curta e somente leitura após a integração do [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12). Não foi executado novo deploy, rerun, acesso a dados acadêmicos ou revisão funcional; não houve consulta ou alteração administrativa da AWS.
+
+- Commit integrado: `e99c93f569329279b79847916fdb5dbd92fbd670`.
+- [Deploy automático 39600814952](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39600814952): evento `workflow_run`, conclusão `success`, de 12h35min26s a 12h37min06s UTC. O log registra publicação, ativação e smoke aprovados.
+- O mesmo log registra 36 objetos criados e zero preexistentes, troca da release anterior `9058941ffa4d-301af4d0e066`, invalidação `ID91VIQQKOD8IEOJS5V4V37A71` concluída somente para `/` e `/index.html` e smoke público aprovado.
+- Release ativa observada: `e99c93f56932-0a4e45d446a9`, `mode=modern`, `source_sha` igual ao commit integrado.
+- HTTPS com TLS validado: `/` e `/index.html` retornaram HTTP 200, 976 bytes idênticos, `Cache-Control: no-cache`, SHA-256 `aa9bb8dfbdf958d7d8c475df7b3ecf36ad946e74f164511905fd7eddba26da5f`. ETag `"ba0e71fb8df208fcdac8ec79e7affce0"`; VersionId observado nos headers públicos `tKq0TYZ5rY_Os4vEQmMqHMrvnHCK8bO1`.
+- [Manifesto servido](https://d2bx9t870lzfvc.cloudfront.net/releases/e99c93f56932-0a4e45d446a9/manifest.json): SHA-256 `0e33b3ff3e84b4dd5baa7135c9d45b16af0e65a90d38fadc775579c5ad4c3462`; identidade, hash e tamanho do ponteiro conferem.
+
+Os cinco arquivos de runtime alterados no PR #12 foram baixados do prefixo dessa release. Todos coincidem byte a byte com a revisão integrada e com os SHA-256/tamanhos do manifesto; foram servidos como JavaScript com cache `public, max-age=31536000, immutable`.
+
+| Arquivo publicado sob `releases/e99c93f56932-0a4e45d446a9/` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `app.js` | 91557 | `199482289971585fbc175fe96bbbd8ee3620bef612bb20f810af6b11b879a55f` |
+| `handlers/reminders.js` | 8439 | `30a5c0975e6b03e44f123550965a501b1c8c9fffedbb32fd79fef900df95b3db` |
+| `handlers/feedback.js` | 12567 | `7044cf42fa37b73c2b5a9b4f113a9ab450c17ce48018996a4c1cde57c1afbbdb` |
+| `handlers/admin-feedback.js` | 3658 | `936260257fe94f589ab56e02f24dff244c99ff55c2fad4e2dc6e26de39d11349` |
+| `handlers/import.js` | 7088 | `5189983b6b671cbee4aa5cf634dc3bb63a4647ce3fecdbdbc4896ce2a17122aa` |
+
+Essa evidência conclui a implantação das correções delimitadas dos TODOs 23 e 24. Não certifica fluxos autenticados reais, ausência universal de corridas, comportamento em múltiplas abas ou áreas fora do recorte já descrito. Nenhuma operação recebida pelo servidor foi cancelada ou repetida; nenhuma nova execução de testes é atribuída a esta conferência documental. TODO 25 permanece concluído com suas evidências próprias. AUTO-5, participação/desistentes e domínio próprio não foram reabertos.

@@ -14,8 +14,6 @@ com seu histórico e evidências de implementação.
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
 | 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Proposta delimitada preparada — implementação no próximo PR |
-| 23 | [Concorrência e respostas stale](23-corridas-e-respostas-stale.md) | Revisão transversal concluída; C7.4 implantada; correções adicionais neste PR, implantação pendente |
-| 24 | [Melhorias de UX e lifecycle](24-melhorias-ux-e-lifecycle.md) | C7.5 implantada e revalidada; correções adicionais neste PR, implantação pendente |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
@@ -80,11 +78,7 @@ C7.6 foram encontradas no ZIP da Lambda efetivamente integrada à API,
 correspondente à implantação já relatada no PR #10. Veja as evidências em
 [25 — Higiene do backend](concluido/25-higiene-do-backend.md).
 
-Os TODOs 23 e 24 permanecem aqui porque a revisão encontrou e corrigiu lacunas
-adicionais: a implantação dessas alterações ainda não foi comprovada. Seus
-documentos distinguem essa pendência da entrega histórica já publicada.
-A conferência não executou novo deploy e não reabriu participação/desistentes,
-AUTO-5, domínio próprio ou outros itens.
+Após a integração do [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12), a pendência de publicação dos TODOs [23 — Concorrência](concluido/23-corridas-e-respostas-stale.md) e [24 — UX e lifecycle](concluido/24-melhorias-ux-e-lifecycle.md) foi encerrada. A conferência curta de 21/10/2026 encontrou a release ativa `e99c93f56932-0a4e45d446a9`, source `e99c93f569329279b79847916fdb5dbd92fbd670`, e cinco arquivos de runtime idênticos à revisão e aos hashes/tamanhos do manifesto. O [deploy automático 39600814952](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39600814952) concluiu publicação, ativação e smoke. Os dois registros foram movidos para `concluido/`, preservando o histórico e as limitações. Não houve novo deploy, revisão funcional ou reabertura de participação/desistentes, AUTO-5, domínio próprio ou TODO 25.
 
 
 ## Validação executada em 21/10/2026

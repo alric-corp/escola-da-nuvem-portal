@@ -1,6 +1,6 @@
 # 24 — Melhorias de UX e lifecycle
 
-**Status:** C7.5 implementada, testada e **implantada**, confirmada na release `9058941ffa4d-301af4d0e066` em 21/10/2026. A revisão desta missão reproduziu lacunas adicionais no isolamento de CSV/prévia, finally da lista administrativa e retomada/galeria de anexos; estão corrigidas neste PR, **com implantação pendente**. O item continua no backlog por essa pendência específica.
+**Status:** concluído em 21/10/2026. C7.5 e as correções delimitadas de isolamento de CSV/prévia, finally administrativo, retomada e galeria de anexos estão implementadas e publicadas. A implantação após o [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12) foi comprovada na release `e99c93f56932-0a4e45d446a9`, source `e99c93f569329279b79847916fdb5dbd92fbd670`. As pendências registradas abaixo descrevem momentos históricos anteriores a essa conferência.
 
 ## Contexto
 
@@ -108,4 +108,16 @@ Regressões permanentes em `tests/feedback-lifecycle.mjs`, `tests/import-lifecyc
 
 **Pendência real:** comprovar a publicação das novas correções após o merge pelo CI/CD existente, comparando commit/release e módulos servidos; só então arquivar este item. Não há implantação de backend necessária nem autorização de deploy manual nesta missão. Não houve alteração de layout, textos do produto, autenticação, regras acadêmicas ou agendamentos.
 
-Os resultados consolidados efetivamente executados nesta missão estão no [índice do backlog](README.md), separados dos números históricos acima.
+Os resultados consolidados efetivamente executados nesta missão estão no [índice do backlog](../README.md), separados dos números históricos acima.
+
+
+## Encerramento da publicação em 21/10/2026
+
+A pendência específica de publicação das novas correções foi encerrada por leitura independente do portal e dos módulos públicos, sem novo deploy ou alteração de configuração.
+
+- [PR #12](https://github.com/alric-corp/escola-da-nuvem-portal/pull/12) integrado no commit `e99c93f569329279b79847916fdb5dbd92fbd670`.
+- [Deploy 39600814952](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39600814952): `workflow_run`, `success`, publicação, ativação e smoke aprovados conforme os logs.
+- Ponteiro servido em `/` e `/index.html`: HTTP 200, release ativa `e99c93f56932-0a4e45d446a9`, mesmo SHA-256/tamanho do ponteiro no manifesto.
+- Os cinco arquivos de runtime do PR (`app.js` e handlers reminders/feedback/admin-feedback/import) foram conferidos byte a byte contra o commit integrado e por hash/tamanho contra o manifesto. A tabela integral de evidências está no [encerramento do TODO 23](23-corridas-e-respostas-stale.md#encerramento-da-publicação-em-21102026).
+
+A verificação confirma a publicação do código coberto pelas regressões locais e pelo CI já registrados, sem executar novamente os fluxos funcionais autenticados, enviar feedback, anexos ou lembretes, importar notas ou acessar dados de alunos. As limitações de escopo e os números históricos foram preservados; a operação do servidor não é cancelada por descarte de resposta na interface. Não houve alteração AWS ou backend e o TODO 25 não foi reaberto.
