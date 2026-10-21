@@ -10,15 +10,15 @@ const ui = await import("../frontend/ui.js");
 const { historyPage } = await import("../frontend/pages/history.js");
 const initial = structuredClone(direct);
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
-const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "feedback", "history",
+const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "course-guide", "feedback", "history",
   "import", "landing", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
 
-// Contrato: as 59 propriedades, nesta ordem, com estes valores iniciais.
+// Contrato: as 60 propriedades, nesta ordem, com estes valores iniciais.
 const EXPECTED = {
   me: null, cohorts: [], code: "", report: null, reportError: "", bootError: "", pendingError: "",
   sender: null, senderError: "", senderLoading: false, sort: "name", canvasActivityFilter: "all", teacherFilters: null,
-  acknowledgeRemoved: false, importLoading: false, view: "overview",
+  acknowledgeRemoved: false, importLoading: false, view: "overview", guideTab: "rules",
   activityKind: "all", activityModule: "all", activityOverviewKind: "all", activityOverviewModule: "all", activityOverviewSort: "name",
   focusDraft: null, filter: "all", search: "", requests: [], instructors: [],
   preview: null, csv: "", filename: "", dirty: false, accessLoading: false, accessError: "", requestsFilter: "pending",
@@ -47,8 +47,8 @@ function importsOf(file) {
     .map(([, spec]) => new URL(spec, `file:///${dir}`).pathname.slice(1));
 }
 
-test("state.js tem exatamente as 59 chaves esperadas, na mesma ordem", () => {
-  assert.equal(Object.keys(initial).length, 59);
+test("state.js tem exatamente as 60 chaves esperadas, na mesma ordem", () => {
+  assert.equal(Object.keys(initial).length, 60);
   assert.deepEqual(Object.keys(initial), Object.keys(EXPECTED));
 });
 

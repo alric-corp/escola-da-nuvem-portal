@@ -43,12 +43,12 @@ const report = { cohort: "BRSA0267", publication: { id: "p1", publishedAt: "2026
 const ROLES = { student: ["student"], instructor: ["instructor"], admin: ["admin", "instructor"] };
 // Telas por papel: [botão do menu (nome acessível), título h1 esperado].
 const VIEWS = {
-  student: [["Meu desempenho", "Bom ter você aqui, Maria."], ["Minhas atividades", "Minhas atividades"], ["Meu histórico", "Meu histórico"], ["Feedback", "Ajude a melhorar a plataforma"]],
+  student: [["Meu desempenho", "Bom ter você aqui, Maria."], ["Minhas atividades", "Minhas atividades"], ["Meu histórico", "Meu histórico"], ["Feedback", "Ajude a melhorar a plataforma"], ["Guia do curso", "Guia do curso"]],
   // O Feedback do instrutor (pelo rodapé) fica fora do piloto: é onde a fonte da casca não vem também da regra da tela (as telas
   // expandidas dão a fonte do sistema ao .layout inteiro), então só ela prova a regra da casca (seção 29). Até a Expansão 5 era
   // "Atualizar notas"; na Expansão 6, "Lembretes".
   instructor: [["Painel do instrutor", "Painel da BRSA0267"], ["Publicações da turma", "Publicações da turma"], ["Atualizar notas", "Atualizar notas da BRSA0267"], ["Lembretes", "Lembretes por e-mail"],
-    ["Enviar feedback", "Ajude a melhorar a plataforma"]],
+    ["Enviar feedback", "Ajude a melhorar a plataforma"], ["Guia do curso", "Guia do curso"]],
   admin: [["Painel do instrutor", "Painel da BRSA0267"]],
 };
 
@@ -169,7 +169,7 @@ test("S3: a casca usa a fonte do sistema em todas as telas; o conteúdo das tela
       // Lembretes, de instrutor e admin. As demais telas, e o Feedback de instrutor e admin, ficam como estavam. A leitura é de
       // uma vez só: a lista do Feedback pode chegar e recriar o título entre localizar e ler o estilo (um elemento já fora da
       // página tem estilo vazio).
-      const expanded = role === "student" ? ["Meu desempenho", "Minhas atividades", "Meu histórico", "Feedback"].includes(label) : ["Painel do instrutor", "Publicações da turma", "Atualizar notas", "Lembretes"].includes(label);
+      const expanded = label === "Guia do curso" || (role === "student" ? ["Meu desempenho", "Minhas atividades", "Meu histórico", "Feedback"].includes(label) : ["Painel do instrutor", "Publicações da turma", "Atualizar notas", "Lembretes"].includes(label));
       (expanded ? assert.match : assert.doesNotMatch)(await page.evaluate(() => getComputedStyle(document.querySelector(".page-heading h1")).fontFamily), /^system-ui/, `conteúdo de ${label}: ${expanded ? "expandido" : "fica para a expansão"}`);
     }
     await context.close();
@@ -211,9 +211,9 @@ test("S5: no celular o cabeçalho é baixo e o Sair tem área de toque de 44 px"
   }
 });
 
-// 3.1 (aprovado): com 6 destinos a barra ganha uma segunda linha em vez de espremer os rótulos, e o degradê saiu (mesmo
-// com 16 px apagava a média de KC na primeira tela em 320×640); a borda da barra é uma linha nítida.
-test("S6: a barra inferior tem uma linha com 4 destinos e duas com 6, borda nítida sem degradê, e não esconde o fim da página", async () => {
+// A barra conserva três colunas e rótulos legíveis. Com o Guia, o aluno tem duas linhas;
+// o menu de sete destinos do admin passa ao fluxo. Sem degradê sobre o conteúdo.
+test("S6: aluno mantém barra de cinco destinos em duas linhas; admin usa sete destinos no fluxo sem cobrir conteúdo", async () => {
   for (const role of ["student", "admin"]) for (const [width, height] of [[390, 844], [320, 640]]) {
     const { context, page } = await open({ role, width, height });
     const nav = await page.locator(".sidebar nav").evaluate((el) => {
@@ -222,14 +222,15 @@ test("S6: a barra inferior tem uma linha com 4 destinos e duas com 6, borda nít
         rows: new Set([...el.querySelectorAll(".nav-item")].map((i) => Math.round(i.getBoundingClientRect().top))).size,
         items: [...el.querySelectorAll(".nav-item")].map((i) => { const b = i.getBoundingClientRect(); return b.height >= 44 && b.left >= 0 && b.right <= innerWidth; }) };
     });
-    assert.equal(nav.position, "fixed");
-    assert.equal(nav.rows, role === "student" ? 1 : 2, `${role}: linhas da barra em ${width}px`);
-    assert.ok(nav.height <= (role === "student" ? 64 : 120), `${role}: barra com ${nav.height}px em ${width}px`);
+    assert.equal(nav.position, role === "student" ? "fixed" : "static");
+    assert.equal(nav.rows, role === "student" ? 2 : 3, `${role}: linhas da barra em ${width}px`);
+    assert.ok(nav.height <= (role === "student" ? 120 : 180), `${role}: barra com ${nav.height}px em ${width}px`);
     assert.ok(!nav.overlay && nav.border === "1px", `${role}: borda nítida, sem camada sobre o conteúdo em ${width}px`);
     assert.ok(nav.items.every(Boolean), `${role}: itens com 44 px e dentro da tela em ${width}px`);
     await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
     const gap = await page.evaluate(() => document.querySelector(".sidebar nav").getBoundingClientRect().top - document.querySelector(".main-footer").getBoundingClientRect().bottom);
-    assert.ok(gap >= 0, `${role}: rodapé acima da barra em ${width}px`);
+    if (role === "student") assert.ok(gap >= 0, `${role}: rodapé acima da barra em ${width}px`);
+    else assert.ok(await page.evaluate(() => document.querySelector(".sidebar nav").getBoundingClientRect().bottom <= document.querySelector("#main-content").getBoundingClientRect().top + 1), "menu do admin no fluxo, antes do conteúdo");
     await context.close();
   }
 });
@@ -246,7 +247,7 @@ test("S7: em todas as telas do aluno, o foco pelo teclado nunca fica atrás da b
         await page.keyboard.press("Tab");
         const spot = await page.evaluate(() => { const a = document.activeElement; if (!a.closest(".main")) return null;
           const r = a.getBoundingClientRect(), nav = document.querySelector(".sidebar nav").getBoundingClientRect();
-          return { text: (a.textContent || a.id || a.name).trim().slice(0, 30), ok: r.top >= 0 && r.bottom <= nav.top + 0.5 }; });
+          return { text: (a.textContent || a.id || a.name).trim().slice(0, 30), ok: r.top >= 0 && (a.matches('[role="tabpanel"]') && r.height > nav.top ? r.top + (parseFloat(getComputedStyle(a).lineHeight) || parseFloat(getComputedStyle(a).fontSize) * 1.5) <= nav.top + 0.5 : r.bottom <= nav.top + 0.5) }; });
         if (!spot) break;
         if (!spot.ok) hidden.push(spot.text);
       }

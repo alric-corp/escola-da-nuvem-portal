@@ -111,6 +111,13 @@ class ReleaseS3Tests(unittest.TestCase):
         head = self.s3.head_object(Bucket=BUCKET, Key=f"releases/{rid('m1')}/app.js")
         self.assertEqual(head["ContentType"], "text/javascript; charset=utf-8")
         self.assertEqual(head["CacheControl"], "public, max-age=31536000, immutable")
+        for name, mime in (("normativa-abono-faltas.pdf", "application/pdf"),
+                           ("aula-inaugural-regras-curso.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation")):
+            rel = "documents/" + name
+            document = self.s3.get_object(Bucket=BUCKET, Key=f"releases/{rid('m1')}/{rel}")
+            self.assertEqual(document["ContentType"], mime)
+            self.assertEqual(document["CacheControl"], fr.IMMUTABLE)
+            self.assertEqual(document["Body"].read(), (R["m1"] / rel).read_bytes())
         self.assertEqual(fr.verify_remote_release(self.s3, BUCKET, rid("m1"))["release_id"], rid("m1"))
         self.assertEqual(self.index()[1], (R["legacy_dist"] / "index.html").read_bytes(), "publicar não ativa")
 

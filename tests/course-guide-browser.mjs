@@ -1,0 +1,226 @@
+// Guia real servido sob prefixo versionado; APIs e identidades fictícias. Não abre serviços externos.
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+import { createRequire } from "node:module";
+import { createServer } from "node:http";
+import { mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
+const require = createRequire(import.meta.url);
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
+const root = path.resolve("frontend/dist"), prefix = "/releases/guide-test-release/";
+const mime = { ".js": "text/javascript", ".json": "application/json", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".pdf": "application/pdf", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+const server = createServer(async (req, res) => {
+  const pathname = new URL(req.url, "http://localhost").pathname;
+  const relative = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname.slice(1);
+  const file = path.resolve(root, relative || "index.html");
+  if (!file.startsWith(root + path.sep)) return res.writeHead(403).end();
+  try { res.setHeader("Content-Type", mime[path.extname(file)] || "application/octet-stream"); res.end(await readFile(file)); }
+  catch { res.writeHead(404).end(); }
+});
+const code = "TURMA-TESTE", email = (role) => `${role}@example.test`;
+const report = { cohort: code, publication: { id: "p-test", publishedAt: "2026-10-10T21:00:00Z" }, updatedAt: "2026-10-10T21:00:00Z", updateKind: "canvas", thresholds: { kc: 70, lab: 95 },
+  student: { id: "101", name: "Aluna de Teste", email: "aluna@example.test", kc: 80, lab: 100, status: "ok", completed: 0, pending: 0, progress: 0, activities: [] },
+  students: [], activities: [], history: [], focus: { activityIds: [], version: null } };
+let browser, origin;
+before(async () => { await new Promise((r) => server.listen(0, "127.0.0.1", r)); origin = `http://127.0.0.1:${server.address().port}`; browser = await chromium.launch({ headless: true }); });
+after(async () => { if (browser) await browser.close(); await new Promise((r) => server.close(r)); });
+const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+async function open({ role = "student", cohorts = true, mode = "ok", savedGuide = false, studentView = false, signedIn = true, width = 1440, height = 900, text = 1 } = {}) {
+  const context = await browser.newContext({ viewport: { width, height }, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
+  const page = await context.newPage(), calls = [], errors = [], external = [], feedbackPosts = [];
+  let finish; const held = new Promise((r) => { finish = r; });
+  page.on("pageerror", (error) => errors.push(error.message));
+  if (text !== 1) { const cdp = await context.newCDPSession(page); await cdp.send("Page.enable"); await cdp.send("Page.setFontSizes", { fontSizes: { standard: Math.round(16 * text), fixed: Math.round(13 * text) } }); }
+  await page.addInitScript(({ role, code, savedGuide, studentView, signedIn }) => {
+    if (signedIn) localStorage.setItem("avanca.session", JSON.stringify({ accessToken: "fake-test-only", expires: Date.now() + 3600000 }));
+    if (savedGuide) localStorage.setItem("avanca.context", JSON.stringify({ owner: `${role}@example.test`, code: "", view: "course-guide", guideTab: "support" }));
+    if (studentView && !sessionStorage.getItem("avanca.student-view")) sessionStorage.setItem("avanca.student-view", JSON.stringify({ owner: `${role}@example.test`, code, studentId: "101", view: "overview" }));
+  }, { role, code, savedGuide, studentView, signedIn });
+  await context.route("**/*", async (route) => {
+    const request = route.request(), url = new URL(request.url());
+    if (url.origin !== origin) { external.push(url.href); return route.abort(); }
+    if (url.pathname.endsWith("/config.json")) return route.fulfill({ json: { apiUrl: origin + "/api", authDomain: "https://auth.example.test", userPoolClientId: "test-client", redirectUri: origin + prefix, logoutUri: origin + prefix, scopes: "openid email" } });
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    const endpoint = url.pathname.slice(4); calls.push(`${request.method()} ${endpoint}`);
+    if (endpoint === "/me") return route.fulfill({ json: { roles: role === "admin" ? ["admin", "instructor"] : [role], email: email(role) } });
+    if (endpoint === "/cohorts") return route.fulfill({ json: { cohorts: cohorts ? [{ code, canTeach: role !== "student", autoSync: true }, { code: code + "-2", canTeach: role !== "student", autoSync: true }] : [] } });
+    if (endpoint.endsWith("/report")) {
+      if (mode === "loading") await held;
+      if (mode === "error" || mode === "unpublished") return route.fulfill({ status: mode === "error" ? 500 : 404, json: { error: mode === "error" ? "Falha fictícia do relatório." : "Nenhuma publicação." } });
+      return route.fulfill({ json: report });
+    }
+    if (endpoint === "/feedback") {
+      if (request.method() === "POST") {
+        const body = request.postDataJSON(); feedbackPosts.push(body);
+        return route.fulfill({ json: { feedback: { id: "feedback-test", ...body, status: "NEW", createdAt: "2026-10-20T12:00:00Z", updatedAt: "2026-10-20T12:00:00Z" }, duplicate: false } });
+      }
+      return route.fulfill({ json: { items: [], nextCursor: null } });
+    }
+    if (endpoint.endsWith("/student-view")) return route.fulfill({ json: { ...report, viewAs: { studentId: "101", name: "Aluna de Teste" } } });
+    return route.fulfill({ status: 404, json: { error: "Rota não simulada." } });
+  });
+  await page.goto(origin + prefix + (studentView ? "?modo=visualizar-aluno" : ""));
+  if (signedIn) await page.getByRole("button", { name: "Guia do curso", exact: true }).waitFor();
+  return { page, context, calls, errors, external, feedbackPosts, release: finish, close: async () => { finish(); await context.close(); } };
+}
+async function guide(page) {
+  await page.getByRole("button", { name: "Guia do curso", exact: true }).click();
+  await page.getByRole("heading", { name: "Guia do curso", exact: true, level: 1 }).waitFor();
+  await settle(page);
+}
+const active = (page) => page.locator('[role="tab"][aria-selected="true"]').getAttribute("data-guide-tab");
+
+test("menu único acessível nos três perfis e retorno à tela acadêmica sem chamadas para o guia", async () => {
+  for (const role of ["student", "instructor", "admin"]) {
+    const c = await open({ role });
+    await c.page.locator(".page-heading h1").waitFor(); await settle(c.page);
+    const before = [...c.calls];
+    assert.equal(await c.page.getByRole("button", { name: "Guia do curso", exact: true }).count(), 1);
+    await guide(c.page);
+    assert.equal(await active(c.page), "rules");
+    assert.deepEqual(c.calls, before, `${role}: conteúdo estático sem requisições acadêmicas`);
+    assert.equal(await c.page.locator('[data-view="course-guide"]').getAttribute("aria-current"), "page");
+    await c.page.locator('[data-view="overview"]').click();
+    await c.page.locator(".page-heading h1").waitFor();
+    assert.notEqual(await c.page.locator(".page-heading h1").textContent(), "Guia do curso");
+    assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []); await c.close();
+  }
+});
+
+test("guia não depende de turma, publicação ou relatório carregando/com erro", async () => {
+  for (const options of [{ cohorts: false }, { mode: "unpublished" }, { mode: "error" }, { mode: "loading" }]) {
+    const c = await open(options);
+    await guide(c.page);
+    assert.match(await c.page.locator('[role="tabpanel"]:visible').innerText(), /requisitos de graduação/i);
+    assert.equal(await c.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).isVisible(), true);
+    const before = [...c.calls];
+    await c.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
+    assert.deepEqual(c.calls, before);
+    c.release(); await settle(c.page);
+    assert.equal(await c.page.getByRole("heading", { name: "Guia do curso", exact: true, level: 1 }).isVisible(), true);
+    assert.deepEqual(c.errors, []); await c.close();
+  }
+});
+
+test("guia restaurado sem turma evita busca de relatório e continua disponível na troca de turma", async () => {
+  const c = await open({ savedGuide: true, cohorts: false });
+  await c.page.getByRole("heading", { name: "Guia do curso", exact: true, level: 1 }).waitFor();
+  assert.equal(c.calls.some((call) => call.endsWith("/report")), false);
+  assert.equal(await active(c.page), "support");
+  await c.close();
+  const other = await open(); await guide(other.page);
+  const before = [...other.calls];
+  await other.page.locator("#cohort").selectOption(code + "-2"); await settle(other.page);
+  assert.equal(await other.page.getByRole("heading", { name: "Guia do curso", exact: true, level: 1 }).isVisible(), true);
+  assert.deepEqual(other.calls, before, "troca no guia não recarrega relatório");
+  await other.close();
+});
+
+test("admin em Visualizar como aluno navega pelas abas sem perder contexto nem ampliar permissões", async () => {
+  const c = await open({ role: "admin", studentView: true });
+  await c.page.locator(".student-view-banner").waitFor();
+  const before = [...c.calls], initialUrl = c.page.url();
+  await guide(c.page);
+  await c.page.getByRole("tab", { name: "Plantões e comunidade", exact: true }).click();
+  assert.equal(await active(c.page), "support");
+  assert.equal(c.page.url(), initialUrl);
+  assert.equal(await c.page.locator(".student-view-banner").isVisible(), true);
+  assert.equal(await c.page.getByRole("button", { name: "Turmas e acessos", exact: true }).count(), 0);
+  assert.deepEqual(c.calls, before);
+  await c.page.reload();
+  await c.page.getByRole("heading", { name: "Guia do curso", exact: true, level: 1 }).waitFor();
+  assert.equal(await c.page.locator(".student-view-banner").isVisible(), true);
+  assert.deepEqual(c.errors, []); await c.close();
+});
+
+test("abas roving tabindex: setas, Home/End, ativação e foco previsível sem alterar URL OAuth", async () => {
+  const c = await open(); await guide(c.page); const initialUrl = c.page.url();
+  await c.page.getByRole("tab", { name: "Regras do curso", exact: true }).focus();
+  for (const [key, expected] of [["ArrowRight", "support"], ["ArrowRight", "requests"], ["ArrowRight", "rules"], ["ArrowLeft", "requests"], ["Home", "rules"], ["End", "requests"]]) {
+    await c.page.keyboard.press(key);
+    assert.equal(await active(c.page), expected, key);
+    assert.equal(await c.page.evaluate(() => document.activeElement.dataset.guideTab), expected, `${key}: foco`);
+    assert.equal(await c.page.locator('[role="tabpanel"]:visible').count(), 1);
+    assert.equal(await c.page.locator('[role="tab"][tabindex="0"]').count(), 1);
+    const ring = await c.page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, parseFloat(s.outlineWidth)]; });
+    assert.ok(ring[0] !== "none" && ring[1] >= 2, `foco visível: ${ring}`);
+  }
+  assert.equal(c.page.url(), initialUrl, "sem reutilizar code/state nem acrescentar query de aba");
+  await c.page.locator('[data-view="overview"]').click(); await guide(c.page); assert.equal(await active(c.page), "rules", "nova entrada começa em Regras");
+  await c.close();
+});
+
+test("links têm nomes e abertura externa segura; documentos reais resolvem no prefixo versionado", async () => {
+  const c = await open(); await guide(c.page); const documents = new Set();
+  for (const tab of ["rules", "support", "requests"]) {
+    await c.page.locator(`[data-guide-tab="${tab}"]`).click();
+    const links = await c.page.locator('[role="tabpanel"]:visible a').evaluateAll((els) => els.map((el) => ({ href: el.href, target: el.target, rel: el.rel, name: el.getAttribute("aria-label") || el.textContent, type: el.type })));
+    for (const link of links) {
+      assert.ok(link.name.trim(), "nome acessível");
+      if (link.target === "_blank") { assert.ok(link.rel.includes("noopener") && link.rel.includes("noreferrer")); assert.match(link.name, /nova aba/i); }
+      if (new URL(link.href).origin === origin && /\.(?:pdf|pptx)$/.test(link.href)) {
+        assert.ok(new URL(link.href).pathname.startsWith(prefix + "documents/"), link.href);
+        const response = await c.context.request.get(link.href);
+        assert.equal(response.status(), 200); assert.equal(response.headers()["content-type"], mime[path.extname(new URL(link.href).pathname)]);
+        const bytes = await response.body(), signature = link.href.endsWith(".pdf") ? "%PDF-" : "PK\x03\x04"; assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature); assert.ok(bytes.length > 1000); documents.add(link.href);
+      }
+    }
+  }
+  assert.equal(documents.size, 2);
+  assert.equal(await c.page.locator("iframe, video, form, input[type=checkbox]").count(), 0);
+  assert.deepEqual(c.external, [], "não abre reuniões, vídeos nem formulários durante renderização");
+  await c.close();
+});
+
+test("desktop/mobile e texto ampliado: conteúdo e menu sem sobreposição, foco e documentos acessíveis", async () => {
+  for (const options of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 640 }, { width: 320, height: 640, text: 2 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 320, height: 640, text: 2 }]) {
+    const c = await open(options); await guide(c.page);
+    for (const tab of ["rules", "support", "requests"]) {
+      await c.page.locator(`[data-guide-tab="${tab}"]`).click();
+      await c.page.locator('[role="tabpanel"]:visible details').evaluateAll((els) => els.forEach((el) => { el.open = true; }));
+      await settle(c.page);
+      const overflow = await c.page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+      const overflowDetails = overflow > 1 ? await c.page.evaluate(() => [...document.querySelectorAll("body *")].filter((el) => { const r = el.getBoundingClientRect(); return r.width && (r.right > innerWidth + 1 || r.left < -1); }).map((el) => ({ tag: el.tagName, cls: el.className, text: el.textContent.trim().slice(0, 55), width: Math.round(el.getBoundingClientRect().width) })).slice(0, 12)) : [];
+      assert.ok(overflow <= 1, `${JSON.stringify(options)} ${tab}: rolagem lateral ${overflow}: ${JSON.stringify(overflowDetails)}`);
+      const clipped = await c.page.locator('[role="tabpanel"]:visible :is(a, summary), [role="tab"], .sidebar nav .nav-item').evaluateAll((els) => els.filter((el) => {
+        const r = el.getBoundingClientRect(); return r.width && (r.left < -0.5 || r.right > innerWidth + 0.5 || el.scrollWidth > el.clientWidth + 1);
+      }).map((el) => el.textContent.trim()));
+      assert.deepEqual(clipped, [], `${JSON.stringify(options)} ${tab}: controles inteiros`);
+      const last = c.page.locator('[role="tabpanel"]:visible a').last();
+      await last.focus();
+      assert.equal(await last.evaluate((el) => { const r = el.getBoundingClientRect(), nav = document.querySelector(".sidebar nav"), nr = nav.getBoundingClientRect(); return r.top >= -1 && r.bottom <= (getComputedStyle(nav).position === "fixed" ? nr.top : innerHeight) + 1; }), true, `${JSON.stringify(options)} ${tab}: link não escondido pela barra`);
+      if (process.env.COURSE_GUIDE_SCREENSHOTS && !options.text && (options.width === 1440 && tab === "rules" || options.width === 390 && tab === "requests") && !options.role) {
+        await mkdir(process.env.COURSE_GUIDE_SCREENSHOTS, { recursive: true });
+        await c.page.evaluate(() => scrollTo(0, 0));
+        await settle(c.page);
+        await c.page.screenshot({ path: path.join(process.env.COURSE_GUIDE_SCREENSHOTS, options.width === 1440 ? "desktop.png" : "mobile.png"), fullPage: true });
+      }
+    }
+    assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []); await c.close();
+  }
+});
+
+test("sem sessão o guia não expõe menu autenticado e o fluxo de login permanece disponível", async () => {
+  const c = await open({ signedIn: false });
+  await c.page.getByRole("button", { name: /Entrar/i }).first().waitFor();
+  assert.equal(await c.page.getByRole("button", { name: "Guia do curso", exact: true }).count(), 0);
+  assert.equal(c.calls.length, 0); assert.deepEqual(c.errors, []); await c.close();
+});
+
+
+test("feedback a partir do guia conserva o contrato existente do backend sem origem não reconhecida", async () => {
+  for (const role of ["instructor", "admin"]) {
+    const c = await open({ role }); await guide(c.page);
+    await c.page.locator(".footer-feedback").click();
+    await c.page.getByRole("heading", { name: "Ajude a melhorar a plataforma", exact: true }).waitFor();
+    await c.page.locator(".fb-type-option", { hasText: "Bug" }).click();
+    await c.page.locator("#fb-title").fill("Relato fictício do guia");
+    await c.page.locator("#fb-description").fill("Descrição de teste sem qualquer dado pessoal real.");
+    await c.page.getByRole("button", { name: "Enviar feedback", exact: true }).click();
+    await c.page.locator(".feedback-success").waitFor();
+    assert.equal(c.feedbackPosts.length, 1);
+    assert.deepEqual(c.feedbackPosts[0], { type: "BUG", title: "Relato fictício do guia", description: "Descrição de teste sem qualquer dado pessoal real.", cohort: code });
+    assert.equal("page" in c.feedbackPosts[0], false, "course-guide não é enviado como enum novo ao backend antigo");
+    assert.deepEqual(c.errors, []); await c.close();
+  }
+});
