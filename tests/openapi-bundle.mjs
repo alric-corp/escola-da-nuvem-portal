@@ -4,7 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import yaml from "playwright-core/lib/utilsBundle";
 import { parseContract, validateStructure } from "./contracts/openapi.mjs";
@@ -226,7 +226,11 @@ test("CI: bundle check precedes consumers inside existing required checks", () =
     const check = steps.findIndex((step) => step.run === "npm run openapi:check");
     const install = steps.findIndex((step) => step.run === "npm ci");
     assert.ok(install >= 0 && check > install && check < steps.findIndex((step) => step.run === consumer));
-    if (name === "terraform") assert.equal(steps[check]["working-directory"], "../..");
+    // GitHub resolves each explicit directory from GITHUB_WORKSPACE, not from the job's default.
+    for (const index of [install, check]) {
+      const directory = steps[index]["working-directory"] ?? ci.jobs[name].defaults?.run?.["working-directory"] ?? ".";
+      assert.equal(resolve(root, directory), resolve(root), `${name}: npm must run in the repository root`);
+    }
   }
 });
 

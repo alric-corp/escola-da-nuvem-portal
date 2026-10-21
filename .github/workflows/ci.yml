@@ -93,10 +93,10 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci
-        working-directory: ../..
+        working-directory: .
       - name: Verifica o bundle OpenAPI
         run: npm run openapi:check
-        working-directory: ../..
+        working-directory: .
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"
