@@ -1,0 +1,77 @@
+BadRequest:
+  description: JSON, parâmetros ou validação de entrada recusados pelo backend.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+Unauthorized:
+  description: Token ausente ou inválido; resposta do authorizer ou do backend.
+  content:
+    application/json:
+      schema:
+        oneOf:
+          - $ref: ./schemas.yaml#/ErrorResponse
+          - $ref: ./schemas.yaml#/GatewayErrorResponse
+Forbidden:
+  description: Scope, identidade verificada, papel ou autorização de negócio insuficientes.
+  content:
+    application/json:
+      schema:
+        oneOf:
+          - $ref: ./schemas.yaml#/ErrorResponse
+          - $ref: ./schemas.yaml#/GatewayErrorResponse
+NotFound:
+  description: Recurso não encontrado ou ocultado ao solicitante.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+Conflict:
+  description: Estado atual, concorrência ou pré-condição da operação impedem a solicitação.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+PayloadTooLarge:
+  description: Corpo decodificado excede 4.000.000 bytes no wrapper portal.handler.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+TooManyRequests:
+  description: Throttling do API Gateway; criar feedback também possui limite por usuário.
+  content:
+    application/json:
+      schema:
+        oneOf:
+          - $ref: ./schemas.yaml#/ErrorResponse
+          - $ref: ./schemas.yaml#/GatewayErrorResponse
+InternalError:
+  description: Exceção inesperada tratada por portal.handler.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+ServiceUnavailable:
+  description: Verificação de identidade, anexos ou envio temporariamente indisponíveis. Falhas de
+    integração podem ter corpo não JSON, conforme tratamento de api.js.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas.yaml#/ErrorResponse
+    text/html:
+      schema:
+        type: string
+SuccessObject:
+  description: Operação concluída. Objeto JSON; campos detalhados permanecem caracterizados pelos
+    testes do backend nesta fase.
+  content:
+    application/json:
+      schema:
+        type: object
+BadGateway:
+  description: Falha de integração tratada pelo frontend (api.js e tests/api.mjs). Conclusão de anexo
+    também retorna 502 em falha de promoção. O corpo pode não ser JSON; não se exige formato único.
+GatewayTimeout:
+  description: Timeout de integração tratado pelo frontend (api.js e tests/api.mjs). Corpo não
+    caracterizado nesta fase; não há resposta 504 explícita de portal.handler.

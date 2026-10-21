@@ -1,9 +1,9 @@
+# Gerado por npm run openapi:bundle. Edite openapi/src/; não edite este arquivo.
 openapi: 3.0.3
 info:
   title: Escola da Nuvem Portal API
   version: 1.0.0
-  description: Contrato HTTP das rotas publicadas do portal. API-1 caracteriza o runtime existente;
-    validação e autorização de negócio permanecem no backend.
+  description: Contrato HTTP das rotas publicadas do portal. API-1 caracteriza o runtime existente; validação e autorização de negócio permanecem no backend.
 tags:
   - name: access
   - name: cohorts
@@ -31,28 +31,28 @@ paths:
               type: object
               properties: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /admin/feedback:
     get:
       operationId: listAdminFeedback
@@ -101,28 +101,28 @@ paths:
             type: string
             pattern: ^[A-Z0-9-]{3,32}$
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /admin/feedback/{id}/status:
     post:
       operationId: setFeedbackStatus
@@ -166,30 +166,30 @@ paths:
                     - RESOLVED
                     - ARCHIVED
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts:
     get:
       operationId: listCohorts
@@ -202,28 +202,28 @@ paths:
       x-portal-authorization-scopes:
         - portal/access
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
     post:
       operationId: createCohort
       summary: Criar turma
@@ -242,33 +242,32 @@ paths:
               type: object
               properties:
                 code:
-                  description: Convertido para string, aparado e convertido para maiúsculas; 3–32 caracteres A-Z, 0-9
-                    ou hífen.
+                  description: Convertido para string, aparado e convertido para maiúsculas; 3–32 caracteres A-Z, 0-9 ou hífen.
                 name:
                   description: Convertido para string e aparado; 1–100 caracteres. Na ausência, usa code.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/class-report:
     get:
       operationId: getCohortClassReport
@@ -287,28 +286,28 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/display-name:
     post:
       operationId: setDisplayName
@@ -341,30 +340,30 @@ paths:
                 displayName:
                   description: Convertido para string, aparado, 1–100 caracteres.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/focus-activities:
     post:
       operationId: saveFocus
@@ -402,30 +401,30 @@ paths:
                 expectedVersion:
                   description: Deve corresponder à versão do foco; ausência equivale a None no backend.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/instructors:
     get:
       operationId: listInstructors
@@ -444,28 +443,28 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
     post:
       operationId: addInstructor
       summary: Aprovar instrutor na turma
@@ -492,38 +491,35 @@ paths:
                 userId:
                   description: Convertido para string; deve identificar uma solicitação institucional.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/participation:
     post:
       operationId: setParticipation
       summary: Alterar participação na turma
-      description: Requer permissão de instrutor na turma. expectedStatus deve corresponder ao estado
-        atual antes da verificação de idempotência. Ausência de registro equivale a ACTIVE. Pedir o
-        status atual retorna 200 sem escrita; updatedAt é null para ACTIVE sem registro. Não remove
-        notas nem dados do Canvas.
+      description: Requer permissão de instrutor na turma. expectedStatus deve corresponder ao estado atual antes da verificação de idempotência. Ausência de registro equivale a ACTIVE. Pedir o status atual retorna 200 sem escrita; updatedAt é null para ACTIVE sem registro. Não remove notas nem dados do Canvas.
       tags:
         - cohorts
       x-portal-backend-operation: Portal._set_participation
@@ -542,36 +538,36 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ParticipationRequest"
+              $ref: '#/components/schemas/ParticipationRequest'
       responses:
-        "200":
+        '200':
           description: Operação concluída; estrutura detalhada continua caracterizada pelos testes do backend.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ParticipationResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+                $ref: '#/components/schemas/ParticipationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/pending-preview:
     post:
       operationId: pendingPreview
@@ -601,30 +597,30 @@ paths:
               properties:
                 studentId: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/pending-preview-batch:
     post:
       operationId: previewReminderBatch
@@ -660,30 +656,30 @@ paths:
                   maxItems: 200
                   uniqueItems: true
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/preview:
     post:
       operationId: previewImport
@@ -718,30 +714,30 @@ paths:
                 activeIds:
                   description: Seleção opcional de atividades; validação detalhada permanece em grades.parse_csv.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/publish:
     post:
       operationId: publish
@@ -771,30 +767,30 @@ paths:
                 acknowledgeRemoved:
                   description: Precisa ser exatamente true quando a publicação remove alunos.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/reminder-settings:
     get:
       operationId: getReminderSettings
@@ -813,34 +809,33 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/report:
     get:
       operationId: getCohortReport
       summary: Consultar relatório da turma ou do próprio aluno
-      description: O relatório varia conforme o papel. A consulta do próprio aluno pode criar o vínculo de
-        conta; o método HTTP GET não significa ausência absoluta de efeitos internos.
+      description: O relatório varia conforme o papel. A consulta do próprio aluno pode criar o vínculo de conta; o método HTTP GET não significa ausência absoluta de efeitos internos.
       tags:
         - grades
       x-portal-backend-operation: Portal._report
@@ -855,30 +850,30 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/restore:
     post:
       operationId: restore
@@ -908,30 +903,30 @@ paths:
                 expectedCurrent:
                   description: Comparado com current; ausência equivale a None.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/revoke-instructor:
     post:
       operationId: revokeInstructor
@@ -959,30 +954,30 @@ paths:
                 userId:
                   description: Convertido para string; deve identificar o vínculo atual.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/send-reminder:
     post:
       operationId: sendReminder
@@ -1016,36 +1011,35 @@ paths:
                 publicationId: {}
                 previewHash: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/send-reminders:
     post:
       operationId: sendReminderBatch
       summary: Enviar lembretes em lote
-      description: O resultado inclui situações por destinatário. Falhas individuais podem constar em uma
-        resposta HTTP 200.
+      description: O resultado inclui situações por destinatário. Falhas individuais podem constar em uma resposta HTTP 200.
       tags:
         - reminders
       x-portal-backend-operation: Portal._reminder_batch
@@ -1079,30 +1073,30 @@ paths:
                   uniqueItems: true
                 expectedPublicationId: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/settings:
     post:
       operationId: saveSettings
@@ -1133,8 +1127,7 @@ paths:
               additionalProperties: false
               properties:
                 thresholds:
-                  description: "Objeto com kc e lab, limites entre 1 e 100. Schema permissivo: Python também aceita
-                    true como número 1."
+                  description: 'Objeto com kc e lab, limites entre 1 e 100. Schema permissivo: Python também aceita true como número 1.'
                 canvasCourseId:
                   type: string
                   nullable: true
@@ -1144,30 +1137,30 @@ paths:
                 autoSync:
                   type: boolean
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/student-view:
     post:
       operationId: studentView
@@ -1202,30 +1195,30 @@ paths:
                   maxLength: 32
                   description: Identificador tratado como string; o backend exige dígitos com re.fullmatch do Python.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/students-search:
     post:
       operationId: searchStudents
@@ -1256,30 +1249,30 @@ paths:
                 query:
                   description: Convertido para string, aparado; 1–100 caracteres.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/unlink-student:
     post:
       operationId: unlinkStudent
@@ -1309,36 +1302,35 @@ paths:
               properties:
                 canvasId: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /cohorts/{code}/verify-sender:
     post:
       operationId: verifySender
       summary: Solicitar verificação do remetente
-      description: O frontend envia objeto vazio. Com lembretes habilitados, qualquer campo é recusado;
-        quando desabilitados, o backend retorna antes dessa validação.
+      description: O frontend envia objeto vazio. Com lembretes habilitados, qualquer campo é recusado; quando desabilitados, o backend retorna antes dessa validação.
       tags:
         - reminders
       x-portal-backend-operation: Portal._reminder_settings
@@ -1360,28 +1352,28 @@ paths:
               type: object
               properties: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /feedback:
     get:
       operationId: listMyFeedback
@@ -1405,26 +1397,26 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
     post:
       operationId: createFeedback
       summary: Criar feedback
@@ -1456,10 +1448,10 @@ paths:
                     - OTHER
                 title:
                   type: string
-                  description: "Após normalização no backend: 3–120 caracteres."
+                  description: 'Após normalização no backend: 3–120 caracteres.'
                 description:
                   type: string
-                  description: "Após normalização no backend: 10–2000 caracteres."
+                  description: 'Após normalização no backend: 10–2000 caracteres.'
                 cohort:
                   type: string
                   nullable: true
@@ -1469,30 +1461,30 @@ paths:
                   nullable: true
                   description: Página de origem validada por feedback.PAGES; valores não enumerados nesta fase.
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /feedback/{feedbackId}/attachments:
     get:
       operationId: listAttachments
@@ -1511,33 +1503,32 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
     post:
       operationId: createAttachment
       summary: Reservar slot e obter autorização de upload
-      description: A operação retorna dados para upload direto ao armazenamento. O POST externo do arquivo
-        não é uma operação desta API.
+      description: A operação retorna dados para upload direto ao armazenamento. O POST externo do arquivo não é uma operação desta API.
       tags:
         - feedback
       x-portal-backend-operation: Portal._attachment_slot
@@ -1581,36 +1572,35 @@ paths:
                   type: string
                   pattern: ^[A-Za-z0-9-]{16,64}$
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /feedback/{feedbackId}/attachments/{attachmentId}:
     get:
       operationId: getAttachmentUrl
       summary: Obter URL temporária de leitura
-      description: A operação do portal retorna a URL; o GET externo ao armazenamento não pertence a este
-        contrato.
+      description: A operação do portal retorna a URL; o GET externo ao armazenamento não pertence a este contrato.
       tags:
         - feedback
       x-portal-backend-operation: Portal._attachment_route
@@ -1630,28 +1620,28 @@ paths:
           schema:
             type: string
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /feedback/{feedbackId}/attachments/{attachmentId}/complete:
     post:
       operationId: completeAttachment
@@ -1683,30 +1673,30 @@ paths:
               additionalProperties: false
               properties: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /me:
     get:
       operationId: getMe
@@ -1719,26 +1709,26 @@ paths:
       x-portal-authorization-scopes:
         - portal/access
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /requests:
     get:
       operationId: listAccessRequests
@@ -1751,26 +1741,26 @@ paths:
       x-portal-authorization-scopes:
         - portal/access
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
   /requests/{userId}/reject:
     post:
       operationId: rejectRequest
@@ -1797,115 +1787,109 @@ paths:
               additionalProperties: false
               properties: {}
       responses:
-        "200":
-          $ref: "#/components/responses/SuccessObject"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        "502":
-          $ref: "#/components/responses/BadGateway"
-        "503":
-          $ref: "#/components/responses/ServiceUnavailable"
-        "504":
-          $ref: "#/components/responses/GatewayTimeout"
+        '200':
+          $ref: '#/components/responses/SuccessObject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
 components:
   securitySchemes:
     PortalJwt:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Access token do portal. Emissor, audiência e authorizer são configuração de ambiente;
-        scopes são declarados em x-portal-authorization-scopes.
+      description: Access token do portal. Emissor, audiência e authorizer são configuração de ambiente; scopes são declarados em x-portal-authorization-scopes.
   responses:
     BadRequest:
       description: JSON, parâmetros ou validação de entrada recusados pelo backend.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Token ausente ou inválido; resposta do authorizer ou do backend.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/ErrorResponse"
-              - $ref: "#/components/schemas/GatewayErrorResponse"
+              - $ref: '#/components/schemas/ErrorResponse'
+              - $ref: '#/components/schemas/GatewayErrorResponse'
     Forbidden:
       description: Scope, identidade verificada, papel ou autorização de negócio insuficientes.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/ErrorResponse"
-              - $ref: "#/components/schemas/GatewayErrorResponse"
+              - $ref: '#/components/schemas/ErrorResponse'
+              - $ref: '#/components/schemas/GatewayErrorResponse'
     NotFound:
       description: Recurso não encontrado ou ocultado ao solicitante.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     Conflict:
       description: Estado atual, concorrência ou pré-condição da operação impedem a solicitação.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     PayloadTooLarge:
       description: Corpo decodificado excede 4.000.000 bytes no wrapper portal.handler.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     TooManyRequests:
       description: Throttling do API Gateway; criar feedback também possui limite por usuário.
       content:
         application/json:
           schema:
             oneOf:
-              - $ref: "#/components/schemas/ErrorResponse"
-              - $ref: "#/components/schemas/GatewayErrorResponse"
+              - $ref: '#/components/schemas/ErrorResponse'
+              - $ref: '#/components/schemas/GatewayErrorResponse'
     InternalError:
       description: Exceção inesperada tratada por portal.handler.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
     ServiceUnavailable:
-      description: Verificação de identidade, anexos ou envio temporariamente indisponíveis. Falhas de
-        integração podem ter corpo não JSON, conforme tratamento de api.js.
+      description: Verificação de identidade, anexos ou envio temporariamente indisponíveis. Falhas de integração podem ter corpo não JSON, conforme tratamento de api.js.
       content:
         application/json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: '#/components/schemas/ErrorResponse'
         text/html:
           schema:
             type: string
     SuccessObject:
-      description: Operação concluída. Objeto JSON; campos detalhados permanecem caracterizados pelos
-        testes do backend nesta fase.
+      description: Operação concluída. Objeto JSON; campos detalhados permanecem caracterizados pelos testes do backend nesta fase.
       content:
         application/json:
           schema:
             type: object
     BadGateway:
-      description: Falha de integração tratada pelo frontend (api.js e tests/api.mjs). Conclusão de anexo
-        também retorna 502 em falha de promoção. O corpo pode não ser JSON; não se exige formato
-        único.
+      description: Falha de integração tratada pelo frontend (api.js e tests/api.mjs). Conclusão de anexo também retorna 502 em falha de promoção. O corpo pode não ser JSON; não se exige formato único.
     GatewayTimeout:
-      description: Timeout de integração tratado pelo frontend (api.js e tests/api.mjs). Corpo não
-        caracterizado nesta fase; não há resposta 504 explícita de portal.handler.
+      description: Timeout de integração tratado pelo frontend (api.js e tests/api.mjs). Corpo não caracterizado nesta fase; não há resposta 504 explícita de portal.handler.
   schemas:
     ErrorResponse:
       type: object

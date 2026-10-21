@@ -1,0 +1,458 @@
+paths:
+  /access-request:
+    post:
+      operationId: requestInstructorAccess
+      summary: Solicitar acesso de instrutor
+      tags:
+        - access
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/display-name:
+    post:
+      operationId: setDisplayName
+      summary: Alterar nome de exibição
+      tags:
+        - access
+      x-portal-backend-operation: Portal._set_display_name
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - canvasId
+                - displayName
+              additionalProperties: false
+              properties:
+                canvasId: {}
+                displayName:
+                  description: Convertido para string, aparado, 1–100 caracteres.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/instructors:
+    get:
+      operationId: listInstructors
+      summary: Listar instrutores da turma
+      tags:
+        - access
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+    post:
+      operationId: addInstructor
+      summary: Aprovar instrutor na turma
+      tags:
+        - access
+      x-portal-backend-operation: Portal._approve_instructor
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  description: Convertido para string; deve identificar uma solicitação institucional.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/revoke-instructor:
+    post:
+      operationId: revokeInstructor
+      summary: Revogar vínculo de instrutor
+      tags:
+        - access
+      x-portal-backend-operation: Portal._revoke_instructor
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId:
+                  description: Convertido para string; deve identificar o vínculo atual.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/students-search:
+    post:
+      operationId: searchStudents
+      summary: Buscar alunos da publicação
+      tags:
+        - access
+      x-portal-backend-operation: Portal._students_search
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              additionalProperties: false
+              properties:
+                query:
+                  description: Convertido para string, aparado; 1–100 caracteres.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/unlink-student:
+    post:
+      operationId: unlinkStudent
+      summary: Desvincular conta de aluno
+      tags:
+        - access
+      x-portal-backend-operation: Portal._unlink_student
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - canvasId
+              additionalProperties: false
+              properties:
+                canvasId: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /me:
+    get:
+      operationId: getMe
+      summary: Consultar identidade e papéis
+      tags:
+        - access
+      x-portal-backend-operation: Portal.me
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /requests:
+    get:
+      operationId: listAccessRequests
+      summary: Listar solicitações de acesso
+      tags:
+        - access
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /requests/{userId}/reject:
+    post:
+      operationId: rejectRequest
+      summary: Recusar solicitação pendente
+      tags:
+        - access
+      x-portal-backend-operation: Portal.dispatch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout

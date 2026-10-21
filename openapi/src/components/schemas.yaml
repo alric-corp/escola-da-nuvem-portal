@@ -1,0 +1,55 @@
+ErrorResponse:
+  type: object
+  required:
+    - error
+  properties:
+    error:
+      type: string
+GatewayErrorResponse:
+  type: object
+  required:
+    - message
+  properties:
+    message:
+      type: string
+ParticipationRequest:
+  type: object
+  required:
+    - canvasId
+    - status
+    - expectedStatus
+  additionalProperties: false
+  properties:
+    canvasId:
+      type: string
+      minLength: 1
+      maxLength: 32
+      description: Identificador tratado como string; o backend exige dígitos com re.fullmatch do Python.
+    status:
+      type: string
+      enum:
+        - ACTIVE
+        - WITHDRAWN
+    expectedStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - WITHDRAWN
+ParticipationResponse:
+  type: object
+  required:
+    - canvasId
+    - participationStatus
+    - updatedAt
+  properties:
+    canvasId:
+      type: string
+    participationStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - WITHDRAWN
+    updatedAt:
+      type: string
+      nullable: true
+      description: Instante armazenado da última alteração; null quando ACTIVE não possui registro.

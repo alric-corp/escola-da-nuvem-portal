@@ -1,0 +1,463 @@
+paths:
+  /admin/feedback:
+    get:
+      operationId: listAdminFeedback
+      summary: Listar feedbacks para administração
+      description: Sem filtro de status, exclui ARCHIVED. ALL inclui todos.
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._admin_feedback
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: limit
+          in: query
+          description: Dígitos entre 1 e 100; padrão 50.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Cursor opaco devolvido em nextCursor.
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - ALL
+              - NEW
+              - IN_REVIEW
+              - RESOLVED
+              - ARCHIVED
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum:
+              - BUG
+              - SUGGESTION
+              - IMPROVEMENT
+              - OTHER
+        - name: cohort
+          in: query
+          schema:
+            type: string
+            pattern: ^[A-Z0-9-]{3,32}$
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /admin/feedback/{id}/status:
+    post:
+      operationId: setFeedbackStatus
+      summary: Alterar status do feedback
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._feedback_status
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+                - expectedStatus
+              additionalProperties: false
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - NEW
+                    - IN_REVIEW
+                    - RESOLVED
+                    - ARCHIVED
+                expectedStatus:
+                  type: string
+                  enum:
+                    - NEW
+                    - IN_REVIEW
+                    - RESOLVED
+                    - ARCHIVED
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /feedback:
+    get:
+      operationId: listMyFeedback
+      summary: Listar os próprios feedbacks
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._feedback_route
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: limit
+          in: query
+          description: Dígitos entre 1 e 50; padrão 20.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Cursor opaco devolvido em nextCursor.
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+    post:
+      operationId: createFeedback
+      summary: Criar feedback
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._create_feedback
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - type
+                - title
+                - description
+              additionalProperties: false
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - BUG
+                    - SUGGESTION
+                    - IMPROVEMENT
+                    - OTHER
+                title:
+                  type: string
+                  description: "Após normalização no backend: 3–120 caracteres."
+                description:
+                  type: string
+                  description: "Após normalização no backend: 10–2000 caracteres."
+                cohort:
+                  type: string
+                  nullable: true
+                  pattern: ^[A-Z0-9-]{3,32}$
+                page:
+                  type: string
+                  nullable: true
+                  description: Página de origem validada por feedback.PAGES; valores não enumerados nesta fase.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /feedback/{feedbackId}/attachments:
+    get:
+      operationId: listAttachments
+      summary: Listar anexos disponíveis
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._attachment_route
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: feedbackId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+    post:
+      operationId: createAttachment
+      summary: Reservar slot e obter autorização de upload
+      description: A operação retorna dados para upload direto ao armazenamento. O POST externo do arquivo
+        não é uma operação desta API.
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._attachment_slot
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: feedbackId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fileName
+                - contentType
+                - size
+                - clientToken
+              additionalProperties: false
+              properties:
+                fileName:
+                  type: string
+                  maxLength: 1000
+                contentType:
+                  type: string
+                  enum:
+                    - image/png
+                    - image/jpeg
+                    - image/webp
+                size:
+                  type: integer
+                  minimum: 1
+                  maximum: 5242880
+                clientToken:
+                  type: string
+                  pattern: ^[A-Za-z0-9-]{16,64}$
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /feedback/{feedbackId}/attachments/{attachmentId}:
+    get:
+      operationId: getAttachmentUrl
+      summary: Obter URL temporária de leitura
+      description: A operação do portal retorna a URL; o GET externo ao armazenamento não pertence a este
+        contrato.
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._attachment_route
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: feedbackId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /feedback/{feedbackId}/attachments/{attachmentId}/complete:
+    post:
+      operationId: completeAttachment
+      summary: Validar e concluir upload de anexo
+      tags:
+        - feedback
+      x-portal-backend-operation: Portal._attachment_complete
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: feedbackId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout

@@ -1,0 +1,322 @@
+paths:
+  /cohorts/{code}/pending-preview:
+    post:
+      operationId: pendingPreview
+      summary: Consultar detalhe e prévia de lembrete
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_flow
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - studentId
+              additionalProperties: false
+              properties:
+                studentId: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/pending-preview-batch:
+    post:
+      operationId: previewReminderBatch
+      summary: Preparar prévia de lembretes em lote
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_batch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - studentIds
+              additionalProperties: false
+              properties:
+                studentIds:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 200
+                  uniqueItems: true
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/reminder-settings:
+    get:
+      operationId: getReminderSettings
+      summary: Consultar disponibilidade do remetente
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_settings
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/send-reminder:
+    post:
+      operationId: sendReminder
+      summary: Enviar lembrete individual
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_flow
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - studentId
+                - publicationId
+                - previewHash
+              additionalProperties: false
+              properties:
+                studentId: {}
+                publicationId: {}
+                previewHash: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/send-reminders:
+    post:
+      operationId: sendReminderBatch
+      summary: Enviar lembretes em lote
+      description: O resultado inclui situações por destinatário. Falhas individuais podem constar em uma
+        resposta HTTP 200.
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_batch
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - studentIds
+                - expectedPublicationId
+              additionalProperties: false
+              properties:
+                studentIds:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+                  maxItems: 200
+                  uniqueItems: true
+                expectedPublicationId: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/verify-sender:
+    post:
+      operationId: verifySender
+      summary: Solicitar verificação do remetente
+      description: O frontend envia objeto vazio. Com lembretes habilitados, qualquer campo é recusado;
+        quando desabilitados, o backend retorna antes dessa validação.
+      tags:
+        - reminders
+      x-portal-backend-operation: Portal._reminder_settings
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout

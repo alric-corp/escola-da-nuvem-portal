@@ -1,0 +1,6 @@
+PortalJwt:
+  type: http
+  scheme: bearer
+  bearerFormat: JWT
+  description: Access token do portal. Emissor, audiência e authorizer são configuração de ambiente;
+    scopes são declarados em x-portal-authorization-scopes.

@@ -1,0 +1,204 @@
+paths:
+  /cohorts/{code}/class-report:
+    get:
+      operationId: getCohortClassReport
+      summary: Consultar notas da turma
+      tags:
+        - grades
+      x-portal-backend-operation: class_report
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/focus-activities:
+    post:
+      operationId: saveFocus
+      summary: Salvar atividades em foco
+      tags:
+        - grades
+      x-portal-backend-operation: Portal._focus_activities
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - activityIds
+              properties:
+                activityIds:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 3
+                  uniqueItems: true
+                expectedCurrent:
+                  description: Deve corresponder à publicação atual.
+                expectedVersion:
+                  description: Deve corresponder à versão do foco; ausência equivale a None no backend.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/report:
+    get:
+      operationId: getCohortReport
+      summary: Consultar relatório da turma ou do próprio aluno
+      description: O relatório varia conforme o papel. A consulta do próprio aluno pode criar o vínculo de
+        conta; o método HTTP GET não significa ausência absoluta de efeitos internos.
+      tags:
+        - grades
+      x-portal-backend-operation: Portal._report
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/student-view:
+    post:
+      operationId: studentView
+      summary: Consultar relatório como aluno e auditar abertura
+      description: Somente admin. A consulta registra uma auditoria de abertura; não vincula a conta do aluno.
+      tags:
+        - grades
+      x-portal-backend-operation: Portal._student_view
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - studentId
+              additionalProperties: false
+              properties:
+                studentId:
+                  type: string
+                  minLength: 1
+                  maxLength: 32
+                  description: Identificador tratado como string; o backend exige dígitos com re.fullmatch do Python.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout

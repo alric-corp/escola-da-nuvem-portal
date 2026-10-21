@@ -1,0 +1,165 @@
+paths:
+  /cohorts/{code}/preview:
+    post:
+      operationId: previewImport
+      summary: Criar prévia de importação CSV
+      description: Cria um rascunho persistido. Regras detalhadas do CSV e da integridade continuam no backend.
+      tags:
+        - import
+      x-portal-backend-operation: Portal._preview
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - csv
+              properties:
+                csv:
+                  type: string
+                filename:
+                  description: Convertido para string, truncado em 150 caracteres; padrão notas.csv.
+                activeIds:
+                  description: Seleção opcional de atividades; validação detalhada permanece em grades.parse_csv.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/publish:
+    post:
+      operationId: publish
+      summary: Publicar prévia de importação
+      tags:
+        - import
+      x-portal-backend-operation: Portal._publish
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                draftId:
+                  description: Convertido para string; identifica uma prévia da própria conta.
+                acknowledgeRemoved:
+                  description: Precisa ser exatamente true quando a publicação remove alunos.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
+  /cohorts/{code}/restore:
+    post:
+      operationId: restore
+      summary: Restaurar publicação
+      tags:
+        - import
+      x-portal-backend-operation: Portal._restore
+      security:
+        - PortalJwt: []
+      x-portal-authorization-scopes:
+        - portal/access
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publicationId:
+                  description: Convertido para string; identifica uma publicação.
+                expectedCurrent:
+                  description: Comparado com current; ausência equivale a None.
+      responses:
+        "200":
+          $ref: ../components/responses.yaml#/SuccessObject
+        "400":
+          $ref: ../components/responses.yaml#/BadRequest
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+        "403":
+          $ref: ../components/responses.yaml#/Forbidden
+        "404":
+          $ref: ../components/responses.yaml#/NotFound
+        "409":
+          $ref: ../components/responses.yaml#/Conflict
+        "413":
+          $ref: ../components/responses.yaml#/PayloadTooLarge
+        "429":
+          $ref: ../components/responses.yaml#/TooManyRequests
+        "500":
+          $ref: ../components/responses.yaml#/InternalError
+        "502":
+          $ref: ../components/responses.yaml#/BadGateway
+        "503":
+          $ref: ../components/responses.yaml#/ServiceUnavailable
+        "504":
+          $ref: ../components/responses.yaml#/GatewayTimeout
