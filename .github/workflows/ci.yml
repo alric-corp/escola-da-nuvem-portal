@@ -20,8 +20,10 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
+          python-version: "3.13"
+      - name: Registra a versão do Python dos testes
+        run: python --version
+      - run: python -m pip install -r requirements-dev.txt
       # O contrato Python reutiliza o parser YAML já instalado nos testes Node.
       - uses: actions/setup-node@v7
         with:
@@ -45,6 +47,7 @@ jobs:
 
   node:
     name: Frontend (Node + Playwright)
+    timeout-minutes: 30
     # Temporário: as suítes de navegador medem layout com as fontes do sistema (DejaVu Sans no Linux), e a evidência verde
     # é do Ubuntu 24.04. O rótulo ubuntu-latest passa ao Ubuntu 26 a partir de 19/10/2026. Antes de voltar a ubuntu-latest,
     # validar e recalibrar estas suítes no Ubuntu 26.04 numa execução própria. Os outros jobs não medem layout.
@@ -62,8 +65,12 @@ jobs:
         run: npm run openapi:check
       - name: Testes de unidade (sem navegador)
         run: npm test
-      - name: Instala o Chromium do Playwright
-        run: npx playwright install --with-deps chromium
+      - name: Instala dependências do sistema para Chromium
+        timeout-minutes: 5
+        run: npx playwright install-deps chromium
+      - name: Baixa o Chromium do Playwright
+        timeout-minutes: 5
+        run: npx playwright install chromium
       - name: Constrói o frontend e roda os testes de navegador
         run: npm run test:browser
       # Reutiliza npm ci e o Chromium acima; muta só cópias temporárias, sem AWS. Mutação sobrevivente sai com código != 0.

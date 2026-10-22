@@ -168,12 +168,14 @@ O backend lê os snapshots e filtra o aluno antes de responder. O relatório pes
 
 O índice completo das suítes, com contratos, mutações e verificações manuais, está em [tests/README.md](../tests/README.md). A partir da raiz do repositório:
 
+Para as suítes Python, ative antes um ambiente Python 3.13 conforme a [preparação dos testes](../tests/README.md#preparação).
+
 ```sh
 npm ci
 npx playwright install chromium
 npm test                  # unitários Node, inclusive a arquitetura do frontend
 npm run test:browser      # gera o build e roda as suítes Playwright com API simulada
-pip install -r requirements-dev.txt
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s backend
 python -m unittest discover -s tests/integration   # Moto, nenhum recurso real
 ```

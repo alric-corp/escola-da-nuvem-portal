@@ -19,7 +19,10 @@ Portal de acompanhamento do programa AWS re/Start: alunos consultam seu desempen
 
 ```bash
 npm ci  # parser YAML também usado pelos testes Python de contrato
-pip install -r requirements-dev.txt
+python3.13 -m venv .venv
+. .venv/bin/activate
+python --version
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -s backend
 python -m unittest discover -s tests/integration
 
@@ -31,6 +34,8 @@ cd infra/terraform && terraform init -backend=false && terraform validate && ter
 ```
 
 O mesmo conjunto roda no GitHub Actions a cada push e pull request (`.github/workflows/ci.yml`). Nenhum desses testes acessa a AWS real. O índice das suítes, com contratos, mutações e verificações manuais, está em [tests/README.md](tests/README.md).
+
+Os testes de backend, integração/Moto e suas mutações usam Python 3.13, alinhado ao runtime declarado das Lambdas. O ambiente isolado das ferramentas de deploy continua em Python 3.12; passar nos testes do runner não certifica o ambiente AWS/ARM64.
 
 ## Implantação e operação
 
