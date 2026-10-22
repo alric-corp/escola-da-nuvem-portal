@@ -1,6 +1,6 @@
 # Infraestrutura do portal AWS re/Start
 
-Implantação manual com Terraform e as credenciais locais do AWS CLI. Não há pipeline, chaves no código, acesso automático ao Canvas ou publicação automática de notas.
+Infraestrutura e backend têm implantação separada com Terraform e credenciais locais do AWS CLI. O frontend é publicado automaticamente pelo GitHub Actions após CI verde na `main`, conforme o [runbook de releases](FRONTEND-RELEASES.md). A sincronização Canvas existente executa às 6h e às 18h (horário de Brasília), independentemente do deploy da interface.
 
 O ambiente da turma `BRSA0267` foi implantado. Consulte o [registro da implantação e verificações](DEPLOYMENT.md) para endereço, recursos e configuração do administrador.
 
@@ -16,7 +16,7 @@ O ambiente da turma `BRSA0267` foi implantado. Consulte o [registro da implanta�
 - Logs de API e Lambda com retenção de 14 dias, sem registrar corpo de requisições ou tokens no código fornecido.
 - Estado principal remoto em S3 com versionamento, criptografia e lock nativo do Terraform.
 
-O código do novo portal está em `frontend/` e `backend/`. O Terraform empacota a Lambda; a interface é publicada manualmente no passo 4. Até a publicação da interface, o bucket web fica vazio. Os CSVs devem ser enviados pela área do instrutor: copiar um arquivo diretamente para o bucket não processa nem publica notas. Consulte [o guia da aplicação](../frontend/README.md) para demonstração local e regras do importador.
+O código do portal está em `frontend/` e `backend/`. O Terraform empacota o backend; o [passo 4](#4-gerar-e-publicar-o-frontend) aponta para a publicação automática da interface. A sincronização Canvas publica notas quando há mudança acadêmica válida; a importação de CSV pela área do instrutor continua disponível como complemento ou recuperação. Copiar um CSV diretamente para o bucket não processa nem publica notas. Consulte [o guia da aplicação](../frontend/README.md) para demonstração local e regras do importador.
 
 ## Requisitos e credenciais
 
@@ -95,9 +95,13 @@ Use a região configurada se tiver alterado o padrão. Faça login novamente par
 
 Ter e-mail `@escoladanuvem.org` **não** concede privilégios. Após confirmar o endereço, o usuário pode solicitar acesso de instrutor na tela inicial. Em **Turmas e acessos**, um administrador aprova e vincula o instrutor à turma. Esses vínculos ficam no DynamoDB e são verificados a cada requisição; um grupo `instructor` do Cognito, sozinho, não concede acesso. A remoção do vínculo corta imediatamente o acesso à turma. Usuários sem vínculo de instrução são tratados como alunos e precisam constar no CSV publicado. O grupo Cognito `admin` continua sendo a permissão global configurada manualmente; sua revogação depende da expiração do token, de até 15 minutos.
 
-O envio padrão de e-mails do Cognito tem limite documentado de **50 mensagens por dia por conta**. Para cadastrar uma turma inteira e atender recuperação de senha, avalie configurar SES antes do lançamento. SES e a verificação de domínio remetente não são criados aqui. Referência: [quotas do Cognito](https://docs.aws.amazon.com/cognito/latest/developerguide/quotas.html).
+O envio `COGNITO_DEFAULT` tem limite documentado de **50 mensagens por dia por conta**. A configuração atual em `auth.tf` usa `DEVELOPER` com SES; os recursos e o histórico dessa configuração estão em [SES.md](SES.md). Cadastro, recuperação de senha e lembretes têm contratos distintos, e não são habilitados pelo deploy do frontend. Referência: [quotas do Cognito](https://docs.aws.amazon.com/cognito/latest/developerguide/quotas.html).
 
 ## 4. Gerar e publicar o frontend
+
+O procedimento normal é **PR → CI aprovado → merge na `main` → CI da main aprovado → deploy automático**. A pipeline publica uma release imutável, ativa o `index.html` condicionalmente, invalida somente `/` e `/index.html` e executa o smoke público. O [runbook de releases](FRONTEND-RELEASES.md) é a referência para pré-condições, acompanhamento, operações manuais e recuperação. O portal usa o endereço CloudFront existente; domínio personalizado não é requisito.
+
+Para gerar apenas um build local com a configuração pública:
 
 ```sh
 terraform -chdir=infra/terraform output -json frontend_config > portal-config.json
@@ -106,29 +110,15 @@ python3 -B scripts/build_frontend.py --config portal-config.json
 
 Esse JSON contém apenas configuração pública. O frontend usa authorization code com **PKCE S256**, verifica `state`/`nonce` e envia o **access token** com escopo `portal/access` no cabeçalho `Authorization: Bearer ...` da API. O callback é a raiz HTTPS do CloudFront. O backend confirma o `sub` e o e-mail verificado direto pelas claims do access token, incluídas por um gatilho Cognito "pre token generation" (ver TODO 04); só cai de volta no endpoint `userInfo` do Cognito se a claim ainda não existir. O frontend guarda o access e o refresh token em `localStorage`; o access token expira em 15 minutos e é renovado com o refresh token (7 dias) sem novo login.
 
-Não publique a raiz deste repositório no S3: ela contém Terraform e poderá conter CSVs e planos locais. O build copia uma lista explícita de arquivos para `frontend/dist`. Publique somente essa pasta:
+O build copia uma lista explícita de arquivos para `frontend/dist`; essa pasta local não substitui o pacote versionado da pipeline. Não publique a raiz do repositório nem sincronize o build diretamente na raiz do bucket web. O script [`scripts/deploy_frontend.sh`](../scripts/deploy_frontend.sh) está preservado como **legado**, fora do procedimento normal: ele grava arquivos planos e invalida `/*`, podendo substituir o ponteiro da release ativa. Não o execute para atualizar a interface do ambiente versionado.
 
-```sh
-./scripts/deploy_frontend.sh
+Proposta separada, não implementada nesta revisão: se o script legado continuar disponível para uso administrativo deliberado, avaliar uma recusa explícita quando detectar um ponteiro de release ativo. Isso reduziria o risco de executar o procedimento plano por engano, preservando um caminho de recuperação revisado. O script e seus comandos permanecem inalterados.
 
-# Execução manual:
-portal_web_bucket=$(terraform -chdir=infra/terraform output -raw frontend_bucket)
-portal_distribution_id=$(terraform -chdir=infra/terraform output -raw cloudfront_distribution_id)
-
-aws s3 sync frontend/dist/ "s3://$portal_web_bucket/" \
-  --cache-control 'public,max-age=300'
-aws cloudfront create-invalidation \
-  --distribution-id "$portal_distribution_id" \
-  --paths '/*'
-```
-
-A publicação por releases imutáveis pelo GitHub Actions está implementada, com deploy automático a cada push na `main` depois do CI verde. Ela só substitui este procedimento depois dos pré-requisitos e da migração descritos em [FRONTEND-RELEASES.md](FRONTEND-RELEASES.md). Até lá, este continua sendo o caminho vigente.
-
-O frontend mantém a navegação na raiz, sem necessidade de fallback de erros para `index.html`. A API usa domínio separado e CORS permite somente a origem do portal. Todas as respostas da aplicação usam `Cache-Control: no-store`.
+O frontend mantém a navegação na raiz, sem necessidade de fallback de erros para `index.html`. A API usa domínio separado e CORS permite somente a origem do portal. As respostas da API usam `Cache-Control: no-store`; o frontend usa `no-cache` no index e cache imutável nos assets versionados, conforme o [runbook](FRONTEND-RELEASES.md).
 
 ## 5. Operação posterior
 
-Mudanças de infraestrutura e da Lambda: gere e revise um novo `terraform plan -out=portal.tfplan`, depois aplique esse plano. Mudanças de interface: gere o build, publique e invalide o cache. Atualizações de notas são feitas em **Atualizar notas**, sem Terraform e sem deploy: envie o CSV, confirme as atividades liberadas, atualize a prévia se necessário e publique.
+Mudanças de infraestrutura e do backend: gere e revise um novo `terraform plan -out=portal.tfplan`, depois aplique esse plano pelo procedimento separado. Mudanças de interface seguem o [deploy automático](FRONTEND-RELEASES.md#deploy-automático). Atualizações de notas não exigem Terraform nem deploy: usam a sincronização Canvas existente ou, quando necessário, **Atualizar notas** com CSV completo, prévia e confirmação das atividades liberadas. CI verde e frontend publicado não comprovam implantação do backend.
 
 O modelo inicial da tabela usa `PK`/`SK`. A turma é cadastrada como `PK=COHORT#BRSA0267`, `SK=METADATA`. O Terraform deixa de gerenciar mudanças no conteúdo desse item após a criação. Novas turmas devem ser novos registros, não mudanças em `initial_cohort`. Essa variável não é uma lista das turmas do sistema.
 
@@ -151,7 +141,7 @@ git diff --check
 
 O teste Terraform usa um provider AWS simulado e executa um plano, sem criar recursos. O provider archive apenas empacota o código local. Os testes Python verificam autenticação, escopo, origem dos papéis e ausência de promoção automática por domínio. Essas verificações não substituem `plan` com credenciais reais nem um teste de login/API após o deploy.
 
-Após implantar, teste login real, publicação de um CSV sintético e acesso com duas contas de aluno diferentes. Todas as chamadas de notas sem token devem ser recusadas pelo API Gateway; a antiga rota de convidados deve retornar 404. Uma conta de aluno deve consultar somente o próprio relatório, enquanto uma conta sem vínculo deve receber 403. A consulta coletiva deve ser permitida apenas a instrutores autorizados e administradores. URLs diretas dos buckets devem continuar recusando acesso anônimo. Os testes locais não validam a configuração efetiva do Cognito/CloudFront na sua conta.
+Após implantar, valide login e consultas com identidades de teste previamente autorizadas, sem usar dados de alunos como evidência. O QA autenticado real permanece pendente de execução; CI e smoke estático não o substituem. Chamadas de notas sem token devem ser recusadas pelo API Gateway; a antiga rota de convidados deve retornar 404. Uma conta de aluno deve consultar somente o próprio relatório, enquanto uma conta sem vínculo deve receber 403. A consulta coletiva deve ser permitida apenas a instrutores autorizados e administradores. URLs diretas dos buckets devem continuar recusando acesso anônimo. Publicação de CSV sintético e outras mutações são cobertas localmente com mocks ou em ambiente apropriado e autorizado; não são uma rotina obrigatória em produção após cada implantação. Os testes locais não validam a configuração efetiva do Cognito/CloudFront na sua conta.
 
 ## Proteção e remoção
 

@@ -13,7 +13,6 @@ com seu histórico e evidências de implementação.
 | 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Pendente — otimização por vínculo entregue; scan global permanece |
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
-| 22 | [OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Implementado neste PR — bundle, contratos e CI; aguardando integração |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
@@ -67,7 +66,9 @@ preservados e full plan final somente ACM conhecido. AUTO-6 não iniciada.
 ## Notas de contexto
 
 API-1 e API-2 estão concluídas e commitadas; os registros ficam em
-[historico/api-1.md](../historico/api-1.md) e [historico/api-2.md](../historico/api-2.md). O TODO 22 organiza as fontes e a geração do contrato neste PR, sem reabri-las.
+[historico/api-1.md](../historico/api-1.md) e [historico/api-2.md](../historico/api-2.md). O [TODO 22 — OpenAPI modular](concluido/22-openapi-modular-e-pipeline-de-contrato.md) foi integrado pelo PR #13, sem reabri-las.
+
+Em **22/10/2026 (Brasília)**, o TODO 22 foi encerrado documentalmente e movido para `concluido/`. O [PR #13](https://github.com/alric-corp/escola-da-nuvem-portal/pull/13) integrou a mudança em `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`; [CI do PR](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39689826762) com quatro checks aprovados, [CI da main](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39692747676) e [deploy automático](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39694238148) concluíram com sucesso. A conferência AS-IS de 21/10/2026 observou a release `c62f924033b6-b17c56bb10be`, com o hash bruto do bundle esperado. Essa evidência histórica fecha a integração/publicação pendente, sem novo deploy, auditoria AWS ou afirmação de QA autenticado/coleta Canvas completa.
 
 A C7.2 e a C7.3 continuam concluídas. Na revisão de 21/10/2026, a implantação
 existente da C7.4/C7.5 foi comprovada na release `9058941ffa4d-301af4d0e066`

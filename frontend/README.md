@@ -39,14 +39,11 @@ O build não precisa de Node/npm. Ele copia somente os arquivos web previstos pa
 
 ## Implantar
 
-Siga [infra/README.md](../infra/README.md). Após aplicar a infraestrutura:
+O frontend segue **PR → CI → merge → CI verde na main → deploy automático**, sujeito ao kill switch e aos gates existentes. A configuração de produção acompanha cada release; publicar o frontend não implanta o backend nem publica notas acadêmicas.
 
-```sh
-terraform -chdir=infra/terraform output -json frontend_config > portal-config.json
-python3 -B scripts/build_frontend.py --config portal-config.json
-```
+Use o [runbook de releases](../infra/FRONTEND-RELEASES.md) para publicação, operação manual e recuperação. O build plano local continua útil para desenvolvimento; `scripts/deploy_frontend.sh` é legado e não é o procedimento normal de publicação. Não sincronizar `frontend/dist` na raiz do bucket nem invalidar `/*` para atualizar uma release.
 
-Publique `frontend/dist` no bucket web e invalide o cache conforme o guia; `scripts/deploy_frontend.sh` faz o build com os outputs do Terraform, publica e invalida. Antes de publicar, leia [Cache e ES modules](../docs/arquitetura.md#cache-e-es-modules) e [Deploy seguro de módulos](../docs/arquitetura.md#deploy-seguro-de-módulos): enquanto o cache não expira, o navegador pode combinar módulos novos e antigos. O login local é apenas a demonstração; o callback Cognito configurado é o endereço HTTPS do CloudFront. A primeira conta administradora deve ser confirmada e adicionada manualmente ao grupo `admin` do Cognito.
+Backend e infraestrutura seguem o [processo separado](../infra/README.md#5-operação-posterior). O login local é apenas demonstração; o portal publicado usa o endereço HTTPS do CloudFront.
 
 ## Fluxos implementados
 
@@ -74,9 +71,9 @@ Em **Meu desempenho**, o aluno vê até três próximos passos. O instrutor pode
 
 **Revisar resultados** inclui somente atividades avaliadas com percentual abaixo de 70% em KCs ou 95% em LABs. Zero registrado entra em revisão, não em “Sem nota”. A API calcula `needsReview` antes do arredondamento; o frontend mantém compatibilidade com relatórios antigos. O destaque é uma sugestão de estudo, não uma exigência de reenvio nem confirmação de que o Canvas permite outra tentativa. Dispensadas e não liberadas ficam fora da revisão.
 
-O foco é salvo por turma via `POST /cohorts/{code}/focus-activities`, somente por administrador ou instrutor vinculado. Exige publicação atual e versão do foco para evitar sobrescrever alterações concorrentes. Não altera notas, publicação ou data de atualização do CSV. IDs retirados ou não liberados são ignorados no relatório; as escolhas restantes sobrevivem às próximas publicações. Implantar API e a nova rota autenticada antes do frontend. Nenhum e-mail é enviado ao salvar o foco.
+O foco é salvo por turma via `POST /cohorts/{code}/focus-activities`, somente por administrador ou instrutor vinculado. Exige publicação atual e versão do foco para evitar sobrescrever alterações concorrentes. Não altera notas, publicação ou data de atualização do CSV. IDs retirados ou não liberados são ignorados no relatório; as escolhas restantes sobrevivem às próximas publicações. Em futuras mudanças que exijam contrato novo, implantar o backend compatível antes de depender dele no frontend. Nenhum e-mail é enviado ao salvar o foco.
 
-A lista reflete o último CSV publicado; as entregas continuam no Canvas. Detalhes individuais são retornados apenas no relatório autenticado do próprio aluno. Testes adicionais: `node --test tests/student-journey.mjs` e `node tests/student-journey-browser.mjs` (Playwright), além de `backend/test_journey.py`.
+A lista reflete a publicação acadêmica vigente, gerada pelo Canvas ou por CSV; as entregas continuam no Canvas. Detalhes individuais são retornados apenas no relatório autenticado do próprio aluno. Testes adicionais: `node --test tests/student-journey.mjs` e `node tests/student-journey-browser.mjs` (Playwright), além de `backend/test_journey.py`.
 
 ### Links das atividades no Canvas
 
@@ -107,21 +104,21 @@ O teste de navegador usa API simulada com as anotações do backend. Ele verific
 - destinos exatos, nomes acessíveis e foco de teclado;
 - larguras de 320, 390 e 1440 pixels.
 
-## Atividades sem nota e lembretes individuais
+## Atividades sem nota e lembretes
 
-Os lembretes individuais foram implementados em 24/09/2026, junto das melhorias de jornada. O Terraform usa `reminders_enabled` (padrão `true`) para configurar `REMINDERS_ENABLED`; `false` bloqueia o envio e permite consultar atividades sem chamar o SES. Além do envio individual descrito nesta seção, existem os **Lembretes em lote** do instrutor ([TODO 08](../docs/todo/concluido/08-lembretes-em-lote.md)) e os lembretes automáticos agendados por turma ([AUTO-5](../docs/historico/automacoes/auto-5.md)).
+Nas turmas habilitadas, os lembretes são automáticos às terças e sextas, às 20h de Brasília, conforme as pendências e regras da turma ([AUTO-5](../docs/historico/automacoes/auto-5.md)). O painel também oferece [envio em lote](../docs/todo/concluido/08-lembretes-em-lote.md) pelo filtro **Com atividades sem nota**.
 
-O instrutor abre **Lembretes**, solicita a confirmação do próprio e-mail institucional e verifica novamente depois de confirmar no SES. Aprovar um instrutor não envia mais confirmação automaticamente. `GET /cohorts/{code}/reminder-settings` e `POST /cohorts/{code}/verify-sender` exigem autorização na turma e domínio institucional. O cliente não escolhe outro remetente.
+**Ver pendências**, na tabela do painel, mostra atividades, histórico, participação e situação da entrega. O modelo, a cópia e o botão de envio individual foram retirados da interface no [PR #10](https://github.com/alric-corp/escola-da-nuvem-portal/pull/10); não é necessário enviar e-mail por esse detalhe. O contrato individual implementado em 24/09/2026 permanece no backend, sem constituir uma ação disponível nessa tela.
 
-No painel, **Ver pendências** abre as atividades sem nota e a prévia do lembrete. Remetente, destinatário, assunto e texto ficam visíveis antes de **Enviar e-mail para este aluno**, seguido da confirmação do destinatário. Publicar notas ou abrir a prévia nunca envia e-mail. Alunos sem e-mail e remetentes não confirmados ficam bloqueados.
+Em **Lembretes**, o instrutor configura e confirma seu remetente institucional. Para envio manual em lote, a prévia informa os destinatários elegíveis e quem será ignorado. O backend revalida publicação, participação, remetente e reserva por aluno/publicação; não envia para desistentes. Resultados incertos bloqueiam repetição para evitar duplicidade. Publicar notas ou consultar pendências não envia e-mail.
 
-O backend monta a mensagem e confere novamente publicação, aluno e hash da prévia. Uma reserva transacional evita envios concorrentes ou repetidos por aluno/publicação. Falhas confirmadas permitem tentativa manual; resultados incertos ficam bloqueados para evitar duplicação. Zero registrado, dispensa e atividades não liberadas não entram na mensagem.
+**Aceito pelo serviço de envio** não significa entrega nem leitura. Eventos SES/SNS são processados pela Lambda existente; **Atualizar status do envio**, no detalhe, consulta a entrega ao servidor destinatário, atraso ou falha. Consulte [infra/SES.md](../infra/SES.md) para operação e limites.
 
-O status inicial **aceito pelo serviço de envio** não significa entrega. Uma nova Lambda, invocada por tópico SNS autorizado, recebe eventos SES e grava `EMAIL#<messageId>/DELIVERY`. O painel informa entrega ao servidor destinatário (sem prometer leitura/caixa de entrada), atraso, devolução, rejeição e reclamação. Eventos duplicados ou fora de ordem não substituem uma falha por sucesso. O instrutor consulta o resultado em **Atualizar status do envio**.
+## Atualizar notas: sincronização ou importação
 
-Veja [infra/SES.md](../infra/SES.md) para implantação e operação.
+Para turmas com `autoSync` habilitado, o Canvas é consultado às 6h e às 18h, no horário de Brasília. Não é necessário exportar/importar CSV como rotina obrigatória. Confira a última mudança nas notas e a última verificação no painel.
 
-## Sua rotina de domingo
+Para turmas sem sincronização, ou quando houver necessidade de importação manual:
 
 1. Exporte o CSV da turma no Canvas como instrutor.
 2. Entre no portal, escolha a turma e abra **Atualizar notas**.
@@ -188,7 +185,7 @@ Para rodar uma suíte isolada, use `node --test tests/<arquivo>.mjs`. No caso da
 - O importador foi validado com o CSV real de uma turma em 14/09/2026 ([registro](../infra/DEPLOYMENT.md#compatibilidade-com-o-csv-real-do-canvas)). Cabeçalhos ou regras específicas de outros cursos do Canvas podem exigir ajustes.
 - A descoberta de turmas usa os vínculos do aluno e do instrutor, mas `GET /cohorts` ainda faz scan da tabela ([TODO 05](../docs/todo/05-descoberta-de-turmas-por-vinculo.md)).
 - Rascunhos e arquivos novos recebem tags e expiração; os dados anteriores, sem tags/TTL, não foram limpos ([TODO 13](../docs/todo/concluido/13-retencao-de-dados.md)).
-- Vínculos persistidos são corrigidos em **Turmas e acessos**, que permite buscar, desvincular e editar o nome ([TODO 11](../docs/todo/concluido/11-admin-vinculos-e-nomes.md)). E-mails diferentes antes do primeiro vínculo continuam sendo corrigidos no Canvas e reimportados.
+- Vínculos persistidos são corrigidos em **Turmas e acessos**, que permite buscar, desvincular e editar o nome ([TODO 11](../docs/todo/concluido/11-admin-vinculos-e-nomes.md)). E-mails diferentes antes do primeiro vínculo precisam ser corrigidos no Canvas e refletidos em nova sincronização ou publicação manual.
 - Cadastro e recuperação usam o Cognito com SES e remetente noreply; lembretes usam o endereço institucional confirmado do instrutor.
 - Além da importação manual do CSV, a integração com a API do Canvas atualiza as notas por agendamento (`canvas-sync`, [TODO 17](../docs/todo/concluido/17-integracao-api-canvas.md)). A data da publicação fica visível aos alunos.
 - O aluno não recebe aviso quando novas notas são publicadas ([TODO 15](../docs/todo/15-aviso-de-nova-publicacao.md), pendente de decisão).

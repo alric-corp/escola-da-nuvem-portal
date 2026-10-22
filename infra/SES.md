@@ -1,6 +1,22 @@
 # Lembretes de atividades com Amazon SES
 
-## Implementação atual — 24/09/2026 (ainda não implantada)
+## Operação vigente — revisão documental de 22/10/2026
+
+Há lembretes automáticos nas turmas habilitadas e envio manual em lote com prévia e confirmação. A [AUTO-5](../docs/historico/automacoes/auto-5.md) registra a ativação e as verificações encerradas em 15/10/2026; esse é um registro histórico, não uma nova validação de envios ou entrega nesta revisão.
+
+- Nas turmas habilitadas, o envio automático segue terça e sexta às 20h (horário de Brasília), condicionado à prova da sincronização Canvas das 18h, à configuração da turma, à elegibilidade e às proteções de reserva/deduplicação. Não é um e-mail disparado a cada publicação de notas.
+- No painel, o filtro **Com atividades sem nota** permite revisar e confirmar um lote. A seleção é revalidada pelo backend; alunos desistentes ou sem elegibilidade não recebem por esse caminho.
+- O detalhe individual mostra pendências e situação da entrega. O modelo, a cópia da mensagem e o botão de envio individual foram retirados da interface; os contratos individuais do backend permanecem preservados, sem necessidade de usá-los para o acompanhamento normal.
+- **Lembretes** mantém a configuração/verificação do remetente do instrutor. Aprovar acesso à turma não dispara a confirmação automaticamente. Cadastro e recuperação de conta usam o remetente da plataforma configurado no Cognito/SES.
+- `sent` significa aceite do SES; `delivered`, entrega ao servidor destinatário. Nenhum desses estados comprova leitura pelo aluno.
+
+Frontend segue o [runbook de releases](FRONTEND-RELEASES.md), com deploy automático após CI verde na `main`. Backend/infra têm implantação separada por plano Terraform revisado; publicar a interface não instala esses contratos. O script de deploy plano é legado e não deve ser usado na operação normal. Os links Canvas disponíveis no catálogo não estão pausados pela interface atual.
+
+## Histórico operacional
+
+As seções abaixo registram o estado observado ou proposto nas respectivas datas e não descrevem necessariamente a implementação atual. Em particular, o roteiro de publicação e a situação dos links em 24/09 antecedem a pipeline versionada; não os execute como procedimento vigente.
+
+### Implementação descrita em 24/09/2026 (ainda não implantada naquela data)
 
 O fluxo de lembretes foi retomado no código por solicitação do titular. `reminders_enabled` no Terraform controla a Lambda (`REMINDERS_ENABLED`), com padrão `true`. Definir `false` bloqueia envio/ativação de remetente e mantém a consulta de atividades sem chamadas SES. Nenhum e-mail real foi disparado nos testes.
 
@@ -13,17 +29,13 @@ O fluxo de lembretes foi retomado no código por solicitação do titular. `remi
 - `COHORT#<turma>/REMINDER#<publicação>#<aluno>` guarda a tentativa e o MessageId. `EMAIL#<messageId>/DELIVERY` guarda o evento, permitindo receber uma notificação mesmo antes de a chamada SendEmail retornar.
 - `sent` é aceite do SES, não entrega. `delivered` é entrega ao servidor do destinatário, não comprovação de leitura. `failed` admite tentativa manual; `sending`, `unknown`, `bounced`, `complained` e demais estados não liberam duplicação da mesma publicação.
 
-## Implantação e validação
+### Implantação e validação previstas em 24/09/2026
 
 Esta entrega altera API, infraestrutura e frontend; publicar somente o frontend não habilita os novos contratos. Revisar/aplicar o plano Terraform e depois executar `scripts/deploy_frontend.sh`. Os links de atividades Canvas permanecem pausados no frontend.
 
 Validações locais: suíte Python com repositório em memória, Moto/botocore Stubber, testes de navegador com API simulada e `terraform validate/test`. O teste dos eventos cobre origem SNS, duplicação e ordenação. Entrega real em caixas de e-mail deve ser validada após a implantação usando um destinatário de teste escolhido pelo titular.
 
 Referências: [eventos SES publicados no SNS](https://docs.aws.amazon.com/ses/latest/dg/event-publishing-retrieving-sns-contents.html), [renovação OAuth no Cognito](https://docs.aws.amazon.com/cognito/latest/developerguide/token-endpoint.html).
-
-## Histórico operacional
-
-As seções abaixo registram o estado observado nas respectivas datas e não descrevem necessariamente a implementação atual.
 
 ## Solicitação de produção em 14/09/2026
 

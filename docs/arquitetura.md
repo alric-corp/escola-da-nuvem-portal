@@ -1,7 +1,7 @@
 # Arquitetura
 
 ```
-Navegador ──► CloudFront ──► S3 (frontend/dist)
+Navegador ──► CloudFront ──► S3 web (index → releases/<id>/)
     │
     ├──► Cognito Managed Login (PKCE) ──► access token (escopo portal/access)
     │
@@ -29,7 +29,7 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 
 | Peça | Arquivo | Observações |
 | --- | --- | --- |
-| Frontend estático | `frontend/` → `scripts/build_frontend.py` → `frontend/dist` | Módulos ES sem bundler. `config.json` é gerado a partir do output do Terraform. |
+| Frontend estático | `frontend/`; `.github/workflows/deploy-frontend.yml` | Módulos ES sem bundler, publicados em `releases/<id>/` com configuração própria. Build plano local em `frontend/dist`; operação pelo [runbook de releases](../infra/FRONTEND-RELEASES.md). |
 | Autenticação | `frontend/auth.js`, `infra/terraform/auth.tf` | Authorization code + PKCE, state e nonce. Access token de 15 min, refresh de 7 dias, ambos em `localStorage`. |
 | Confirmação de cadastro | `frontend/api.js`, `frontend/handlers/signup-confirmation.js`, `frontend/pages/signup-confirmation.js` | Antes do login, o navegador fala direto com a API pública do Cognito, sem backend e sem Terraform. Veja [Confirmação de cadastro](#confirmação-de-cadastro). |
 | API | `infra/terraform/api.tf` | HTTP API com throttling de 50 req/s (burst 100). Lambda de 512 MB, timeout de 29 s. |
@@ -90,12 +90,16 @@ mutações de teste e a etapa anterior à migração. O [relatório API-2](histo
 registra os testes e os planos somente leitura da migração.
 
 - **API-1:** caracterização concluída em `c64921b`, com CI verde.
-- **API-2:** implementação local entregue para aprovação, sem commit/apply.
+- **API-2:** concluída; o registro histórico preserva a etapa local e seus planos de migração.
   A lista manual saiu de `api.tf`; `aws_apigatewayv2_route.me` mantém `/me`
   e `aws_apigatewayv2_route.portal` mantém as outras 34 chaves `METHOD /path`.
-  Os planos direcionado e completo mantiveram as 35 rotas em **0/0/0**.
-- **API-3:** consolidar documentação e retirar duplicações antigas somente
-  após garantir proteção equivalente.
+  Os planos históricos direcionado e completo mantiveram as 35 rotas em **0/0/0**.
+- **TODO 22:** fontes modulares em `openapi/src/`, bundle gerado/versionado em
+  `openapi/portal.yaml` e verificação de atualização no CI já integrados pelo
+  [PR #13](https://github.com/alric-corp/escola-da-nuvem-portal/pull/13).
+  Edição, geração e verificação estão em [openapi/README.md](../openapi/README.md);
+  o [registro concluído](todo/concluido/22-openapi-modular-e-pipeline-de-contrato.md)
+  preserva os hashes e a equivalência semântica da migração.
 
 Frontend e dispatchers públicos são comparados com OpenAPI. A equivalência
 Terraform é testada nos recursos avaliados por `terraform test`, com mocks,
@@ -247,31 +251,17 @@ O objeto `actions` do `app.js` é o catálogo central dos botões com `data-acti
 
 ### Cache e ES modules
 
-Os arquivos são publicados com `Cache-Control: public,max-age=300`, sem service worker e sem hash no nome. Enquanto o cache não expira, o navegador pode combinar módulos novos com módulos antigos. Um import que não encontra o export pedido impede o carregamento do grafo inteiro, e o portal não abre. Por isso, remover, mover ou renomear um export que outro módulo importa segue uma transição:
+O frontend publicado usa releases imutáveis em `releases/<id>/`. Assets têm `Cache-Control: public, max-age=31536000, immutable`; o `index.html` da raiz é um ponteiro com `no-cache`. Imports e `config.json` são relativos à própria release, mantendo o grafo de módulos na mesma versão.
 
-1. criar a nova fonte única;
-2. manter temporariamente um reexport compatível no lugar antigo (shim);
-3. publicar o módulo novo antes do arquivo que o importa;
-4. esperar o TTL e conferir que nenhuma versão em cache ainda depende do caminho antigo;
-5. remover o shim em uma mudança separada.
-
-Shims são temporários, e não há nenhum ativo. O build copia só os arquivos listados em `scripts/build_frontend.py`; módulo novo entra nessa lista (um teste de arquitetura confere).
+No layout plano legado, o cache de 300 segundos podia misturar módulos novos e antigos e impedir o carregamento. Esse era o bloqueio P2 do redesign; não é uma migração ainda pendente. Os arquivos novos continuam entrando nas listas explícitas de build/release e nos testes de arquitetura.
 
 ### Deploy seguro de módulos
 
-`scripts/deploy_frontend.sh` publica o build inteiro e invalida tudo ([infra/README.md](../infra/README.md#4-gerar-e-publicar-o-frontend)). A pipeline de releases imutáveis ([infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md)) elimina a mistura de versões em cache. Ela só passa a valer depois da migração, e até lá esta seção descreve o deploy vigente. Para publicar só os módulos alterados:
+O fluxo vigente é **PR → CI → merge → CI verde na main → deploy automático do frontend**. A pipeline valida e publica o pacote completo, verifica a release remota, atualiza condicionalmente o index e invalida apenas `/` e `/index.html`. Não se faz deploy incremental de módulos na raiz.
 
-1. gerar o build do commit exato que será publicado;
-2. usar a configuração de produção (`frontend_config` do Terraform);
-3. calcular o delta contra os arquivos publicados;
-4. enviar o módulo novo antes do arquivo que o importa;
-5. conferir no S3, byte a byte, cada arquivo enviado;
-6. invalidar no CloudFront só os caminhos alterados;
-7. conferir que o CloudFront entrega os mesmos bytes;
-8. fazer um smoke só de leitura;
-9. repetir a conferência depois do TTL.
+A referência operacional é [infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md), incluindo gates, configuração, operações manuais e rollback. `scripts/deploy_frontend.sh` permanece como script legado do layout plano, fora desse procedimento; seu comportamento não foi alterado.
 
-Módulos JS vão com `Content-Type: text/javascript` (o navegador recusa módulo ES servido sem tipo JavaScript) e todo arquivo com `Cache-Control: public,max-age=300`. Deploy incremental não usa `--delete`: uma versão em cache ainda pode pedir um arquivo que saiu do build. Backend e infraestrutura seguem o `terraform plan`/`apply`, em processo separado.
+Backend e infraestrutura seguem processo separado com plano Terraform revisado. Publicar a interface não atualiza as Lambdas nem altera a publicação de notas de uma turma.
 
 ### Testes do frontend
 
