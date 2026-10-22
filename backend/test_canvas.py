@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -73,7 +74,7 @@ class _Response(io.BytesIO):
 
 def modules(course_id="4436"):
     item = lambda n: f"{BASE}/courses/{course_id}/modules/items/{n}"
-    return [
+    result = [
         {"id": 1, "name": "Painel do instrutor", "published": False,
          "items": [{"type": "Assignment", "content_id": 13, "html_url": item(500)}]},
         {"id": 2, "name": " Introdução  ao   curso ", "published": True,
@@ -86,6 +87,14 @@ def modules(course_id="4436"):
                    {"type": "Assignment", "content_id": 99, "published": False, "html_url": item(504)},
                    {"type": "Assignment", "content_id": 98, "html_url": f"{BASE}/courses/1/modules/items/505"}]},
     ]
+    # Campos do contrato Canvas usados para comprovar completude antes do filtro Assignment.
+    for module in result:
+        module["items_count"] = len(module["items"])
+        for index, entry in enumerate(module["items"]):
+            match = re.search(r"/modules/items/([0-9]+)$", entry.get("html_url", ""))
+            entry["id"] = int(match[1]) if match else 1000 + module["id"] * 10 + index
+            entry["module_id"] = module["id"]
+    return result
 
 
 def course(students=3, kc_scores=(7, 8, 9), lab_scores=(100, None, 50), excused_lab_for=None, graduated_for=None):
