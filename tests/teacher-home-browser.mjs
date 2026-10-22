@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
@@ -163,7 +163,7 @@ test("P1: composição — tabela com largura (52rem de painel), linhas empilhad
     if (m.statusesSide) assert.ok(m.sameRow, `${id}: números das situações alinhados`);
     assert.equal(m.frame, width <= 390 || text > 1 ? "0px" : "1px", `${id}: moldura da Situação da turma`);
     // O cabeçalho da coluna existe para a leitura assistiva em todos os modos.
-    assert.deepEqual(await page.locator(".tp-table thead th").allTextContents(), ["Aluno", "Média KC referência 70%", "Média LAB referência 95%", "Sem nota", "Situação", "Última atividade no Canvas Horário de Brasília", "Tempo no Canvas Acumulado no curso", "Ação"]);
+    assert.deepEqual(await page.locator(".tp-table thead th").allTextContents(), ["Aluno", "Média KC referência 70%", "Média LAB referência 95%", "Sem nota", "Situação", "Última atividade conhecida no Canvas Horário de Brasília", "Tempo no Canvas Acumulado no curso", "Ação"]);
     assert.deepEqual(errors, []);
     await context.close();
   }
@@ -574,7 +574,7 @@ const engagedReport = () => report([
 test("Canvas: resumo, atividade por aluno, filtro combinado, ordenação, CSV e limpar filtros", async () => {
   const { context, page, errors } = await open({ data: engagedReport });
   const summary = page.locator(".tp-engagement");
-  assert.deepEqual(await summary.locator("dd").allTextContents(), ["1h 0min", "1", "2"]);
+  assert.deepEqual(await summary.locator("dd").allTextContents(), ["1h 0minMediana de 3 de 4 alunos ativos com tempo válido", "1", "2"]);
   assert.match(await summary.innerText(), /1 aluno ativo sem informação/);
   assert.match(await summary.innerText(), /não representa necessariamente tempo de estudo efetivo/);
   await page.getByRole("combobox", { name: "Atividade no Canvas", exact: true }).focus();
@@ -628,5 +628,83 @@ test("Canvas: Crítico vermelho, Atenção âmbar e referência verde-água; des
     if (process.env.TEACHER_SCREENSHOTS && width !== 320) await page.screenshot({ path: path.join(process.env.TEACHER_SCREENSHOTS, width === 1440 ? "desktop.png" : "mobile.png"), fullPage: true });
     assert.deepEqual(errors, []);
     await context.close();
+  }
+});
+
+const observation = (status, observedAt, extra = {}) => ({ status, observedAt, referenceAt: null,
+  attemptedAt: "2026-10-11T09:00:00Z", lastValidObservedAt: observedAt, reason: null, ...extra });
+const mixedEngagement = () => report([
+  row("1", "Aluno com tempo zero", { canvasActivity: { totalActivityTime: 0, lastActivityAt: null,
+    provenance: { totalActivityTime: observation("current", "2026-10-11T09:00:00Z"), lastActivityAt: observation("unknown", null, { reason: "null" }) } } }),
+  row("2", "Aluna com tempo preservado", { status: "attention", kc: 60, canvasActivity: { totalActivityTime: 7200, lastActivityAt: "2026-10-10T12:00:00Z",
+    provenance: { totalActivityTime: observation("retained", "2026-10-01T09:00:00Z", { reason: "missing" }), lastActivityAt: observation("current", "2026-10-11T09:00:00Z") } } }),
+  row("3", "Aluno com atividade preservada", { status: "critical", kc: 40, lab: 50, canvasActivity: { totalActivityTime: null, lastActivityAt: "2026-09-30T09:00:00Z",
+    provenance: { totalActivityTime: observation("unknown", null, { reason: "null" }), lastActivityAt: observation("retained", "2026-10-01T09:00:00Z", { reason: "invalid" }) } } }),
+  row("4", "Aluna com dado legado", { canvasActivity: { totalActivityTime: 1800, lastActivityAt: null, collectedAt: "2026-10-01T09:00:00Z" } }),
+  row("5", "Aluno desistente", { participationStatus: "WITHDRAWN", canvasActivity: { totalActivityTime: 999999, lastActivityAt: "2020-01-01T00:00:00Z" } }),
+], { canvasEngagement: { courseId: "4436", status: "partial", attemptedAt: "2026-10-11T09:00:00Z", collectedAt: "2026-10-01T09:00:00Z" } });
+
+test("AS-03: cobertura/qualidade independentes, zero e legado visíveis sem coleta falsamente recente", async () => {
+  for (const options of [{ width: 1440 }, { width: 390 }, { width: 320, text: 2 }]) {
+    const { page, context, errors } = await open({ ...options, data: mixedEngagement });
+    const engagement = page.locator(".tp-engagement");
+    assert.match(await engagement.innerText(), /30min\nMediana de 3 de 4 alunos ativos/);
+    assert.match(await engagement.innerText(), /Cobertura de última atividade: 2 de 4/);
+    assert.match(await engagement.innerText(), /Coleta de atividade parcial/);
+    assert.match(await engagement.innerText(), /Coleta desatualizada/);
+    assert.match(await engagement.innerText(), /não comprova ausência de atividade após a coleta/);
+    const zero = page.locator(".tp-row", { hasText: "Aluno com tempo zero" });
+    assert.equal((await zero.locator(".tp-canvas-time").innerText()).includes("0min"), true);
+    assert.equal((await zero.locator(".tp-last-activity").innerText()).includes("Sem informação"), true);
+    const retained = page.locator(".tp-row", { hasText: "Aluna com tempo preservado" });
+    assert.match(await retained.locator(".tp-canvas-time").innerText(), /Dado preservado/);
+    assert.match(await retained.locator(".tp-canvas-time .tp-data-quality").getAttribute("title"), /01\/10\/2026/);
+    assert.match(await page.locator(".tp-row", { hasText: "Aluna com dado legado" }).innerText(), /Rastreio legado/);
+    assert.equal(await pageScroll(page), 0);
+    if (process.env.AS07_SCREENSHOTS && options.width !== 320) {
+      await mkdir(process.env.AS07_SCREENSHOTS, { recursive: true });
+      await engagement.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(process.env.AS07_SCREENSHOTS, options.width === 1440 ? "engagement-desktop.png" : "engagement-mobile.png") });
+      await retained.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(process.env.AS07_SCREENSHOTS, options.width === 1440 ? "rows-desktop.png" : "rows-mobile.png") });
+    }
+    assert.deepEqual(errors, []); await context.close();
+  }
+});
+
+test("AS-07: busca/filtros/ordenação não recriam casca, foco ou agregados; seleção e CSV completo preservados", async () => {
+  for (const role of ["instructor", "admin"]) {
+    const { page, context, errors } = await open({ role, data: () => report(MANY) });
+    await page.evaluate(() => { window.teacherNodes = Object.fromEntries([".sidebar", ".tp-overview", ".tp-engagement", ".tp-focus", "#search", "#student-sort", "#status-filter"].map((s) => [s, document.querySelector(s)])); });
+    const unchanged = async () => assert.equal(await page.evaluate(() => Object.entries(window.teacherNodes).every(([selector, node]) => node === document.querySelector(selector))), true);
+    await page.locator("#search").fill("carl"); await unchanged();
+    await page.locator("#search").evaluate((el) => el.setSelectionRange(1, 2));
+    await page.keyboard.insertText("á"); await unchanged();
+    assert.equal(await page.locator("#search").inputValue(), "cárl");
+    assert.equal(await page.locator("#search").evaluate((el) => el.selectionStart), 2);
+    assert.equal(await page.evaluate(() => document.activeElement.id), "search");
+    await page.locator("#status-filter").selectOption("critical"); await unchanged();
+    await page.locator("#student-sort").selectOption("pending"); await unchanged();
+    await page.locator("#canvas-activity-filter").selectOption("unknown"); await unchanged();
+    assert.equal(await page.locator(".tp-row").count(), 5);
+    await page.locator('.tp-filter[data-filter="attention"]').click(); await unchanged();
+    assert.equal(await page.locator("#status-filter").inputValue(), "attention");
+    assert.equal(await page.locator('.tp-filter[data-filter="attention"]').getAttribute("aria-pressed"), "true");
+    await page.getByRole("button", { name: "Limpar filtros", exact: true }).click(); await unchanged();
+    assert.equal(await page.locator(".tp-row").count(), MANY.length);
+    await page.locator("#search").fill("ZZZ-sem-correspondencia"); await unchanged();
+    await page.getByRole("button", { name: "Limpar busca e filtros", exact: true }).focus();
+    await page.keyboard.press("Enter"); await unchanged();
+    assert.equal(await page.locator(".tp-row").count(), MANY.length);
+    assert.equal(await page.getByRole("button", { name: "Limpar filtros", exact: true }).evaluate((el) => document.activeElement === el), true,
+      "limpar o estado vazio mantém o foco no controle equivalente, sem cair no body");
+    const download = page.waitForEvent("download"); await page.getByRole("button", { name: `Exportar CSV (${MANY.length})`, exact: true }).click();
+    const csv = await readFile(await (await download).path(), "utf8");
+    assert.equal(csv.split("\r\n").length, MANY.length + 1);
+    for (const student of MANY) assert.ok(csv.includes(student.name), student.name);
+    await page.locator("#cohort").selectOption("BRSA0268"); await settle(page);
+    assert.equal(await page.locator("#search").inputValue(), "");
+    assert.equal(await page.evaluate(() => window.teacherNodes["#search"] !== document.querySelector("#search")), true, "troca de contexto mantém render completo");
+    assert.deepEqual(errors, []); await context.close();
   }
 });

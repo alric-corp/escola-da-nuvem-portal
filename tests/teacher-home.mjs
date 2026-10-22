@@ -197,9 +197,86 @@ test("Canvas: mediana só dos ativos, zero válido e ausência fora dos inativos
     row("2", "Antigo", { canvasActivity: activity(19200, new Date(at - week).toISOString()) }),
     row("3", "Sem dado", { canvasActivity: activity(null, null) }),
     row("4", "Saiu", { ...WITHDRAWN, canvasActivity: activity(999999, "2020-01-01T00:00:00Z") })];
-  assert.deepEqual(teacher.canvasEngagementSummary(rows, at), { median: 9600, recent: 1, inactive: 1, unknown: 1, timeKnown: 2 });
+  assert.deepEqual(teacher.canvasEngagementSummary(rows, at), { median: 9600, recent: 1, inactive: 1, unknown: 1, timeKnown: 2, active: 3,
+    coverage: { totalActivityTime: { known: 2, current: 0, retained: 2, unknown: 1, stale: 0, legacy: 2 },
+      lastActivityAt: { known: 2, current: 0, retained: 2, unknown: 1, stale: 0, legacy: 2 } } });
   assert.equal(teacher.canvasActivityStatus(row("5", "Futuro", { canvasActivity: activity(0, "2099-01-01T00:00:00Z") }), at), "unknown");
   assert.equal(teacher.canvasEngagementSummary([]).median, null);
+});
+
+const provenance = (status, observedAt = COLLECTION, extra = {}) => ({ status, observedAt,
+  attemptedAt: COLLECTION, referenceAt: null, lastValidObservedAt: observedAt, reason: null, ...extra });
+
+test("AS-03: cobertura por campo é independente, mediana inclui zero/retido e exclui desistentes", () => {
+  const at = Date.parse(COLLECTION), previous = "2026-10-01T12:00:00Z";
+  const sample = [
+    row("1", "Tempo", { canvasActivity: { totalActivityTime: 0, lastActivityAt: null,
+      provenance: { totalActivityTime: provenance("current"), lastActivityAt: provenance("unknown", null, { reason: "null" }) } } }),
+    row("2", "Atividade", { canvasActivity: { totalActivityTime: null, lastActivityAt: previous,
+      provenance: { totalActivityTime: provenance("unknown", null), lastActivityAt: provenance("current") } } }),
+    row("3", "Retido", { canvasActivity: { totalActivityTime: 3600, lastActivityAt: "2099-01-01T00:00:00Z",
+      provenance: { totalActivityTime: provenance("retained", previous, { reason: "missing" }), lastActivityAt: provenance("current") } } }),
+    row("4", "Desistente", { ...WITHDRAWN, canvasActivity: activity(999999, previous) }),
+  ];
+  const summary = teacher.canvasEngagementSummary(sample, at);
+  assert.equal(summary.median, 1800); assert.equal(summary.active, 3);
+  assert.deepEqual(summary.coverage.totalActivityTime, { known: 2, current: 1, retained: 1, unknown: 1, stale: 1, legacy: 0 });
+  assert.deepEqual(summary.coverage.lastActivityAt, { known: 1, current: 1, retained: 0, unknown: 2, stale: 0, legacy: 0 });
+  assert.deepEqual([summary.recent, summary.inactive, summary.unknown], [0, 1, 2]);
+});
+
+test("AS-03: coleta global nova não rejuvenesce campo retido, inválido ou legado", () => {
+  const at = Date.parse(COLLECTION), previous = "2026-10-01T12:00:00Z";
+  const retained = row("1", "Retido", { canvasActivity: { totalActivityTime: 7200, lastActivityAt: previous,
+    provenance: { totalActivityTime: provenance("retained", previous), lastActivityAt: provenance("retained", previous) } } });
+  const observation = teacher.canvasFieldObservation(retained, "totalActivityTime", at);
+  assert.equal(observation.status, "retained"); assert.equal(observation.observedAt, Date.parse(previous)); assert.equal(observation.stale, true);
+  const invalidProvenance = row("2", "Inválido", { canvasActivity: { totalActivityTime: 0,
+    provenance: { totalActivityTime: provenance("current", "2099-01-01T00:00:00Z") } } });
+  assert.equal(teacher.canvasFieldObservation(invalidProvenance, "totalActivityTime", at).status, "retained");
+  const legacy = row("3", "Legado", { canvasActivity: activity(0, previous) });
+  const old = teacher.canvasFieldObservation(legacy, "totalActivityTime", at);
+  assert.equal(old.legacy, true); assert.equal(old.status, "retained"); assert.equal(old.observedAt, null); assert.equal(old.referenceAt, at);
+  const data = report([retained, invalidProvenance, legacy], { canvasEngagement: { status: "failed", attemptedAt: COLLECTION, collectedAt: COLLECTION } });
+  const before = JSON.stringify(data), html = strip(page({ report: data }));
+  assert.match(html, /última tentativa de coletar atividade falhou/);
+  assert.match(html, /Mediana de 3 de 3 alunos ativos/);
+  assert.match(html, /Dado preservado/); assert.match(html, /Rastreio legado/); assert.match(html, /Coleta desatualizada/);
+  assert.equal(JSON.stringify(data), before, "apresentação não altera notas, estados nem observações");
+});
+
+test("AS-03: null explícito não reutiliza última observação válida como valor atual", () => {
+  const sample = row("1", "Sem informação", { canvasActivity: { totalActivityTime: null, lastActivityAt: null,
+    provenance: { totalActivityTime: provenance("unknown", null, { lastValidObservedAt: "2020-01-01T00:00:00Z", reason: "null" }),
+      lastActivityAt: provenance("unknown", null, { lastValidObservedAt: "2020-01-01T00:00:00Z", reason: "null" }) } } });
+  const stats = teacher.canvasEngagementSummary([sample]);
+  assert.equal(stats.median, null); assert.equal(stats.timeKnown, 0); assert.equal(stats.inactive, 0); assert.equal(stats.unknown, 1);
+  const html = strip(page({ report: report([sample], { canvasEngagement: { status: "partial", attemptedAt: COLLECTION, collectedAt: null } }) }));
+  assert.match(html, /Coleta de atividade parcial/); assert.match(html, /Sem informação/);
+  assert.match(html, /tempo válido de 0 de 1 aluno ativo; última atividade conhecida de 0 de 1/);
+  assert.doesNotMatch(html, /2020|Dado preservado|0min/);
+});
+
+test("AS-03: coleção completa antiga não envelhece observações próprias novas de uma coleta parcial", () => {
+  const sample = row("1", "Atual", { canvasActivity: { totalActivityTime: 0, lastActivityAt: COLLECTION,
+    provenance: { totalActivityTime: provenance("current"), lastActivityAt: provenance("current") } } });
+  const savedNow = Date.now;
+  Date.now = () => Date.parse(COLLECTION);
+  try {
+    const html = strip(page({ report: report([sample], { canvasEngagement: { status: "partial", attemptedAt: COLLECTION, collectedAt: "2020-01-01T00:00:00Z" } }) }));
+    assert.match(html, /Coleta de atividade parcial/);
+    assert.doesNotMatch(html, /Coleta desatualizada|Dado preservado|Rastreio legado/);
+  } finally { Date.now = savedNow; }
+});
+
+test("AS-07: resultado localizado mantém linhas, ordem e CSV do conjunto filtrado completo", () => {
+  withState({ report: report(), filter: "pending", sort: "pending" }, () => {
+    const filtered = teacher.filteredStudents(), html = teacher.teacherStudentResults(filtered), csv = teacher.studentsCsv(filtered);
+    assert.deepEqual(rows(html).map((r) => r.name), filtered.map((r) => r.name));
+    assert.equal(csv.split("\r\n").length, filtered.length + 1);
+    assert.match(html, /data-action="reminders-batch"/);
+    assert.doesNotMatch(html, /tp-overview|tp-engagement|<nav|focus-form|id="search"/);
+  });
 });
 
 test("Canvas: filtro combina com Crítico/Atenção e busca; ordenação mantém desistentes ao fim e ausência após datas", () => {

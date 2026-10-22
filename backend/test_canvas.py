@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import re
 import unittest
 import urllib.error
 from unittest.mock import patch
@@ -73,7 +74,7 @@ class _Response(io.BytesIO):
 
 def modules(course_id="4436"):
     item = lambda n: f"{BASE}/courses/{course_id}/modules/items/{n}"
-    return [
+    result = [
         {"id": 1, "name": "Painel do instrutor", "published": False,
          "items": [{"type": "Assignment", "content_id": 13, "html_url": item(500)}]},
         {"id": 2, "name": " Introdução  ao   curso ", "published": True,
@@ -86,6 +87,14 @@ def modules(course_id="4436"):
                    {"type": "Assignment", "content_id": 99, "published": False, "html_url": item(504)},
                    {"type": "Assignment", "content_id": 98, "html_url": f"{BASE}/courses/1/modules/items/505"}]},
     ]
+    # Campos do contrato Canvas usados para comprovar completude antes do filtro Assignment.
+    for module in result:
+        module["items_count"] = len(module["items"])
+        for index, entry in enumerate(module["items"]):
+            match = re.search(r"/modules/items/([0-9]+)$", entry.get("html_url", ""))
+            entry["id"] = int(match[1]) if match else 1000 + module["id"] * 10 + index
+            entry["module_id"] = module["id"]
+    return result
 
 
 def course(students=3, kc_scores=(7, 8, 9), lab_scores=(100, None, 50), excused_lab_for=None, graduated_for=None):
@@ -660,11 +669,16 @@ class CanvasActivityTests(unittest.TestCase):
 
     def test_unavailable_fields_preserve_previous_but_explicit_null_is_a_collection(self):
         from canvas_activity import save_activity
-        save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+        save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z", complete=True)
         before = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
         self.assertFalse(save_activity(self.repo, 4436, [{"id": 100}], "2026-10-03T12:00:00Z"))
-        self.assertEqual(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA"), before)
-        self.assertTrue(save_activity(self.repo, 4436, [self.person(seconds=None, last=None)], "2026-10-03T12:00:00Z"))
+        after = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
+        self.assertEqual(after["collectedAt"], before["collectedAt"])
+        for field in ("total_activity_time", "last_activity_at"):
+            self.assertEqual(after["students"]["100"][field], before["students"]["100"][field])
+        self.assertEqual(after["attemptedAt"], "2026-10-03T12:00:00+00:00")
+        self.assertEqual(after["students"]["100"]["provenance"]["totalActivityTime"]["observedAt"], before["collectedAt"])
+        self.assertTrue(save_activity(self.repo, 4436, [self.person(seconds=None, last=None)], "2026-10-04T12:00:00Z"))
         self.assertIsNone(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")["students"]["100"]["total_activity_time"])
 
     def execute_activity(self, data, at="2026-10-03T12:00:00Z", opener=None):
@@ -682,14 +696,16 @@ class CanvasActivityTests(unittest.TestCase):
         self.assertEqual(self.repo.list("COHORT#BRSA0267", "PUB#"), publications)
         stored = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
         self.assertEqual(stored["students"]["100"]["total_activity_time"], 20000)
-        self.assertEqual(stored["collectedAt"], "2026-10-04T12:00:00+00:00")
+        self.assertEqual(stored["students"]["100"]["provenance"]["totalActivityTime"]["observedAt"], "2026-10-04T12:00:00+00:00")
+        self.assertEqual(stored["status"], "partial")  # outros alunos omitiram os campos
+        self.assertIsNone(stored["collectedAt"])
 
     def test_include_permission_or_network_failure_does_not_block_grades_or_erase_activity(self):
         from canvas_activity import save_activity
         for error in (urllib.error.HTTPError("safe", 403, "Denied", {}, None), urllib.error.URLError("unavailable")):
             with self.subTest(error=type(error).__name__):
                 self.setUp()
-                save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+                save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z", complete=True)
                 old = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
                 fake = FakeCanvas({"4436": course()})
                 def opener(request, timeout=None):
@@ -698,17 +714,23 @@ class CanvasActivityTests(unittest.TestCase):
                     return fake(request, timeout)
                 with patch("canvas.time.sleep"), self.assertLogs(level="WARNING"):
                     self.assertEqual(self.execute_activity(course(), opener=opener), ({"BRSA0267": "published"}, []))
-                self.assertEqual(self.repo.get("CANVAS_ACTIVITY#4436", "METADATA"), old)
+                stored = self.repo.get("CANVAS_ACTIVITY#4436", "METADATA")
+                self.assertEqual((stored["collectedAt"], stored["status"]), (old["collectedAt"], "failed"))
+                self.assertEqual(stored["attemptedAt"], "2026-10-03T12:00:00+00:00")
+                for field in ("total_activity_time", "last_activity_at"):
+                    self.assertEqual(stored["students"]["100"][field], old["students"]["100"][field])
+                self.assertTrue(all(p["observedAt"] == old["collectedAt"] and p["reason"] == "failed"
+                                    for p in stored["students"]["100"]["provenance"].values()))
 
     def test_metric_storage_failure_does_not_block_grade_publication_or_log_payload(self):
         data = course()
         data["students"][0]["enrollments"] = self.person()["enrollments"]
-        original = self.repo.put
-        def put(pk, *args, **kwargs):
-            if pk.startswith("CANVAS_ACTIVITY#"):
+        original = self.repo.transaction
+        def transaction(writes, *args, **kwargs):
+            if any(w[0].startswith("CANVAS_ACTIVITY#") for w in writes):
                 raise RuntimeError("private@example.test secret-token")
-            return original(pk, *args, **kwargs)
-        with patch.object(self.repo, "put", side_effect=put), self.assertLogs(level="WARNING") as logs:
+            return original(writes, *args, **kwargs)
+        with patch.object(self.repo, "transaction", side_effect=transaction), self.assertLogs(level="WARNING") as logs:
             self.assertEqual(self.execute_activity(data), ({"BRSA0267": "published"}, []))
         self.assertNotIn("private", " ".join(logs.output))
         self.assertNotIn("secret-token", " ".join(logs.output))
@@ -736,11 +758,13 @@ class CanvasActivityTests(unittest.TestCase):
                 KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}, {"AttributeName": "SK", "KeyType": "RANGE"}],
                 AttributeDefinitions=[{"AttributeName": k, "AttributeType": "S"} for k in ("PK", "SK")])
             repo = Repository()
-            save_activity(repo, 4436, [self.person(seconds=0, last=None)], "2026-10-03T12:00:00Z")
+            save_activity(repo, 4436, [self.person(seconds=0, last=None)], "2026-10-03T12:00:00Z", complete=True)
             save_activity(repo, 9999, [self.person(seconds=100, course_id=9999)], "2026-10-03T12:00:00Z")
             row = student_activity(instructor_activity(repo, 4436), 100)["canvasActivity"]
-            self.assertEqual(row, {"totalActivityTime": 0, "lastActivityAt": None,
-                                   "collectedAt": "2026-10-03T12:00:00+00:00"})
+            self.assertEqual({k: v for k, v in row.items() if k != "provenance"},
+                             {"totalActivityTime": 0, "lastActivityAt": None, "collectedAt": "2026-10-03T12:00:00+00:00"})
+            self.assertEqual(row["provenance"]["totalActivityTime"]["status"], "current")
+            self.assertEqual(row["provenance"]["lastActivityAt"]["reason"], "null")
             self.assertEqual(student_activity(instructor_activity(repo, 9999), 100)["canvasActivity"]["totalActivityTime"], 100)
             self.assertIsNone(instructor_activity(repo, "other"))
             stored = table.scan()["Items"]
@@ -752,7 +776,7 @@ class CanvasActivityTests(unittest.TestCase):
     def test_only_authorized_teacher_report_exposes_metrics_and_matching_course(self):
         from canvas_activity import save_activity
         self.execute_activity(course())
-        save_activity(self.repo, 4436, [self.person()], "2026-10-02T12:00:00Z")
+        save_activity(self.repo, 4436, [self.person()], "2026-10-04T12:00:00Z", complete=True)
         teacher = Portal(self.repo, {"sub": "teacher", "email": "teacher@example.test", "groups": ["instructor"]})
         admin = Portal(self.repo, {"sub": "admin", "email": "admin@example.test", "groups": ["admin"]})
         path = "/cohorts/BRSA0267/report"

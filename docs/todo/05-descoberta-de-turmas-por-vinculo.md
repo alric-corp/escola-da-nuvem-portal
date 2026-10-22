@@ -2,6 +2,12 @@
 
 **Status:** 🟨 parcial — otimização por vínculo implementada; scan global permanece · **Prioridade:** média · **Esforço:** médio · **Área:** backend
 
+## Medição AS-06 em 22/10/2026
+
+O [ensaio reproduzível](../canvas-reliability-performance.md#as-06--descoberta-de-turmas) usa Repository real com Moto e compara a base `9097f5c` com a correção deste PR. Reaproveitar os vínculos da mesma requisição elimina um GetItem redundante por turma no fallback; administradores dispensam as duas queries de vínculos. A descoberta por e-mail de turmas adicionais continua funcionando para quem já possui vínculos, assim como OWNER, autorização e paginação consistente.
+
+O Scan **permanece**, com o mesmo universo examinado e os mesmos snapshots S3 do fluxo anterior. Mais registros de outras funcionalidades aumentam esse trabalho mesmo quando o filtro só devolve turmas. Não foi criado índice, cache entre usuários ou migração, nem medida capacidade/latência AWS. A otimização deste PR está testada, mas sua implantação backend está pendente; o objetivo literal “sem scan” continua aberto.
+
 ## Conferência em 04/10/2026
 
 `Portal.dispatch` em `GET /cohorts` já consulta STUDY#/TEACH# e evita

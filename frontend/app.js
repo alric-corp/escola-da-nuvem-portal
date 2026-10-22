@@ -13,7 +13,7 @@ import { landing } from "./pages/landing.js";
 import { signupConfirmationEntry, signupConfirmationPage } from "./pages/signup-confirmation.js";
 import { renderClassReport } from "./pages/class-report.js";
 import { activitiesPage, studentActivitiesState, studentHomeState, studentLoading, studentPage } from "./pages/student.js";
-import { filteredStudents, studentsCsv, teacherHomeState, teacherPage } from "./pages/teacher.js";
+import { filteredStudents, studentsCsv, teacherHomeState, teacherPage, teacherStudentResults } from "./pages/teacher.js";
 import { activityOverviewPage } from "./pages/activities-overview.js";
 import { batchPage, pendingPage, senderPage } from "./pages/reminders.js";
 import { historyPage, restoreQuestion, studentHistoryState, teacherPublicationsState } from "./pages/history.js";
@@ -191,6 +191,31 @@ async function loadClassReport(value) {
   state.classReport = data;
   history.replaceState({}, "", `?turma=${encodeURIComponent(code)}`);
   render();
+}
+
+// Busca/ordenação/filtros do painel não precisam reconstruir sessão, menu, foco ou agregados.
+// Em qualquer outro contexto, mantém a composição completa e suas guardas existentes.
+function renderTeacherStudents() {
+  syncReadContext();
+  const list = $("#teacher-student-results");
+  if (!state.me || !teacher() || state.view !== "overview" || state.classReport || state.bootError || state.reportError || !state.report || list?.dataset.cohort !== state.code) {
+    render();
+    return;
+  }
+  // O botão do estado vazio some quando a lista volta. Mantém seu equivalente da barra focado,
+  // sem mover o foco dos controles que permanecem no DOM.
+  const restoreClearFocus = list.contains(document.activeElement) && document.activeElement.matches('[data-action="clear-filters"]');
+  const rows = filteredStudents();
+  list.innerHTML = teacherStudentResults(rows);
+  for (const [id, value] of [["search", state.search], ["status-filter", state.filter], ["canvas-activity-filter", state.canvasActivityFilter || "all"], ["student-sort", state.sort]]) {
+    const field = document.getElementById(id);
+    if (field && field.value !== value) field.value = field.tagName === "SELECT" && ![...field.options].some((o) => o.value === value) ? "all" : value;
+  }
+  const csv = $('.teacher-home [data-action="export-csv"]');
+  if (csv) { csv.disabled = !rows.length; csv.textContent = `Exportar CSV (${rows.length})`; }
+  for (const button of document.querySelectorAll(".tp-filter[data-filter]")) button.setAttribute("aria-pressed", String(button.dataset.filter === state.filter));
+  if (restoreClearFocus) $('.tp-tools [data-action="clear-filters"]')?.focus({ preventScroll: true });
+  saveContext();
 }
 
 function render() {
@@ -1072,7 +1097,7 @@ const actions = {
   "send-reminders-batch": () => sendReminderBatch(),
   "clear-filters": () => {
     Object.assign(state, { search: "", filter: "all", activityKind: "all", activityModule: "all", sort: "name", canvasActivityFilter: "all" });
-    render();
+    renderTeacherStudents();
   },
   "export-csv": () => {
     const rows = filteredStudents();
@@ -1310,7 +1335,7 @@ document.addEventListener("click", (event) => {
   }
   if (button.dataset.filter) {
     state.filter = button.dataset.filter;
-    render();
+    renderTeacherStudents();
     // Cartões do painel filtram a lista abaixo: leva a vista e o foco até ela (no celular a
     // lista fica fora da tela).
     const target = button.dataset.scrollTo && document.getElementById(button.dataset.scrollTo);
@@ -1387,8 +1412,8 @@ document.addEventListener("change", (event) => {
         await loadReport();
       }
     });
-  if (target.id === "canvas-activity-filter") { state.canvasActivityFilter = target.value; render(); }
-  if (target.id === "student-sort") { state.sort = target.value; render(); }
+  if (target.id === "canvas-activity-filter") { state.canvasActivityFilter = target.value; renderTeacherStudents(); }
+  if (target.id === "student-sort") { state.sort = target.value; renderTeacherStudents(); }
   if (["fb-filter-status", "fb-filter-type", "fb-filter-cohort"].includes(target.id)) {
     busy(null, () => adminFeedbackHandlers.setFilter(target.id.slice("fb-filter-".length), target.value));
   }
@@ -1426,7 +1451,7 @@ document.addEventListener("change", (event) => {
   }
   if (target.id === "status-filter") {
     state.filter = target.value;
-    render();
+    renderTeacherStudents();
   }
   if (target.dataset.activity) {
     // Marcada ou desmarcada entre as sem notas, a lista continua aberta (não some com o foco).
@@ -1451,7 +1476,8 @@ document.addEventListener("input", (event) => {
     position = event.target.selectionStart;
   if (id === "class-search") state.classSearch = value;
   else state.search = value;
-  render();
+  if (id === "search") renderTeacherStudents();
+  else render();
   $(`#${id}`).focus();
   if (position != null)
     $(`#${id}`).setSelectionRange(position, position);

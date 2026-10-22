@@ -112,3 +112,11 @@ components:
       $ref: ./components/schemas.yaml#/ParticipationRequest
     ParticipationResponse:
       $ref: ./components/schemas.yaml#/ParticipationResponse
+    CanvasActivityProvenance:
+      $ref: ./components/schemas.yaml#/CanvasActivityProvenance
+    CanvasActivity:
+      $ref: ./components/schemas.yaml#/CanvasActivity
+    CanvasEngagement:
+      $ref: ./components/schemas.yaml#/CanvasEngagement
+    CohortReport:
+      $ref: ./components/schemas.yaml#/CohortReport

@@ -851,7 +851,11 @@ paths:
             type: string
       responses:
         '200':
-          $ref: '#/components/responses/SuccessObject'
+          description: Relatório autorizado, com métricas auxiliares opcionais para instrutor/admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CohortReport'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1946,3 +1950,96 @@ components:
           type: string
           nullable: true
           description: Instante armazenado da última alteração; null quando ACTIVE não possui registro.
+    CanvasActivityProvenance:
+      type: object
+      description: Proveniência de um campo auxiliar. Retenção não renova a observação; a referência global legada não comprova o instante preciso em que o valor foi observado.
+      properties:
+        status:
+          type: string
+          enum:
+            - current
+            - retained
+            - unknown
+        observedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Instante de observação de um valor válido deste campo; desconhecido em registros legados.
+        referenceAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Referência histórica global disponível, sem precisão de observação por campo.
+        attemptedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Início da tentativa de coleta, inclusive quando não observou um valor válido.
+        lastValidObservedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Última observação válida conhecida, mesmo quando null explícito tornou o valor indisponível.
+        reason:
+          type: string
+          nullable: true
+          description: Limitação da coleta, como missing, invalid, null, failed, incomplete ou legacy.
+    CanvasActivity:
+      type: object
+      description: Campos opcionais somente no relatório autorizado de instrutor/admin. Tempo acumulado registrado no curso não equivale a tempo efetivo de estudo. Zero é válido; null é desconhecido.
+      properties:
+        totalActivityTime:
+          type: integer
+          minimum: 0
+          nullable: true
+        lastActivityAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Última atividade conhecida; não comprova ausência de interação após a observação.
+        collectedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Última coleta completa ou referência legada. Use a proveniência independente de cada campo.
+        provenance:
+          type: object
+          properties:
+            totalActivityTime:
+              $ref: '#/components/schemas/CanvasActivityProvenance'
+            lastActivityAt:
+              $ref: '#/components/schemas/CanvasActivityProvenance'
+    CanvasEngagement:
+      type: object
+      description: Qualidade da coleta auxiliar, independente da atualização acadêmica. Omitido quando não há registro deste curso; leitores devem tolerar campos ausentes e registros antigos.
+      properties:
+        courseId:
+          type: string
+        collectedAt:
+          type: string
+          format: date-time
+          nullable: true
+        attemptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+            - complete
+            - partial
+            - failed
+            - legacy
+    CohortReport:
+      type: object
+      description: O formato acadêmico permanece caracterizado pelos testes existentes. Estas propriedades auxiliares são aditivas e aparecem somente no ramo de instrutor/admin; o relatório individual não as expõe.
+      properties:
+        canvasEngagement:
+          $ref: '#/components/schemas/CanvasEngagement'
+        students:
+          type: array
+          items:
+            type: object
+            properties:
+              canvasActivity:
+                $ref: '#/components/schemas/CanvasActivity'
