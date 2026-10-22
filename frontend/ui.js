@@ -26,13 +26,56 @@ export const percentStudent = (value) =>
   value == null
     ? "—"
     : `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
-export const date = (value) =>
-  value
-    ? new Date(value).toLocaleString("pt-BR", {
-        dateStyle: "short",
-        timeStyle: "short",
-      })
-    : "Ainda não publicada";
+// Instantes operacionais têm uma única apresentação, independentemente do fuso do navegador.
+// O armazenamento ISO e os cálculos de duração continuam intactos. Datas civis são tratadas
+// separadamente: "2026-10-01" é um dia do calendário, não meia-noite UTC.
+export const canvasTimeZone = "America/Sao_Paulo";
+export const timeZoneLabel = "Horário de Brasília";
+const dateStyles = {
+  dateTime: { dateStyle: "short", timeStyle: "short" },
+  shortDate: { day: "2-digit", month: "2-digit", year: "numeric" },
+  longDate: { day: "numeric", month: "long", year: "numeric" },
+  dayMonth: { day: "numeric", month: "long" },
+  dayShort: { day: "2-digit", month: "2-digit" },
+  monthYear: { month: "long", year: "numeric" },
+  weekdayTime: { weekday: "long", hour: "2-digit", minute: "2-digit" },
+  clock: { hour: "2-digit", minute: "2-digit" },
+  year: { year: "numeric" },
+  monthKey: { year: "numeric", month: "2-digit" },
+};
+const dateFormatters = Object.fromEntries(Object.entries(dateStyles).map(([style, options]) =>
+  [style, new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone, ...options })]));
+const civilFormatters = Object.fromEntries(Object.entries(dateStyles).filter(([, options]) =>
+  !options.timeStyle && !options.hour).map(([style, options]) =>
+  [style, new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", ...options })]));
+const calendarDate = (year, month, day) => {
+  const value = new Date(0);
+  value.setUTCFullYear(+year, +month - 1, +day);
+  return value.getUTCFullYear() === +year && value.getUTCMonth() === +month - 1 && value.getUTCDate() === +day ? value : null;
+};
+
+export function instant(value) {
+  if (value instanceof Date) return Number.isFinite(value.getTime()) ? value : null;
+  if (typeof value !== "string") return null;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!parts || !calendarDate(parts[1], parts[2], parts[3]) || +parts[4] > 23 || +parts[5] > 59 || +parts[6] > 59) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+export function formatOperationalDate(value, style = "dateTime", fallback = "Data não informada") {
+  const civil = typeof value === "string" && /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (civil) {
+    const day = calendarDate(civil[1], civil[2], civil[3]);
+    // Uma data sem hora não ganha uma hora presumida nem muda de dia pelo fuso.
+    return day ? (civilFormatters[style] || civilFormatters.shortDate).format(day) : fallback;
+  }
+  const parsed = instant(value);
+  return parsed ? (dateFormatters[style] || dateFormatters.dateTime).format(parsed) : fallback;
+}
+
+export const date = (value) => value
+  ? formatOperationalDate(value, "dateTime", "Data indisponível") : "Ainda não publicada";
 export const labels = {
   ok: "Médias na referência",
   attention: "Atenção",
@@ -120,7 +163,6 @@ export function notice(message, error = false) {
 // agendamento do Terraform (infra/terraform/canvas-sync.tf, cron(0 6,18 * * ? *) em
 // America/Sao_Paulo); a API não expõe o horário, então mude os dois juntos.
 export const canvasSyncHours = [6, 18];
-export const canvasTimeZone = "America/Sao_Paulo";
 const syncZone = canvasTimeZone;
 
 // Próximo horário de verificação a partir de agora, como "hoje às 18h" / "amanhã às 6h".
@@ -145,7 +187,7 @@ export function updateInfo() {
       ? "<p>Esta turma não tem atualização automática pelo Canvas: as notas mudam quando um CSV é publicado em Atualizar notas.</p>"
       : "<p>As notas mudam quando a equipe publica uma atualização. Entregas e correções são feitas no Canvas.</p>";
     // Sem autoSync, um SYNC antigo (de quando a sincronização estava ligada) não é mostrado.
-    return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong>${restored}${source}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+    return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Última atualização das notas: ${date(r.updatedAt || r.publication.publishedAt)}</strong><p class="small">${timeZoneLabel}.</p>${restored}${source}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
   }
   // "Última atualização" é quando as notas mudaram (updatedAt); a última verificação no
   // Canvas (canvasSync) só vem no relatório do instrutor.

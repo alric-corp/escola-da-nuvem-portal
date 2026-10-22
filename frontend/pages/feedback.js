@@ -1,4 +1,4 @@
-import { e, heading, plural, teacher } from "../ui.js";
+import { e, formatOperationalDate, heading, instant, plural, teacher, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_SLOTS, ATTACHMENT_TYPES } from "../handlers/feedback.js";
 
@@ -53,7 +53,7 @@ function selectedFiles() {
   return files.length ? `<ul class="fb-files">${files.map((f) => `<li class="fb-file ${f.status === "failed" ? "failed" : ""}"><img src="${e(f.previewUrl)}" alt=""><span class="fb-file-info"><span class="fb-file-name">${e(f.name)}</span><small>${e(fileSize(f.size))}${status[f.status] ? ` · ${status[f.status]}` : ""}</small></span>${["ready", "failed"].includes(f.status) && !state.feedbackSending ? `<button type="button" class="button secondary fb-remove" data-fb-remove-file="${e(f.id)}" aria-label="${e(`Remover ${f.name}`)}">Remover</button>` : ""}</li>`).join("")}</ul>` : "";
 }
 
-export const shortDate = (value) => new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+export const shortDate = (value) => formatOperationalDate(value, "shortDate");
 
 export function statusBadge(status) {
   return `<span class="fb-status fb-status-${e(status.toLowerCase())}">${e(feedbackStatuses[status] || status)}</span>`;
@@ -105,7 +105,7 @@ function ownFeedbackPage() {
   ${state.feedbackSent ? '<p class="feedback-success" role="status">Feedback enviado com sucesso.</p>' : ""}
   <div class="form-footer"><button class="button primary" type="submit" ${state.feedbackSending || state.feedbackUpload.feedbackId ? "disabled" : ""}>${state.feedbackSending ? "Enviando…" : "Enviar feedback"}</button></div>
   </form></section>
-  <section class="panel" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2>${myFeedbackList()}</section>`;
+  <section class="panel" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2><p class="small">${timeZoneLabel}.</p>${myFeedbackList()}</section>`;
 }
 
 // Expansão 3 (docs/design-visual.md): Feedback do aluno. Escrever é a tarefa principal (formulário numa superfície
@@ -132,9 +132,9 @@ const typeHints = { BUG: "Algo não funciona como deveria.", SUGGESTION: "Uma id
 // Telas de onde o aluno chega ao Feedback, com o nome do menu dele.
 const studentOrigins = { overview: "Meu desempenho", activities: "Minhas atividades", history: "Meu histórico", onboarding: "Primeiro acesso" };
 const originName = (page) => studentOrigins[page] || originLabel(page, true);
-// Datas por extenso no fuso do navegador, como em Meu histórico.
-const longDate = (d) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-const validDate = (value) => { const d = new Date(value); return value && !Number.isNaN(d.getTime()) ? d : null; };
+// A data operacional usa Brasília, como em Meu histórico.
+const longDate = (d) => formatOperationalDate(d, "longDate");
+const validDate = instant;
 
 const problem = (key, text) => text ? `<p class="fb-error" id="fb-${key}-error">${e(text)}</p>` : "";
 const invalid = (text) => text ? ' aria-invalid="true"' : "";
@@ -176,7 +176,7 @@ function studentFeedbackPage({ showProblems = false, failure = null, picked = nu
   ${failure && !sending ? sendError(failure) : ""}
   <div class="form-footer">${context.length ? `<p class="feedback-origin">Junto com o feedback ${context.length > 1 ? "vão" : "vai"} ${context.join(" e ")}.</p>` : ""}<button class="button primary" type="submit" ${sending || upload.feedbackId ? "disabled" : ""}${reason ? ` aria-describedby="${reason}"` : ""}>${sending ? "Enviando…" : "Enviar feedback"}</button></div>
   </form></section>
-  <section class="feedback-history" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2>${studentFeedbackList(open, picked)}</section></div></div>`;
+  <section class="feedback-history" aria-labelledby="my-feedback-heading"><h2 id="my-feedback-heading">Meus feedbacks</h2><p class="small">${timeZoneLabel}.</p>${studentFeedbackList(open, picked)}</section></div></div>`;
 }
 
 // Envio que falhou: fica junto do botão até a próxima tentativa (recebe o foco; o botão aponta para ele). Com resposta do

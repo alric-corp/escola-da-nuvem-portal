@@ -1,4 +1,4 @@
-import { e, heading, plural } from "../ui.js";
+import { e, formatOperationalDate, heading, instant, plural, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 import { attachmentGallery, feedbackStatuses, feedbackTypes, originLabel, statusBadge } from "./feedback.js";
 
@@ -10,9 +10,9 @@ import { attachmentGallery, feedbackStatuses, feedbackTypes, originLabel, status
 // e a mudança de status. view (do app.js) traz o andamento (busy: { id, status, title }), o erro (failure: { id, message, unsure,
 // stale }) e o status escolhido no feedback aberto (pick). Conteúdo do usuário sempre como texto (e()); nenhum identificador
 // interno (o sub do autor ou o de quem mudou o status).
-const validDate = (value) => { const d = new Date(value); return value && !Number.isNaN(d.getTime()) ? d : null; };
-const longDate = (d) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-const time = (d) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const validDate = instant;
+const longDate = (d) => formatOperationalDate(d, "longDate");
+const time = (d) => formatOperationalDate(d, "clock");
 const stamp = (d, iso) => `<time datetime="${e(iso)}">${longDate(d)} às ${time(d)}</time>`;
 const author = (f) => f.studentName || f.createdByEmail || "Autor desconhecido";
 const statusName = (status) => feedbackStatuses[status] || status;
@@ -106,5 +106,5 @@ export function adminFeedbackPage(view = {}) {
   const a = state.adminFeedback;
   const selected = a.items.find((f) => f.id === a.selectedId);
   const title = heading("", "Feedbacks", "Bugs, sugestões e melhorias enviados por quem usa o portal, de todas as turmas.");
-  return `<div class="admin-feedback">${title}${selected ? detail(selected, view) : inbox(a)}</div>`;
+  return `<div class="admin-feedback">${title}<p class="small">${timeZoneLabel}.</p>${selected ? detail(selected, view) : inbox(a)}</div>`;
 }

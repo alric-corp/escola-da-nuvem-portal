@@ -4,7 +4,7 @@
 // Aqui, o que a Expansão 5 decide: qual publicação está em vigor (pelo id, nunca pela posição), restauração sem trocar a
 // data original, mudanças só com o que o contrato traz, comparação dita quando não é com a vizinha, Restaurar com o nome
 // da publicação e parado durante a operação, estados e texto sempre escapado. Datas e horas: o mês e o dia das amostras
-// são os mesmos em qualquer fuso; a hora é conferida com o próprio Intl (o navegador fixa o fuso nos testes de navegador).
+// são apresentados em Brasília, independentemente do fuso local do processo.
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -43,8 +43,8 @@ function withState(values, fn) {
 const page = (values = {}, view = {}) => withState({ report: report(), ...values }, () => history.historyPage(view));
 // Texto como é lido: sem tags, espaços colapsados e sem espaço antes de vírgula (a vírgula da leitura assistiva).
 const strip = (html) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/ ([,.])/g, "$1").trim();
-const time = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-const weekday = (iso) => new Date(iso).toLocaleDateString("pt-BR", { weekday: "long" });
+const time = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+const weekday = (iso) => new Date(iso).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
 // Cada publicação do histórico: id, situação, origem, mudanças, nota de comparação e o botão Restaurar.
 // As mudanças são uma lista dentro de cada publicação: cada entrada vai até a próxima (ou até o fim da lista do mês).
 const entries = (html) => html.split(/(?=<li class="tpub-entry)/).slice(1).map((chunk) => {

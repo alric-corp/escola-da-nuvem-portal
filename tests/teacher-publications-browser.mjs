@@ -530,9 +530,10 @@ test("PB9: teclado na ordem de leitura, com contorno inteiro (pixels); no celula
   }
 });
 
-test("PB10: datas no fuso do navegador — o mesmo instante cai em outro dia e outro mês em UTC; a vigência não depende da ordem", async () => {
+test("PB10: datas e agrupamento em Brasília, independentes do fuso do navegador; a vigência não depende da ordem", async () => {
   const edge = [pub("e2", "2026-10-01T01:30:00Z", "e1", { previousCount: 24, currentCount: 24, gradesChanged: 5 }), pub("e1", "2026-09-29T21:00:00Z", null, { previousCount: 0, currentCount: 24, studentsAdded: 24 })];
-  for (const [timezoneId, day, month, time] of [["America/Sao_Paulo", "30 de setembro", "Setembro de 2026 2 publicações", "22:30"], ["UTC", "1 de outubro", "Outubro de 2026 1 publicação", "01:30"]]) {
+  for (const timezoneId of ["America/Sao_Paulo", "UTC"]) {
+    const day = "30 de setembro", month = "Setembro de 2026 2 publicações", time = "22:30";
     const { context, page, errors, control } = await open({ timezoneId, data: report({ history: edge, current: "e1", updateKind: "restore", updatedAt: "2026-10-11T12:10:00Z" }) });
     assert.equal(await read(page.locator("#tpub-e2 time")), day, timezoneId);
     assert.equal(await text(page.locator(".tpub-month-title")), month, timezoneId);

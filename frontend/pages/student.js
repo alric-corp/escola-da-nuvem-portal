@@ -1,6 +1,6 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, current, demo, e, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, formatOperationalDate, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 
 export function studentPage(name) {
@@ -86,7 +86,7 @@ export function evolution() {
   const reference = (key, label) =>
     `<line class="evo-ref evo-${key}" x1="${left}" x2="${W - right}" y1="${y(t[key])}" y2="${y(t[key])}"/><path class="evo-ref-mark ref-${key}" d="M${W - right} ${y(t[key])}l5 -4v8z"/><text class="evo-ref-label evo-${key}" x="${W - right + 8}" y="${labelY[key].toFixed(1)}" text-anchor="start">${label} ${t[key]}%</text>`;
   const grid = [0, 50, 100].map((v) => `<line class="evo-grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text class="evo-axis" x="${left - 4}" y="${(Number(y(v)) + 3).toFixed(1)}" text-anchor="end">${v}%</text>`).join("");
-  const dates = rows.map((r, i) => `<text class="evo-axis" x="${x(i)}" y="${H - 6}" text-anchor="middle">${new Date(r.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</text>`).join("");
+  const dates = rows.map((r, i) => `<text class="evo-axis" x="${x(i)}" y="${H - 6}" text-anchor="middle">${formatOperationalDate(r.publishedAt, "dayShort", "—")}</text>`).join("");
   return `<figure class="evolution"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Médias de KCs e LABs nas últimas ${rows.length} publicações, com as referências da turma; valores detalhados em Meu histórico">${grid}${reference("kc", "KC")}${reference("lab", "LAB")}${series("kc")}${series("lab")}${dates}</svg><figcaption class="evolution-legend"><span class="evo-key evo-kc">KCs</span><span class="evo-key evo-lab">LABs</span><span class="evo-key evo-ref-key">referência da turma</span></figcaption></figure>`;
 }
 

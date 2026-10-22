@@ -1,4 +1,4 @@
-import { canvasTimeZone, current, demo, e, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
+import { current, demo, e, formatOperationalDate, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
 
@@ -9,9 +9,6 @@ import { isWithdrawn } from "../participation.js";
 const thresholdsOf = (report) => ({ kc: report.thresholds?.kc ?? 70, lab: report.thresholds?.lab ?? 95 });
 const WEEK = 7 * 86400000;
 const DAY = 86400000;
-const canvasDateFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone, dateStyle: "short" });
-const canvasDateTimeFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone, dateStyle: "short", timeStyle: "short" });
-const canvasClockFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: canvasTimeZone, timeStyle: "short" });
 const studentNames = new Intl.Collator("pt-BR", { sensitivity: "base" });
 
 export function canvasTimestamp(value) {
@@ -32,7 +29,7 @@ export function canvasTimeText(value) {
 
 export function canvasDateText(value, includeTime = false) {
   const at = canvasTimestamp(value);
-  return at === null ? "Sem informação" : (includeTime ? canvasDateTimeFormatter : canvasDateFormatter).format(at);
+  return at === null ? "Sem informação" : formatOperationalDate(new Date(at), includeTime ? "dateTime" : "shortDate");
 }
 
 export function canvasActivityStatus(row, at = Date.now()) {
@@ -220,7 +217,7 @@ function averageCell(kind, label, value, reference) {
 // Abaixo de 46rem de largura o CSS empilha a linha; os rótulos visíveis das células só existem nesse modo.
 function canvasCells(r) {
   const value = r.canvasActivity?.lastActivityAt, valid = canvasActivityStatus(r) !== "unknown";
-  const last = valid ? `<time datetime="${e(value)}" title="${canvasDateText(value, true)} (Brasília)" aria-label="${canvasDateText(value, true)} (Brasília)">${canvasDateText(value)}<small>${canvasClockFormatter.format(canvasTimestamp(value))}</small></time>` : "Sem informação";
+  const last = valid ? `<time datetime="${e(value)}" title="${canvasDateText(value, true)} (Brasília)" aria-label="${canvasDateText(value, true)} (Brasília)">${canvasDateText(value)}<small>${formatOperationalDate(value, "clock")}</small></time>` : "Sem informação";
   const quality = (field) => {
     const observation = canvasFieldObservation(r, field);
     if (!observation.valid) return "";
