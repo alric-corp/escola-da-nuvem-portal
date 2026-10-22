@@ -187,6 +187,15 @@ class Portal:
         binding = self.repo.get(self.upk, "STUDY#" + code)
         if binding:
             return next((s for s in snapshot["students"] if s["id"] == binding["canvasId"]), None)
+        return self._unbound_student(code, snapshot, bind)
+
+    def _unbound_student(self, code, snapshot, bind=False):
+        """Fallback por e-mail quando a leitura consistente não encontrou STUDY.
+
+        /cohorts já leu os vínculos desta requisição por Query. Reaproveitar essa
+        ausência evita um GetItem por turma; OWNER continua sendo conferido.
+        Não há cache de autorização entre requisições, sessões ou usuários.
+        """
         student = next((s for s in snapshot["students"] if s["email"] == self.user["email"]), None)
         if student:
             owner = self.repo.get("COHORT#" + code, "OWNER#" + student["id"])
@@ -241,8 +250,8 @@ class Portal:
             # Vínculo (STUDY#/TEACH#) já indica a turma sem reler o snapshot do S3 a cada
             # login. Sem vínculo (primeiro acesso, ou CSV publicado sem e-mail até então),
             # cai no fallback por e-mail, que ainda precisa do snapshot atual.
-            bound = {b["code"] for b in self.repo.list(self.upk, "STUDY#")}
-            teaching = {t["code"] for t in self.repo.list(self.upk, "TEACH#")}
+            bound = {b["code"] for b in self.repo.list(self.upk, "STUDY#")} if not self.admin else set()
+            teaching = {t["code"] for t in self.repo.list(self.upk, "TEACH#")} if not self.admin else set()
             result = []
             for cohort in self.repo.cohorts():
                 code = cohort["code"]
@@ -251,7 +260,7 @@ class Portal:
                     if not cohort.get("current"):
                         continue
                     snap = self.snapshot(self.publication(code, cohort["current"]))
-                    if not self.student(code, snap):
+                    if not self._unbound_student(code, snap):
                         continue
                 result.append({k: v for k, v in cohort.items() if not k.startswith("_")} | {"canTeach": teach})
             return {"cohorts": result}
