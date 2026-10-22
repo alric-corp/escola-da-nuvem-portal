@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
@@ -148,6 +148,100 @@ test("abas roving tabindex: setas, Home/End, ativação e foco previsível sem a
   assert.equal(c.page.url(), initialUrl, "sem reutilizar code/state nem acrescentar query de aba");
   await c.page.locator('[data-view="overview"]').click(); await guide(c.page); assert.equal(await active(c.page), "rules", "nova entrada começa em Regras");
   await c.close();
+});
+
+test("abas adaptam a largura ao texto ampliado, sem cortar nomes nem reduzir a fonte", async () => {
+  const measurements = [];
+  // Ampliação de texto real no Chromium: fonte padrão 16 → 24/32px via CDP,
+  // sem mudar deviceScaleFactor, aplicar zoom CSS ou escalar a página.
+  for (const width of [1440, 390, 320]) for (const text of [1, 1.5, 2]) {
+    const c = await open({ width, height: width === 1440 ? 900 : 844, text, cohorts: false });
+    try {
+      await guide(c.page);
+      const layout = await c.page.locator(".cg-tabs").evaluate((tabs) => ({
+        height: tabs.getBoundingClientRect().height,
+        width: tabs.getBoundingClientRect().width,
+        orientation: tabs.getAttribute("aria-orientation"),
+        overflow: document.documentElement.scrollWidth - innerWidth,
+        rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        buttons: [...tabs.children].map((button) => {
+          // Um intervalo por palavra detecta quebras intrapalavra, além do overflow do controle.
+          const node = button.firstChild, words = [];
+          for (const match of button.textContent.matchAll(/\S+/g)) {
+            const range = document.createRange();
+            range.setStart(node, match.index); range.setEnd(node, match.index + match[0].length);
+            words.push({ text: match[0], fragments: range.getClientRects().length });
+          }
+          return { text: button.textContent, font: parseFloat(getComputedStyle(button).fontSize),
+            width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height,
+            clipped: button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1, words };
+        }),
+      }));
+      measurements.push({ viewport: width, textPercent: text * 100, ...layout });
+      assert.equal(layout.orientation, width !== 1440 && text > 1 ? "vertical" : "horizontal");
+      assert.ok(layout.overflow <= 1, `${width}/${text}: página sem scroll horizontal`);
+      assert.deepEqual(layout.buttons.map(({ text: label }) => label), ["Regras do curso", "Plantões e comunidade", "Faltas e solicitações"]);
+      for (const button of layout.buttons) {
+        assert.equal(button.font, layout.rootFont * (width <= 600 ? 0.875 : 0.9375), "fonte rem preservada, sem redução para compensar ampliação");
+        assert.ok(layout.rootFont >= 16 * text, "a ampliação real chega à fonte do documento");
+        assert.equal(button.clipped, false, button.text);
+        assert.ok(button.height >= 44, "alvo de foco e clique preservado");
+        if (layout.orientation === "vertical") assert.ok(button.words.every(({ fragments }) => fragments === 1), `${button.text}: palavras inteiras`);
+      }
+      if (process.env.COURSE_GUIDE_LAYOUT_EVIDENCE) {
+        const destination = process.env.COURSE_GUIDE_LAYOUT_EVIDENCE;
+        await mkdir(destination, { recursive: true });
+        await c.page.locator(".cg-tabs").screenshot({ path: path.join(destination, `after-${width}-text${text * 100}-tabs.png`) });
+        if (text === 1 || width === 320 && text === 2) {
+          await c.page.locator(".cg-tabs").scrollIntoViewIfNeeded();
+          await c.page.screenshot({ path: path.join(destination, `after-${width}-text${text * 100}.png`) });
+        }
+      }
+      assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
+    } finally { await c.close(); }
+  }
+  if (process.env.COURSE_GUIDE_LAYOUT_EVIDENCE) await writeFile(path.join(process.env.COURSE_GUIDE_LAYOUT_EVIDENCE, "after.json"), JSON.stringify({
+    chromium: browser.version(), technique: "CDP Page.setFontSizes: standard16/24/32px; fixed13/20/26px; deviceScaleFactor inalterado", measurements,
+  }, null, 2) + "\n");
+});
+
+test("resize conserva seleção e foco; orientação e setas acompanham a disposição das abas", async () => {
+  const c = await open({ width: 1440, height: 900, text: 1.5 });
+  try {
+    await guide(c.page);
+    const tabs = c.page.getByRole("tablist"), selected = c.page.getByRole("tab", { name: "Faltas e solicitações", exact: true });
+    await selected.click(); await selected.focus();
+    let original = await selected.elementHandle();
+    for (const width of [320, 390, 1440]) {
+      await c.page.setViewportSize({ width, height: 900 });
+      const orientation = width === 1440 ? "horizontal" : "vertical";
+      await c.page.waitForFunction((expected) => document.querySelector(".cg-tabs")?.getAttribute("aria-orientation") === expected, orientation);
+      assert.equal(await original.evaluate((element) => element.isConnected && document.activeElement === element), true, "resize não recria abas nem abandona foco");
+      assert.equal(await active(c.page), "requests");
+      assert.equal(await tabs.getAttribute("aria-orientation"), orientation);
+      const nextKey = orientation === "vertical" ? "ArrowDown" : "ArrowRight", previousKey = orientation === "vertical" ? "ArrowUp" : "ArrowLeft";
+      // Direção ortogonal continua disponível para navegação/rolagem do navegador.
+      await c.page.keyboard.press(orientation === "vertical" ? "ArrowRight" : "ArrowDown");
+      assert.equal(await active(c.page), "requests");
+      for (const [key, expected] of [[nextKey, "rules"], [previousKey, "requests"], ["Home", "rules"], ["End", "requests"]]) {
+        await c.page.keyboard.press(key);
+        assert.equal(await active(c.page), expected);
+        assert.equal(await c.page.evaluate(() => document.activeElement.dataset.guideTab), expected);
+        assert.equal(await c.page.locator('[role="tabpanel"]:visible').count(), 1);
+        assert.equal(await c.page.locator('[role="tab"][tabindex="0"]').count(), 1);
+        const tab = c.page.locator(`[data-guide-tab="${expected}"]`), panelId = await tab.getAttribute("aria-controls");
+        assert.equal(await c.page.locator(`#${panelId}`).getAttribute("aria-labelledby"), await tab.getAttribute("id"));
+      }
+      await c.page.keyboard.press("Tab");
+      assert.equal(await c.page.evaluate(() => document.activeElement.id), "guide-panel-requests", "Tab acessa o painel selecionado");
+      await selected.focus();
+      // As teclas ativam por render conforme o contrato existente; guarda a nova referência para o próximo resize.
+      await original.dispose();
+      original = await selected.elementHandle();
+    }
+    await original.dispose();
+    assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
+  } finally { await c.close(); }
 });
 
 test("links têm nomes e abertura externa segura; documentos reais resolvem no prefixo versionado", async () => {
