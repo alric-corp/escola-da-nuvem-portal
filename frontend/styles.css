@@ -3625,6 +3625,9 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-engagement-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
 .teacher-home .tp-engagement-stats dt { color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.5; }
 .teacher-home .tp-engagement-stats dd { margin: var(--space-1) 0 0; font-size: 1.25rem; font-weight: 600; }
+.teacher-home .tp-engagement-stats dd small { display: block; margin-top: var(--space-1); color: var(--color-text-muted); font-size: 0.75rem; line-height: 1.5; font-weight: 400; }
+.teacher-home .tp-engagement-quality { margin-block: var(--space-2); padding-left: var(--space-2); border-left: 2px solid var(--color-line); color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.5; }
+.teacher-home .tp-data-quality { display: block; margin-top: var(--space-1); color: var(--color-text-muted); font-size: 0.75rem; line-height: 1.4; }
 .teacher-home .tp-row > :is(.tp-last-activity, .tp-canvas-time) { font-size: 0.8125rem; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* =========================================================
