@@ -1,0 +1,20 @@
+{
+  "revision": "feb582e613e2786b11e219233f215db52ea9ae11",
+  "presentation": [
+    {
+      "timezone": "UTC",
+      "instant": "01/10/2026, 01:30",
+      "civil": "01/10/2026, 00:00"
+    },
+    {
+      "timezone": "America/Sao_Paulo",
+      "instant": "30/09/2026, 22:30",
+      "civil": "30/09/2026, 21:00"
+    },
+    {
+      "timezone": "Asia/Tokyo",
+      "instant": "01/10/2026, 10:30",
+      "civil": "01/10/2026, 09:00"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "run_id": "39725168839",
+    "job_url": "https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39725168839/job/119647295524",
+    "conclusion": "success",
+    "job_seconds": 682.0,
+    "combined_install_seconds": 19.0
+  },
+  {
+    "run_id": "39721037531",
+    "job_url": "https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39721037531/job/119634269669",
+    "conclusion": "success",
+    "job_seconds": 675.0,
+    "combined_install_seconds": 19.0
+  }
+]
