@@ -44,6 +44,24 @@ test("Participation preserves exact request fields, statuses and nullable no-rec
   assert.equal(op.requestBody.content["application/json"].schema.$ref, "#/components/schemas/ParticipationRequest");
   for (const status of ["200", "400", "401", "403", "404", "409", "500"]) assert(op.responses[status]);
 });
+test("Canvas report describes additive per-field provenance without changing access or route contracts", () => {
+  const schemas = contract.components.schemas;
+  const report = contract.paths["/cohorts/{code}/report"].get;
+  assert.equal(report.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/CohortReport");
+  assert.equal(schemas.CohortReport.required, undefined);
+  assert.equal(schemas.CanvasActivity.required, undefined); // backend anterior e registros legados
+  assert.equal(schemas.CanvasActivity.properties.totalActivityTime.minimum, 0);
+  assert.equal(schemas.CanvasActivity.properties.totalActivityTime.nullable, true);
+  assert.equal(schemas.CanvasActivity.properties.collectedAt.nullable, true);
+  for (const key of ["totalActivityTime", "lastActivityAt"])
+    assert.equal(schemas.CanvasActivity.properties.provenance.properties[key].$ref, "#/components/schemas/CanvasActivityProvenance");
+  assert.deepEqual(schemas.CanvasActivityProvenance.properties.status.enum, ["current", "retained", "unknown"]);
+  for (const key of ["observedAt", "referenceAt", "attemptedAt", "lastValidObservedAt"])
+    assert.equal(schemas.CanvasActivityProvenance.properties[key].nullable, true);
+  assert.deepEqual(schemas.CanvasEngagement.properties.status.enum, ["complete", "partial", "failed", "legacy"]);
+  assert.deepEqual(report.security, [{ PortalJwt: [] }]);
+  assert.deepEqual(report["x-portal-authorization-scopes"], ["portal/access"]);
+});
 test("Contract contains no environment IDs, servers, contact data or credential examples", () => {
   const source = read("openapi/portal.yaml");
   assert.equal(contract.servers, undefined);

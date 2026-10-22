@@ -1,0 +1,69 @@
+{
+  "base_sha": "9097f5c7208be279aa85e007fe84d2f3e9c047e7",
+  "fixture_only": true,
+  "network_calls": 0,
+  "aws_mutations": 0,
+  "baseline_RED": {
+    "known_seconds_before": 7200,
+    "known_seconds_after": null,
+    "global_collectedAt_after": "2026-10-21T12:00:00+00:00",
+    "retention_invariant": false
+  },
+  "fixed_GREEN": {
+    "retained_seconds": 7200,
+    "global_collectedAt_after": "2026-10-20T12:00:00+00:00",
+    "attemptedAt": "2026-10-21T12:00:00+00:00",
+    "status": "partial",
+    "student_response": {
+      "canvasActivity": {
+        "totalActivityTime": 7200,
+        "lastActivityAt": "2026-10-19T09:00:00+00:00",
+        "collectedAt": "2026-10-20T12:00:00+00:00",
+        "provenance": {
+          "totalActivityTime": {
+            "status": "retained",
+            "observedAt": "2026-10-20T12:00:00+00:00",
+            "referenceAt": null,
+            "reason": "missing",
+            "attemptedAt": "2026-10-21T12:00:00+00:00",
+            "lastValidObservedAt": "2026-10-20T12:00:00+00:00"
+          },
+          "lastActivityAt": {
+            "status": "retained",
+            "observedAt": "2026-10-20T12:00:00+00:00",
+            "referenceAt": null,
+            "reason": "missing",
+            "attemptedAt": "2026-10-21T12:00:00+00:00",
+            "lastValidObservedAt": "2026-10-20T12:00:00+00:00"
+          }
+        }
+      }
+    }
+  },
+  "sizes": [
+    {
+      "students": 40,
+      "record_json_utf8_bytes": 21784,
+      "item_string_attribute_bytes": 21820,
+      "under_dynamodb_400kib": true
+    },
+    {
+      "students": 200,
+      "record_json_utf8_bytes": 108344,
+      "item_string_attribute_bytes": 108380,
+      "under_dynamodb_400kib": true
+    },
+    {
+      "students": 400,
+      "record_json_utf8_bytes": 216544,
+      "item_string_attribute_bytes": 216580,
+      "under_dynamodb_400kib": true
+    },
+    {
+      "students": 500,
+      "record_json_utf8_bytes": 270644,
+      "item_string_attribute_bytes": 270680,
+      "under_dynamodb_400kib": true
+    }
+  ]
+}

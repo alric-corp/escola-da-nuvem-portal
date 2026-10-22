@@ -58,19 +58,19 @@ def run(repo, client, event=None, clock=None):
         if course and course not in rosters:
             # Matrícula gravada a cada execução, com ou sem autoSync e mesmo que as notas não mudem
             # (integrity.py). Se o Canvas falhar, o ROSTER anterior fica como está.
+            # O início, e não o fim da consulta, ordena tentativas auxiliares concorrentes.
+            activity_attempted_at = _now()
             try:
                 try:
                     rosters[course] = course_students(client, course, include_enrollments=True)
                 except CanvasError:
                     # Falha do include não bloqueia o caminho de notas já existente.
                     logging.warning("Atividade Canvas indisponível; preservando a coleta anterior.")
+                    _save_activity(repo, course, [], activity_attempted_at, failed=True)
                     rosters[course] = course_students(client, course)
                 else:
-                    try:
-                        save_activity(repo, course, rosters[course], _now())
-                    except Exception:
-                        # Métricas são auxiliares. Sem payload, e-mail, token ou exceção no log.
-                        logging.warning("Coleta de atividade Canvas não salva; notas seguem normalmente.")
+                    # course_students só retorna após concluir toda a paginação.
+                    _save_activity(repo, course, rosters[course], activity_attempted_at, complete=True)
                 save_roster(repo, course, rosters[course])
             except CanvasError as err:
                 rosters[course] = err
@@ -107,6 +107,16 @@ def run(repo, client, event=None, clock=None):
                     # Uma tentativa mais nova substituiu a prova; a antiga não pode sobrescrevê-la.
                     pass
     return results, failures
+
+
+def _save_activity(repo, course, students, attempted_at, **options):
+    try:
+        save_activity(repo, course, students, _now(), attempted_at=attempted_at, **options)
+    except Conflict:
+        logging.warning("Tentativa auxiliar de atividade Canvas superada; notas seguem normalmente.")
+    except Exception:
+        # Métricas são auxiliares. Sem payload, e-mail, token ou exceção no log.
+        logging.warning("Coleta de atividade Canvas não salva; notas seguem normalmente.")
 
 
 TOKEN_METRIC = "CanvasTokenDaysLeft"

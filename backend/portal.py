@@ -16,7 +16,7 @@ from reminders import SESMailer, SendFailure, message_for
 from reminders import cohort_thresholds, display_snapshot, participation, withdrawn_ids
 import reminders
 from changes import snapshot_changes, change_counts, student_changes, student_history
-from canvas_activity import instructor_activity, student_activity
+from canvas_activity import activity_summary, instructor_activity, student_activity
 from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
 from integrity import check as integrity_check
 import feedback
@@ -1026,8 +1026,7 @@ class Portal:
                                            **student_activity(activity, s["id"])}
                                                for s in class_overview["students"]]
             return {"cohort": code, "publication": publication, "focus": focus, **class_overview,
-                    **({"canvasEngagement": {"courseId": activity["courseId"], "collectedAt": activity["collectedAt"]}}
-                       if activity else {}),
+                    **activity_summary(activity),
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
                     "thresholds": thresholds, "canvasCourseId": canvas_course_id,
