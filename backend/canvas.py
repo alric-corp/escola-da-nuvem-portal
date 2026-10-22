@@ -19,28 +19,86 @@ class CanvasError(Exception):
     pass
 
 
+class _CanvasRedirect(urllib.request.HTTPRedirectHandler):
+    def __init__(self, validate):
+        self.validate = validate
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # A validação ocorre antes de o urllib encaminhar Authorization a um redirect.
+        self.validate(newurl, urllib.parse.urlsplit(req.full_url).path)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class CanvasClient:
-    def __init__(self, base_url, token, opener=urllib.request.urlopen):
+    def __init__(self, base_url, token, opener=None):
         self.site = base_url.rstrip("/")
         self.base = self.site + "/api/v1"
         self.token = token
-        self.opener = opener
+        self._checked_url(self.base + "/")
+        self.opener = opener or urllib.request.build_opener(_CanvasRedirect(self._checked_url)).open
+
+    def _checked_url(self, url, expected_path=None):
+        try:
+            parsed, site = urllib.parse.urlsplit(url), urllib.parse.urlsplit(self.site)
+            origin = lambda part: (part.scheme, part.hostname, part.port or 443)
+            path = parsed.path
+            valid = (isinstance(url, str) and url == url.strip() and not any(ord(c) < 32 for c in url)
+                     and parsed.scheme == site.scheme == "https" and parsed.hostname
+                     and origin(parsed) == origin(site) and not parsed.username and not parsed.password
+                     and not site.username and not site.password and not parsed.fragment
+                     and not site.query and not site.fragment and site.path in ("", "/")
+                     and path.startswith("/api/v1/") and "\\" not in path and "//" not in path
+                     and urllib.parse.unquote(path) == path and not {".", ".."}.intersection(path.split("/"))
+                     and (expected_path is None or path == expected_path))
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise CanvasError("Endereço de leitura do Canvas fora do contexto autorizado.")
+        return url
 
     def get_all(self, path):
-        url, out = self.base + path, []
+        if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
+            raise CanvasError("Caminho de leitura do Canvas inválido.")
+        url, out, visited = self.base + path, [], set()
+        expected_path = urllib.parse.urlsplit(url).path
         while url:
+            self._checked_url(url, expected_path)
+            if url in visited:
+                raise CanvasError("Paginação cíclica do Canvas.")
+            visited.add(url)
             data, links = self._get(url)
-            out.extend(data if isinstance(data, list) else [data])
-            nxt = re.search(r'<([^>]+)>; rel="next"', links)
-            url = nxt.group(1) if nxt else None
+            if not isinstance(data, list):
+                raise CanvasError("A lista do Canvas tem formato inválido.")
+            out.extend(data)
+            following, parsed_until = [], 0
+            for match in re.finditer(r'<([^<>]+)>([^,]*)', links):
+                if links[parsed_until:match.start()].strip(" ,\t"):
+                    raise CanvasError("Cabeçalho de paginação do Canvas inválido.")
+                parsed_until = match.end()
+                relation = re.search(r';\s*rel\s*=\s*(?:"([^"]+)"|([^";\s,]+))', match[2], re.I)
+                if not relation and re.search(r';\s*rel\s*=', match[2], re.I):
+                    raise CanvasError("Cabeçalho de paginação do Canvas inválido.")
+                if relation and "next" in (relation[1] or relation[2]).lower().split():
+                    following.append(match[1])
+            if len(following) > 1 or links[parsed_until:].strip(" ,\t"):
+                raise CanvasError("Cabeçalho de paginação do Canvas inválido.")
+            url = following[0] if following else None
         return out
 
     def _get(self, url, attempts=3):
+        self._checked_url(url)
         request = urllib.request.Request(url, headers={"Authorization": "Bearer " + self.token})
         for attempt in range(attempts):
             try:
                 with self.opener(request, timeout=30) as res:
-                    return json.load(res), res.headers.get("Link", "")
+                    try:
+                        data = json.load(res)
+                    except (ValueError, UnicodeError):
+                        raise CanvasError("Resposta JSON do Canvas inválida.") from None
+                    links = next((value for key, value in res.headers.items() if key.lower() == "link"), "")
+                    if not isinstance(links, str):
+                        raise CanvasError("Cabeçalho de paginação do Canvas inválido.")
+                    return data, links
             except urllib.error.HTTPError as err:
                 if err.code == 401:
                     raise CanvasError("Token do Canvas recusado (expirado ou revogado).") from None
@@ -97,30 +155,91 @@ def course_csv(client, course_id, students=None):
     return out.getvalue(), len(students)
 
 
-def course_catalog(client, course_id):
-    """Módulo e link de cada tarefa, na ordem do curso (todo/12, parte 2).
+def _canvas_id(value):
+    if (type(value) not in (int, str) or not re.fullmatch(r"[0-9]{1,32}", str(value))
+            or int(value) < 1):
+        raise CanvasError("Identificador do catálogo Canvas inválido.")
+    return str(value)
 
-    Associa pelo ID da tarefa (o mesmo que aparece entre parênteses na coluna do CSV), não
-    pelo título: títulos de itens de módulo e de tarefas nem sempre coincidem. Só entram
-    itens publicados, com link para um item de módulo do próprio curso.
+
+def _catalog_items(client, course_id, module):
+    module_id = _canvas_id(module.get("id"))
+    count = module.get("items_count")
+    if type(count) is not int or count < 0:
+        raise CanvasError("Contagem de itens do módulo Canvas inválida.")
+    path = f"/courses/{course_id}/modules/{module_id}/items"
+    # O endereço fornecido é conferido, mas a requisição usa a rota construída de IDs validados.
+    if "items_url" in module:
+        client._checked_url(module["items_url"], "/api/v1" + path)
+    entries = module.get("items")
+    if entries is not None and not isinstance(entries, list):
+        raise CanvasError("Itens inline do módulo Canvas inválidos.")
+    if entries is None or len(entries) < count:
+        entries = client.get_all(path + "?per_page=100")
+    if not isinstance(entries, list) or len(entries) != count:
+        raise CanvasError("Catálogo Canvas incompleto: contagem de itens divergente.")
+    seen = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise CanvasError("Item do módulo Canvas inválido.")
+        item_id = _canvas_id(entry.get("id"))
+        if item_id in seen:
+            raise CanvasError("Catálogo Canvas incompleto: item repetido.")
+        seen.add(item_id)
+        if "module_id" in entry and _canvas_id(entry["module_id"]) != module_id:
+            raise CanvasError("Item Canvas não pertence ao módulo solicitado.")
+        if "course_id" in entry and _canvas_id(entry["course_id"]) != course_id:
+            raise CanvasError("Item Canvas não pertence ao curso solicitado.")
+        if not isinstance(entry.get("type"), str) or not entry["type"]:
+            raise CanvasError("Tipo de item Canvas inválido.")
+    return entries
+
+
+def course_catalog(client, course_id):
+    """Catálogo completo, com fallback paginado apenas para módulos sem todos os itens inline.
+
+    items_count refere-se ao universo de itens, antes de filtrar Assignment/publicação.
+    Nenhum candidato é devolvido para persistência se qualquer módulo estiver incompleto.
+    Tarefas repetidas preservam a primeira ocorrência na ordem do curso.
     """
+    course_id = _canvas_id(course_id)
     prefix = f"{client.site}/courses/{course_id}/modules/items/"
-    modules, items = [], {}
-    for module in client.get_all(f"/courses/{course_id}/modules?include[]=items&per_page=100"):
+    modules, items, seen = [], {}, set()
+    candidates = client.get_all(f"/courses/{course_id}/modules?include[]=items&per_page=100")
+    if not isinstance(candidates, list):
+        raise CanvasError("Lista de módulos Canvas inválida.")
+    for module in candidates:
+        if not isinstance(module, dict):
+            raise CanvasError("Módulo Canvas inválido.")
+        module_id = _canvas_id(module.get("id"))
+        if module_id in seen:
+            raise CanvasError("Catálogo Canvas incompleto: módulo repetido.")
+        seen.add(module_id)
+        if "course_id" in module and _canvas_id(module["course_id"]) != course_id:
+            raise CanvasError("Módulo Canvas não pertence ao curso solicitado.")
         if module.get("published") is False:
             continue
-        name = " ".join(str(module.get("name") or "").split())
+        name = module.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise CanvasError("Nome do módulo Canvas inválido.")
+        name = " ".join(name.split())
         found = {}
-        for item in module.get("items") or []:
-            key = str(item.get("content_id"))
-            # Tarefa repetida (no mesmo módulo ou em outro): vale a primeira ocorrência.
-            if (item.get("type") == "Assignment" and item.get("published") is not False
-                    and str(item.get("html_url") or "").startswith(prefix) and key not in items and key not in found):
-                found[key] = {"module": len(modules), "url": item["html_url"]}
-        if name and found:
+        for entry in _catalog_items(client, course_id, module):
+            if entry["type"] != "Assignment" or entry.get("published") is False:
+                continue
+            key = _canvas_id(entry.get("content_id"))
+            url = entry.get("html_url")
+            # Preserva a política anterior: links de fora do curso não entram no catálogo.
+            if not isinstance(url, str) or not url.startswith(prefix):
+                continue
+            if url != prefix + _canvas_id(entry["id"]):
+                raise CanvasError("Link do item Canvas incompatível com seu identificador.")
+            if key not in items and key not in found:
+                found[key] = {"module": len(modules), "url": url}
+        if found:
             items.update(found)
             modules.append(name)
-    return {"courseId": str(course_id), "modules": modules, "items": items}
+    return {"courseId": course_id, "modules": modules, "items": items}
 
 
 def token_expires_at(client):
