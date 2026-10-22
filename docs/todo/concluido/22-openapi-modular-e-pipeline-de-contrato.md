@@ -2,9 +2,9 @@
 
 ## Estado
 
-**Implementado neste PR, aguardando integração.** Fontes por domínio, bundle determinístico versionado, verificação no CI e regressões dos consumidores. Não houve mudança de comportamento HTTP, runtime do portal ou implantação produtiva.
+**Concluído — encerramento documental em 22/10/2026 (horário de Brasília).** Fontes por domínio, bundle determinístico versionado, verificação no CI e regressões dos consumidores foram integrados pelo [PR #13](https://github.com/alric-corp/escola-da-nuvem-portal/pull/13), no commit `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`. CI do PR e da main aprovados; publicação automática correspondente confirmada. A conferência AS-IS de 21/10/2026 é a evidência posterior à implementação original, preservada no encerramento ao fim deste registro. O histórico abaixo não representa pendência atual de integração.
 
-API-1 e API-2 permanecem concluídas; seus registros em [API-1](../historico/api-1.md) e [API-2](../historico/api-2.md) foram preservados. A proposta anterior, registrada durante a consolidação dos TODOs 23–25, foi adotada sem reabrir essas entregas.
+API-1 e API-2 permanecem concluídas; seus registros em [API-1](../../historico/api-1.md) e [API-2](../../historico/api-2.md) foram preservados. A proposta anterior, registrada durante a consolidação dos TODOs 23–25, foi adotada sem reabrir essas entregas.
 
 ## Organização e ferramenta
 
@@ -15,7 +15,7 @@ API-1 e API-2 permanecem concluídas; seus registros em [API-1](../historico/api
 - **Redocly CLI 2.67.1**, fixado apenas em `devDependencies` e no lockfile. Compatível com Node 22 do projeto. A CLI mantida fornece lint/resolução/bundle; não foi implementado parser ou resolver genérico próprio.
 - Ruleset `spec`, colisões como erro, sem `--force`, sem remoção de componentes e sem dereference irrestrito. Telemetria/notificações desabilitadas; subprocesso sem rede para garantir entradas locais.
 
-A manutenção e os comandos estão em [openapi/README.md](../../openapi/README.md):
+A manutenção e os comandos estão em [openapi/README.md](../../../openapi/README.md):
 
 ```sh
 npm ci
@@ -80,4 +80,28 @@ Validação local desta implementação, em 21/10/2026:
 
 As contagens são desta missão, sem somar novamente recortes contidos nas suítes. Nenhuma falha ou skip nas execuções finais. A nova regressão offline demonstrou dois GETs loopback antes do guard e zero depois; nos dois modos, a referência remota é recusada sem substituir o bundle anterior.
 
-Sem novos serviços, SDKs, Swagger UI, alteração de API/backend/frontend, dependências de runtime, deploy manual, Terraform apply, alterações de state, IAM, Cognito, DNS, agendamentos ou kill switch. A pendência deste item é a integração do PR pelo fluxo existente; não há uma nova fase manual de publicação.
+Na implementação original não houve novos serviços, SDKs, Swagger UI, alteração de API/backend/frontend, dependências de runtime, deploy manual, Terraform apply, alterações de state, IAM, Cognito, DNS, agendamentos ou kill switch. A integração pelo fluxo existente era a pendência naquele momento; foi concluída conforme a evidência abaixo, sem uma nova fase manual de publicação.
+
+
+## Encerramento documental — 22/10/2026 (Brasília)
+
+A integração e a publicação, ainda pendentes no relato original, estão comprovadas pelas execuções existentes. A atualização documental de 22/10/2026 consultou as APIs do GitHub somente em leitura e reutilizou a conferência AS-IS realizada em 21/10/2026 como **evidência histórica posterior à implementação**; não disparou workflows, repetiu a auditoria AWS ou executou testes produtivos.
+
+| Marco | Evidência e resultado |
+| --- | --- |
+| Integração | [PR #13](https://github.com/alric-corp/escola-da-nuvem-portal/pull/13), `MERGED` em `2026-10-21T23:20:12Z` (20h20min12s de Brasília); commit integrado `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`. |
+| CI do PR | [Execução 39689826762](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39689826762), evento `pull_request`, HEAD `ecb3db93371ff223f633b4c7da96b403bc911ed2`, conclusão `success`, quatro checks aprovados. |
+| CI da main | [Execução 39692747676](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39692747676), evento `push`, SHA integrado `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`, conclusão `success`. |
+| Publicação automática | [Deploy 39694238148](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39694238148), evento `workflow_run`, mesmo SHA, conclusão `success`; gate, build e publicação/ativação aprovados. No fluxo automático a ativação é um passo do job de publicação; o job de ativação manual separado permanecer ignorado é o comportamento esperado. |
+| Conferência AS-IS em 21/10/2026 | Release observada `c62f924033b6-b17c56bb10be`, `mode=modern`, `source_sha` igual ao commit integrado; [manifesto público](https://d2bx9t870lzfvc.cloudfront.net/releases/c62f924033b6-b17c56bb10be/manifest.json) com `api.openapi_sha256=2a34dd67ef6937921d02ee6ee0bcf2f518b30e985c4e8148b8bdb3187ff5ac6a`, igual aos bytes do bundle desta migração. SHA-256 do manifesto: `eb7ad6bbd4406fd85a36e8e2cda58798d1c6d50362d0b838f194932f68a1300b`. |
+
+Os quatro checks aprovados do PR mantiveram seus nomes:
+
+- `Backend (Python + Moto)`.
+- `Frontend (Node + Playwright)`.
+- `Terraform (fmt, validate, test)`.
+- `Bootstrap do deploy do frontend (fmt, validate, test)`.
+
+O registro sanitizado do deploy na análise AS-IS documenta 36 objetos criados, ativação da release, invalidação `IEO73CI8B6M408FOV9DKOEWIKB` somente de `/` e `/index.html`, concluída, e smoke público aprovado. Essa evidência não altera o significado dos hashes: a equivalência semântica do contrato foi demonstrada na migração, enquanto o manifesto continua vinculando os bytes brutos. A baseline e os manifestos históricos permanecem preservados; a exigência de confirmação para rollback entre hashes distintos continua aplicável.
+
+**Escopo encerrado:** organização modular, bundle determinístico versionado, verificação de atualidade no CI e compatibilidade com os consumidores existentes, integrados e publicados pelo fluxo automático. O item foi movido para `concluido/` com seu histórico e contagens originais, sem recertificar funcionalidades fora desse escopo. CI e smoke público não substituem QA autenticado real e não comprovam completude da coleta Canvas. Os TODOs 23–25 não foram reabertos ou modificados por este encerramento. Não houve merge, push, deploy, alteração de kill switch ou mutação AWS por esta atualização documental.

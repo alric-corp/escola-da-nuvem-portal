@@ -1,6 +1,6 @@
 # Portal Escola da Nuvem · AWS re/Start
 
-Portal de acompanhamento de notas do programa AWS re/Start: alunos consultam o próprio desempenho, instrutores importam o CSV do Canvas, publicam as notas e acompanham a turma, e administradores gerenciam turmas e acessos.
+Portal de acompanhamento do programa AWS re/Start: alunos consultam seu desempenho e o Guia do curso; instrutores acompanham a turma e as notas, atualizadas pelo Canvas nas turmas com sincronização habilitada ou por importação de CSV; administradores gerenciam turmas e acessos.
 
 ## Onde está cada coisa
 
@@ -18,11 +18,11 @@ Portal de acompanhamento de notas do programa AWS re/Start: alunos consultam o p
 ## Testes
 
 ```bash
+npm ci  # parser YAML também usado pelos testes Python de contrato
 pip install -r requirements-dev.txt
 python -m unittest discover -s backend
 python -m unittest discover -s tests/integration
 
-npm ci
 npx playwright install chromium
 npm test
 npm run test:browser
@@ -32,8 +32,18 @@ cd infra/terraform && terraform init -backend=false && terraform validate && ter
 
 O mesmo conjunto roda no GitHub Actions a cada push e pull request (`.github/workflows/ci.yml`). Nenhum desses testes acessa a AWS real. O índice das suítes, com contratos, mutações e verificações manuais, está em [tests/README.md](tests/README.md).
 
-## Implantação
+## Implantação e operação
 
-Infraestrutura com `terraform plan`/`apply` em `infra/terraform` (ver [infra/README.md](infra/README.md)); frontend com `scripts/deploy_frontend.sh`. A conta é de produção: revise o plano antes de aplicar.
+O frontend já usa releases versionadas e publicação automática:
 
-A publicação do frontend é manual, por esse script. O GitHub Actions roda só a CI, sem etapa de publicação. A publicação do redesign integrado pelo PR #3 está bloqueada pelo risco P2, de cache misto de módulos: com `max-age=300` e arquivos sem hash no nome, o navegador pode combinar módulos novos e antigos, e o portal não abre. Ver [Cache e ES modules](docs/arquitetura.md#cache-e-es-modules).
+**PR → CI aprovado → merge → CI da main aprovado → deploy automático do frontend.**
+
+O workflow publica a release imutável no S3, ativa o index, invalida apenas `/` e `/index.html` no CloudFront e verifica a entrega pública. O deploy depende dos gates existentes e de `FRONTEND_DEPLOY_ENABLED=true`. Operações manuais, diagnóstico e rollback estão no [runbook de releases](infra/FRONTEND-RELEASES.md), a referência operacional do frontend.
+
+| Operação | Procedimento |
+| --- | --- |
+| Publicar frontend | Fluxo GitHub Actions acima; [runbook](infra/FRONTEND-RELEASES.md) |
+| Implantar backend ou alterar infraestrutura | Processo separado com plano Terraform revisado em [infra/README.md](infra/README.md#5-operação-posterior); o deploy do frontend não atualiza Lambdas |
+| Publicar notas acadêmicas | Sincronização Canvas das turmas habilitadas ou prévia/publicação de CSV pelo instrutor; [jornada do instrutor](docs/jornada-instrutor.md) |
+
+`scripts/deploy_frontend.sh` é legado do layout plano, fora do procedimento normal de releases. Não usar sincronização na raiz ou invalidação ampla para atualizar o portal versionado.

@@ -47,20 +47,17 @@ O CSV mantém as dez colunas existentes e acrescenta última atividade (Brasíli
 
 Capturas de Chromium com dados inteiramente fictícios: [desktop](images/teacher-canvas/desktop.png) e [mobile](images/teacher-canvas/mobile.png). Os testes de navegador usam API simulada; não equivalem a QA autenticado em produção.
 
-## Publicação do backend — pendente
+## Implantação do backend — evidência posterior
 
-Este PR não implanta Lambdas. O frontend continuará compatível com o backend atual até a atualização e a próxima sincronização. Não há dependência, recurso AWS, endpoint, agendamento ou permissão IAM novos.
+A implementação original não executou implantação de Lambdas. Essa pendência foi superada: a conferência AS-IS de **21/10/2026**, sobre a main `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`, comparou o ZIP efetivo da Lambda `identity` e encontrou os 15 arquivos Python de runtime idênticos à revisão, incluindo `canvas_activity.py`. A Lambda `canvas-sync` tinha o mesmo `CodeSha256`:
 
-Seguir o [procedimento existente](../infra/README.md#5-operação-posterior), com o backend/configurações locais já configurados para a conta correta:
+`S/bn9gfKgYiRWVade7YGBr22Qjpnzsbd7iC2W0364Ys=`
 
-```sh
-terraform -chdir=infra/terraform init -backend-config=backend.hcl
-terraform -chdir=infra/terraform plan -out=portal.tfplan
-terraform -chdir=infra/terraform show portal.tfplan
-terraform -chdir=infra/terraform apply portal.tfplan
-```
+O pacote foi atualizado em **20/10/2026, 22:19 UTC**; a implantação dessa data também está registrada no [PR #10](https://github.com/alric-corp/escola-da-nuvem-portal/pull/10) e na [conferência do TODO 25](todo/concluido/25-higiene-do-backend.md). São evidências de código implantado, não de coleta completa para todos os alunos/cursos nem de QA autenticado real.
 
-Os comandos são instruções para implantação posterior pelo operador; não foram executados nesta missão. Revisar o plano antes do apply: `data.archive_file.api` empacota o backend compartilhado pelas cinco Lambdas existentes (API/identity, canvas-sync, reminder-events, automatic-reminders e auth-trigger). A atualização do pacote pode atualizar o código dessas funções; esta funcionalidade não requer criar recursos ou alterar sua configuração. O frontend segue o CI/CD existente após eventual merge; este PR não autoriza merge nem publicação produtiva.
+Futuras atualizações de backend seguem o [procedimento separado](../infra/README.md#5-operação-posterior). O pacote é compartilhado por cinco Lambdas; o deploy automático do frontend não as atualiza. Não há recurso, endpoint ou agendamento novo nesta funcionalidade.
+
+**Pendências do diagnóstico:** AS-02 (catálogo sem itens embutidos) e AS-03 (preservação/cobertura de atividade parcial) permanecem como próximos trabalhos, não corrigidos nesta atualização documental. A validação autenticada real também continua pendente.
 
 ## Sugestões futuras — fora deste PR
 

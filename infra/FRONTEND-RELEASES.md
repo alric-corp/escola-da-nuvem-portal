@@ -2,7 +2,9 @@
 
 Publicação versionada do frontend: releases imutáveis em `releases/<id>/` e um `index.html` ponteiro na raiz. O workflow [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml) publica **automaticamente** cada push na `main` depois do CI verde e oferece operações manuais para recuperação.
 
-**Estado:** implementada e testada, mas **ainda não ativa**. Até a migração, o caminho vigente continua sendo `scripts/deploy_frontend.sh` ([README.md](README.md#4-gerar-e-publicar-o-frontend)). O deploy automático depende dos [pré-requisitos](#pré-requisitos-uma-vez-pelo-owner) e da [migração da C7.3](#primeira-publicação-migração-da-c73). Antes deles, toda execução é recusada no gate ou na ativação, sem alterar nada no ar.
+**Estado verificado em 21/10/2026 (Brasília): ativo.** A `main` após o PR #13, `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`, passou os quatro checks no [CI 39692747676](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39692747676) e foi publicada/ativada pelo [deploy automático 39694238148](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39694238148), release `c62f924033b6-b17c56bb10be`, com invalidação concluída e smoke público aprovado. `FRONTEND_DEPLOY_ENABLED=true` foi confirmado nessa verificação. Isso comprova a entrega estática, sem substituir QA autenticado real.
+
+Este é o runbook vigente do frontend. Os [pré-requisitos](#pré-requisitos-uma-vez-pelo-owner) e a [migração da C7.3](#primeira-publicação-migração-da-c73) já foram cumpridos no ambiente atual; seus procedimentos iniciais permanecem como referência. O script [`scripts/deploy_frontend.sh`](../scripts/deploy_frontend.sh) é legado e não integra o fluxo normal de releases.
 
 O contrato está em [`.github/scripts/frontend_release.py`](../.github/scripts/frontend_release.py); a role, em [`cicd-bootstrap/`](cicd-bootstrap/README.md).
 
@@ -45,16 +47,14 @@ O resumo do job `publish` separa três estados:
 
 O artefato `activation-<run>-<tentativa>` guarda o registro: release ativa, anterior, ETags, invalidação e smoke.
 
-Nada é publicado quando:
+O gate ou o build impedem a publicação quando:
 - o CI fica vermelho ou é cancelado;
 - o CI vem de PR, de fork ou de outra branch;
 - a `main` avança antes de uma escrita. O commit mais novo tem o próprio deploy;
 - o kill switch está desligado;
-- a config do environment difere da publicada. É preciso um `deploy` manual com `allow_config_change`;
-- o layout no ar ainda é o legado. Antes, é preciso a migração;
-- a release é anterior à ativa.
+- a config do environment difere da publicada. É preciso um `deploy` manual com `allow_config_change`.
 
-Nos dois últimos casos, a release fica publicada em `releases/<id>/`, mas inativa e inofensiva.
+A ativação também recusa o layout legado sem a migração inicial e uma release anterior à ativa. Nesses casos, os objetos podem já estar publicados em `releases/<id>/`, mas a release permanece inativa; não confundir publicação com ativação.
 
 Concorrência: uma execução por vez (`frontend-production`), e uma execução em andamento nunca é cancelada. Entre as pendentes, o GitHub mantém só a mais nova: uma pendente mais antiga, inclusive um rollback manual, é cancelada se outro deploy entrar na fila.
 
@@ -71,7 +71,7 @@ Disparadas em Actions → *Deploy do frontend* → *Run workflow*, na `main`, co
 | `rollback` | Igual a `activate`, com as proteções de rollback | idem |
 | `deploy` | O mesmo do automático: `publish` e, no mesmo job, a ativação da release recém-publicada (só para frente) | `releases/`, `index.html` e invalidação |
 
-`source=baseline` só vale em `prepare`, `publish` e `deploy`. As operações `publish`, `activate`, `rollback` e `deploy`, inclusive o deploy automático, exigem a variable de repositório `FRONTEND_DEPLOY_ENABLED=true` (kill switch).
+`source=baseline` só vale em `prepare`, `publish` e `deploy`. As operações `publish`, `activate`, `rollback` e `deploy`, inclusive o deploy automático, exigem aprovação da variable de repositório `FRONTEND_DEPLOY_ENABLED=true` no gate (kill switch).
 
 ### Aprovação do pacote nas publicações manuais da main
 
@@ -95,11 +95,11 @@ O automático (`workflow_run`) continua sem inputs de aprovação humana: aceita
 push na main, com evento/repositório/commit validados, e mantém os gates de HEAD, environment, integridade
 e kill switch. `source=baseline` continua preso a `baseline.json`; não pode publicar um pacote moderno.
 
-Qualquer novo commit na main exige uma nova preparação e revisão: source SHA, Release ID, manifesto e
-ponteiro mudam. Na revalidação B.9A-R após o merge, compare os hashes/tamanhos/MIME/cache de cada asset,
+No fluxo manual de publicação da main, qualquer novo commit exige uma nova preparação e revisão: source SHA, Release ID, manifesto e
+ponteiro mudam. Compare os hashes/tamanhos/MIME/cache de cada asset,
 configuração, imports, caminhos e rotas com a referência histórica. Separe essas verificações das mudanças
-de identidade e ponteiro; não presuma equivalência. Este fluxo não habilita o kill switch nem dispensa o
-QA autenticado e as autorizações separadas de publicação e ativação.
+de identidade e ponteiro; não presuma equivalência. Essa aprovação do pacote não habilita o kill switch nem comprova QA autenticado.
+O deploy automático segue o CI verde sem essa preparação ou aprovação manual.
 
 ### Revalidação do HEAD da main
 
@@ -123,6 +123,8 @@ Qualquer resposta que não prove a igualdade recusa a execução:
 
 ## Pré-requisitos (uma vez, pelo owner)
 
+**Configuração inicial já concluída no ambiente atual.** Esta lista documenta o contrato e o provisionamento inicial; não recrie a role, o environment ou o ruleset para cada merge. O estado dos settings deve ser conferido antes de intervenções operacionais, sem desabilitar o automático como etapa rotineira.
+
 1. **Environment `production`**, configurado pela interface do GitHub, conforme a política de deploy automático:
    - *deployment branches and tags*: *Selected branches and tags*, só a regra `main`, do tipo branch. **Obrigatório**: o gate recusa um environment ausente, sem restrição, com outra branch, com curinga ou com tag. Sem o environment, o GitHub o criaria sem restrição no primeiro job; o gate, que roda antes, recusa;
    - *required reviewers*: **desativado**; sem timer de espera nem regras customizadas de aprovação de deployment. O deploy segue automaticamente o CI verde na `main`;
@@ -143,7 +145,7 @@ Quem tem escrita no repositório integra na `main` e, com isso, publica; também
 
 **Decisão vigente de 19/10/2026:** toda alteração entra por Pull Request. A aprovação dos status checks do CI é o único critério obrigatório de merge. Não exigir aprovação humana, Code Owners ou aprovação manual de deployment. Esta decisão substitui recomendações anteriores de revisão humana obrigatória para merge ou deployment. O deploy automático depois do CI verde na `main` permanece sujeito aos gates técnicos de segurança e aos pré-requisitos de ativação.
 
-O arquivo [`.github/rulesets/main.json`](../.github/rulesets/main.json) contém o ruleset importável em **Settings → Rules → Rulesets → Import a ruleset**. Ele está **documentado para aplicação**: adicionar o arquivo ao Git não configura o GitHub. No preflight de 19/10/2026, o repositório já era público, a `main` estava sem proteção/ruleset, e não havia environment `production` nem variable `FRONTEND_DEPLOY_ENABLED`. Esta entrega não altera esses settings, a visibilidade, a AWS ou o kill switch.
+O arquivo [`.github/rulesets/main.json`](../.github/rulesets/main.json) é a definição versionada do ruleset; adicionar o arquivo ao Git não configura o GitHub. Na verificação de 21/10/2026, o ruleset `25416927` estava ativo e sem bypass, o environment `production` restrito à branch `main` e o automático habilitado. **Histórico:** no preflight de 19/10/2026, a `main` ainda estava sem proteção/ruleset e não havia environment nem variable `FRONTEND_DEPLOY_ENABLED`. A configuração inicial abaixo já foi concluída; esta revisão documental não altera settings, visibilidade, AWS ou kill switch.
 
 Configuração mínima:
 
@@ -165,9 +167,9 @@ Não usar `[skip ci]` nem adicionar filtros de caminhos ao CI obrigatório: um w
 
 No repositório público, o CI de PR usa somente `contents: read`, sem credenciais AWS, OIDC ou secrets de produção. Contribuições de forks seguem as permissões e eventual liberação de execução do GitHub Actions para contribuidores externos; isso não é aprovação de merge ou deployment. Não usar `pull_request_target` para executar código do PR com privilégios. O deploy só aceita `workflow_run` do `ci.yml`, com sucesso, originado de `push` na `main` deste repositório, e confere novamente o SHA e o CI pela API. OIDC restrito ao environment/branch, IAM de menor privilégio, rejeição de chaves estáticas e falha fechada continuam obrigatórios.
 
-### Checklist operacional de configuração manual (antes do merge)
+### Checklist de configuração inicial (já concluída)
 
-Este checklist é para o administrador executar no GitHub; os arquivos deste PR não aplicam settings. Preparar a governança não exige bootstrap AWS, `terraform apply` ou deployment. Configure nesta ordem, mantendo a publicação desabilitada:
+**Referência da configuração inicial, já concluída; não repetir antes dos próximos merges.** Na implantação inicial, o administrador configurou a governança nesta ordem, mantendo a publicação desabilitada até a validação e migração. Arquivos versionados não aplicam settings; estes passos não são necessários ao deploy normal:
 
 1. **Variable do repositório:** Settings → Secrets and variables → Actions → **Variables** → New repository variable. Nome exato `FRONTEND_DEPLOY_ENABLED`, valor literal `false` (minúsculo, sem aspas). Se já existir, editar para `false`. Salvar. Esta variable precisa estar no **repositório**, pois o job `gate` não usa environment; não criar uma cópia de mesmo nome em `production`.
 2. **Environment:** Settings → Environments → New environment → nome `production` → Configure environment. Em *Deployment branches and tags*, selecionar **Selected branches and tags**; Add deployment branch or tag rule → Ref type **Branch**, Name pattern **main** → Add rule. Manter somente essa regra, sem tags ou curingas; não usar *Protected branches only*. Deixar **Required reviewers** desmarcado, sem revisores, *Wait timer* ou regras customizadas de aprovação. Salvar as regras. Não cadastrar secrets AWS permanentes. As variables de runtime listadas nos pré-requisitos podem continuar pendentes enquanto o kill switch estiver `false`.
@@ -175,7 +177,7 @@ Este checklist é para o administrador executar no GitHub; os arquivos deste PR 
 
 O fluxo de importação é descrito em [Managing rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/managing-rulesets-for-a-repository); a distinção entre branch e tag está em [Managing environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments).
 
-Antes de autorizar o merge, conferir o SHA mais recente do PR com os quatro checks concluídos em `success`, o ruleset efetivamente ativo, o environment com a única regra branch `main` e a repository variable persistida como `false`. O PR deve permanecer Draft até a autorização; não habilitar auto-merge. Com esses controles, o merge integra o código e dispara o CI da `main`, mas o deploy automático é recusado no gate pelo kill switch, antes de OIDC ou escrita AWS. Esse bloqueio esperado não é um check obrigatório de merge. A ativação futura, o bootstrap e a migração continuam sujeitos a autorização separada.
+Na integração inicial, a variable foi mantida em `false` para que o CI da `main` pudesse concluir com o deploy recusado no gate, antes de OIDC ou escrita AWS, até os GOs de bootstrap e migração. Esse bloqueio não era um check obrigatório de merge. Hoje o fluxo normal mantém o automático habilitado e exige os quatro checks; o bootstrap, o estado Draft daquela preparação e a migração inicial não são etapas de cada PR.
 
 ### P-SC1: dependências antes de credenciais
 
@@ -184,6 +186,8 @@ Os jobs `publish` (incluindo o deploy automático), `verify` e `activate` (inclu
 O instalador recusa credenciais AWS já disponíveis, roda `pip check` e só adiciona o venv ao `GITHUB_PATH` depois do sucesso. Qualquer falha interrompe o job antes de autenticação. As composites `publish-release` e `activate-release` usam esse intérprete e não instalam dependências nem executam `setup-python` após OIDC; no deploy, a mesma instalação serve à publicação e à ativação. O CI cobre a ordem real no YAML, as composites transitivas e recusas com pip real sobre wheels sintéticos locais. O job Backend ainda executa a mesma composite sobre o lock real e importa o runtime instalado no Linux, com apenas `contents: read`, sem credenciais. A verificação de hashes fixa os bytes revisados; atualizar versões exige revisar e atualizar os hashes junto do lock.
 
 ## Primeira publicação: migração da C7.3
+
+**Etapa única já concluída.** A sequência abaixo preserva a referência da migração do layout plano para releases versionadas; não é um procedimento de atualização do portal atual, que já serve uma release moderna. Não repetir sonda, publicação ou ativação da baseline como parte de um merge normal.
 
 1. `prepare`, source `baseline`: conferir o id `1daab314413e-59ca26f6e38c`, a equivalência com os 30 arquivos publicados e o Chromium.
 2. `verify`: conferir as claims reais e decidir sobre `trusted_job_workflow_ref` num apply revisado (V1). O `event_name` do deploy automático é `workflow_run`, e a trust não o restringe.
@@ -194,7 +198,7 @@ O instalador recusa credenciais AWS já disponíveis, roda `pip check` e só adi
    - `index.html` intacto.
 4. `deploy`, source `baseline`. Ou, em duas execuções, `publish` com source `baseline` e depois `activate` com `release_id=1daab314413e-59ca26f6e38c` e `expected_active_release=legacy`. A partir do legado só a baseline é aceita, e só se o `index.html` publicado for o da C7.3.
 5. Conferir o portal.
-6. Daí em diante, todo push na `main` publica a `main`. A primeira publicação da `main` leva o redesign. Para publicar sem esperar o próximo push: `deploy` com source `main`, ou *Re-run all jobs* no último *Deploy do frontend*, se o commit dele ainda for o HEAD.
+6. Após a migração, todo push na `main` com CI verde e gates satisfeitos publica a `main`. A primeira publicação moderna substituiu a baseline. Uma operação manual atual com `source=main` deve seguir a [aprovação do pacote](#aprovação-do-pacote-nas-publicações-manuais-da-main); um re-run automático exige que o commit da execução ainda seja o HEAD.
 
 ## Rollback
 
@@ -233,7 +237,7 @@ Acompanhe em Actions → *Deploy do frontend*: uma execução por CI concluído 
   - reativar a mesma release, que refaz só a invalidação e o smoke;
   - fazer o rollback indicado no registro.
 
-Falha transitória com o commit ainda no HEAD: *Re-run failed jobs*. O gate e as revalidações rodam de novo, e a publicação reconhece objetos idênticos.
+Falha transitória com o commit ainda no HEAD: depois de conferir o estado real da tentativa anterior, pode-se usar *Re-run failed jobs*. Essa opção repete os jobs falhos e seus dependentes, não os jobs já aprovados ([GitHub Docs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)). O gate só roda novamente se estiver incluído na reexecução; os jobs reexecutados refazem suas próprias validações de environment/HEAD e a publicação reconhece objetos idênticos. O kill switch é lido no gate do repositório: colocá-lo em `false` não cancela jobs que já passaram por ele nem garante que esse gate será repetido em um re-run parcial.
 
 Verificação manual no CloudFront:
 - `curl -sI https://<domínio>/` deve trazer `cache-control: no-cache`;
@@ -246,7 +250,7 @@ O frontend é publicado automaticamente; o backend (Terraform em `infra/terrafor
 
 ## O que a pipeline nunca faz
 
-- Publicar sem o CI verde de um push na `main` deste repositório, fora da `main`, a partir de PR ou fork, ou com o kill switch desligado.
+- Publicar sem o CI verde de um push na `main` deste repositório, fora da `main`, a partir de PR ou fork, ou sem aprovação do kill switch no gate.
 - Publicar no manual sem o SHA confirmado.
 - Ativar no `publish` manual: só o `deploy` ativa, e só a release que acabou de publicar, para frente.
 - Usar chaves AWS permanentes.

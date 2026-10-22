@@ -6,6 +6,7 @@ originais contra código, testes, histórico Git e relatórios existentes:
 **18 concluídos, 1 parcial e 2 pendentes**.
 
 Os 18 documentos dessa revisão estão em `docs/todo/concluido/`. Em 21/10/2026, os TODOs 23, 24 e 25 também foram encerrados, totalizando 21 documentos numerados concluídos; os demais ficam em `docs/todo/`.
+Em **22/10/2026 (Brasília)**, o TODO 22 teve a integração/publicação confirmada e foi arquivado, totalizando **22 documentos numerados concluídos**.
 Os IDs foram preservados. O [backlog ativo](../README.md) mantém
 os itens que ainda precisam de decisão ou trabalho.
 
@@ -14,6 +15,12 @@ no repositório. Não significa uma certificação funcional universal de produ�
 A revisão original não consultou AWS, Canvas nem contas de alunos; as conferências
 posteriores de publicação estão identificadas nos documentos individuais, com
 suas fontes e limitações. Não houve novo deploy nesta atualização documental.
+
+## Encerramento documental adicional — 22/10/2026 (Brasília)
+
+| ID | Escopo integrado | Evidência de integração/publicação |
+| --- | --- | --- |
+| [22 — OpenAPI modular e pipeline de contrato](22-openapi-modular-e-pipeline-de-contrato.md) | Fontes por domínio, bundle determinístico versionado, check no CI e contratos dos consumidores, sem mudança semântica da API | [PR #13](https://github.com/alric-corp/escola-da-nuvem-portal/pull/13) integrado em `c62f924`; [CI do PR 4/4](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39689826762), [CI da main](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39692747676) e [deploy automático](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39694238148) aprovados. AS-IS de 21/10/2026 conferiu a release `c62f924033b6-b17c56bb10be` e o hash bruto esperado do OpenAPI. Histórico/limites preservados; não substitui QA autenticado ou comprovação da coleta Canvas. |
 
 ## Encerramento adicional — 21/10/2026
 

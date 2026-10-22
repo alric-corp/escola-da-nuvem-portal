@@ -7,7 +7,7 @@ Descrição do funcionamento atual do portal Escola da Nuvem · AWS re/Start (`f
 | Documento | Conteúdo |
 | --- | --- |
 | [jornada-aluno.md](jornada-aluno.md) | Do primeiro acesso à consulta de notas e histórico |
-| [jornada-instrutor.md](jornada-instrutor.md) | Acesso, rotina semanal de publicação, foco da turma e lembretes |
+| [jornada-instrutor.md](jornada-instrutor.md) | Acesso, sincronização/importação de notas, foco da turma e lembretes |
 | [jornada-admin.md](jornada-admin.md) | Criação de turmas, aprovação de instrutores e operações manuais |
 | [regras-de-notas.md](regras-de-notas.md) | Importação do CSV, cálculo de médias, situação e revisão |
 | [canvas-materiais-complementares.md](canvas-materiais-complementares.md) | Materiais complementares do curso 4413 (BRSA0257), fora do gradebook |
@@ -25,8 +25,8 @@ Ficam nos diretórios de cada componente:
 
 - [frontend/README.md](../frontend/README.md): execução local, demonstração e testes do frontend.
 - [tests/README.md](../tests/README.md): índice das suítes, comandos, contratos e mutações.
-- [infra/README.md](../infra/README.md) e [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md): implantação.
-- [infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md): releases do frontend pelo GitHub Actions (deploy automático depois do CI verde na `main`, operações manuais e rollback; ainda não ativa).
+- [infra/README.md](../infra/README.md): implantação separada de backend/infraestrutura. [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md) preserva o histórico datado de implantações, não o procedimento vigente.
+- [infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md): releases do frontend pelo GitHub Actions (pipeline ativa: CI verde da main, publicação/ativação automática, operações manuais e rollback).
 - [infra/SES.md](../infra/SES.md): e-mail e lembretes.
 
 ## Backlog
