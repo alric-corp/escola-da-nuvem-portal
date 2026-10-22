@@ -1,4 +1,4 @@
-import { badge, date, demo, e, errorPanel, heading, metric, percent, plural } from "../ui.js";
+import { badge, date, demo, e, errorPanel, heading, metric, percent, plural, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
 import { activityCard, activityGroups } from "./student.js";
@@ -50,7 +50,7 @@ export function pendingPage() {
     p ? `Pendências de ${e(p.student.name)}` : "Pendências do aluno",
     "Pendências, notas, módulos e histórico do aluno na última publicação.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
-  );
+  ) + (p?.publishedAt || p?.history?.some((h) => h.publishedAt) ? `<p class="small">${timeZoneLabel}.</p>` : "");
   if (state.pendingError) return title + errorPanel(state.pendingError, "retry-pending");
   if (!p)
     return `${title}<section class="panel" role="status">Carregando pendências…</section>`;
@@ -166,7 +166,7 @@ export function batchPage(view = {}) {
     "Lembretes em lote",
     "Revise a lista e a prévia antes de enviar. Cada aluno recebe uma mensagem individual, com suas próprias pendências.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
-  )}${html}</div>`;
+  )}<p class="small">${timeZoneLabel}.</p>${html}</div>`;
   if (state.batchError) return page(errorPanel(state.batchError, "retry-batch-preview"));
   if (state.batchResults) return page(batchResult(state.batchResults));
   const p = state.batchPreview;

@@ -1,4 +1,4 @@
-import { canvasSyncHours, current, e, heading, labels, nextCanvasSync, percent, percentStudent, plural, teacher, updateInfo } from "../ui.js";
+import { canvasSyncHours, current, e, formatOperationalDate, heading, instant, labels, nextCanvasSync, percent, percentStudent, plural, teacher, timeZoneLabel, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 
 export function historyPage(view = {}) {
@@ -17,11 +17,10 @@ export function teacherPublicationsState(html, titled = false) {
   return `<div class="teacher-publications">${titled ? publicationsHeading() : ""}${html}</div>`;
 }
 
-const publicationsHeading = () => heading("", "Publicações da turma", "Confira o que mudou em relação à versão que estava publicada antes de cada atualização.");
+const publicationsHeading = () => `${heading("", "Publicações da turma", "Confira o que mudou em relação à versão que estava publicada antes de cada atualização.")}<p class="small">${timeZoneLabel}.</p>`;
 // A sincronização publica com este usuário (backend/portal.py::SYNC_USER); o envio manual, com o de quem publicou.
 const SYNC_USER = "system:canvas-sync";
-const instant = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? null : d; };
-const clock = (d) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const clock = (d) => formatOperationalDate(d, "clock");
 const dateTime = (iso) => { const d = instant(iso); return d ? `${longDate(d)}, ${clock(d)}` : "data não informada"; };
 const tally = (v) => (Array.isArray(v) ? v.length : Number(v) || 0);
 // A atualização automática só publica em turma com autoSync e curso do Canvas (backend/canvas_sync.py::run).
@@ -72,11 +71,11 @@ function syncInfo(r) {
   return `<div class="tpub-sync">${body}<button type="button" class="text-link tpub-refresh" data-action="refresh-report">Consultar atualização</button></div>`;
 }
 
-// Histórico por mês (no fuso do navegador, como as datas), na ordem do contrato: mais recentes primeiro.
+// Histórico por mês no mesmo horário de Brasília das datas, na ordem do contrato: mais recentes primeiro.
 function publicationHistory(r, rows, view) {
   const byId = new Map(rows.map((p) => [p.id, p])), groups = [];
   rows.forEach((p, i) => {
-    const d = instant(p.publishedAt), key = d ? `${d.getFullYear()}-${d.getMonth()}` : "";
+    const d = instant(p.publishedAt), key = d ? formatOperationalDate(d, "monthKey") : "";
     let group = groups.find((g) => g.key === key);
     if (!group) groups.push((group = { key, title: d ? monthTitle(d) : "Sem data", items: [] }));
     group.items.push(entry(p, rows[i + 1], r, byId, view));
@@ -86,7 +85,7 @@ function publicationHistory(r, rows, view) {
     .map((g) => `<div class="tpub-month"><h3 class="tpub-month-title">${g.title} <span>${plural(g.items.length, "publicação", "publicações")}</span></h3><ol class="tpub-list" role="list">${g.items.join("")}</ol></div>`).join("")}</section>`;
 }
 
-const monthTitle = (d) => { const t = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }); return t[0].toUpperCase() + t.slice(1); };
+const monthTitle = (d) => { const t = formatOperationalDate(d, "monthYear"); return t[0].toUpperCase() + t.slice(1); };
 
 function entry(p, next, r, byId, view) {
   const d = instant(p.publishedAt), current = p.id === r.publication.id;
@@ -95,7 +94,7 @@ function entry(p, next, r, byId, view) {
   const failed = view.error?.publicationId === p.id ? view.error : null;
   const described = view.restoring || failed ? ' aria-describedby="tpub-restore-status"' : "";
   return `<li class="tpub-entry${current ? " is-current" : ""}${newer ? " is-newer" : ""}" id="tpub-${e(p.id)}" tabindex="-1"><div class="tpub-when"><h4>${d
-    ? `<span class="sr-only">Publicação de </span><time datetime="${e(p.publishedAt)}">${dayMonth(d)}</time><span class="sr-only"> de ${d.getFullYear()},</span> <span class="tpub-time">${weekdayTime(d)}</span>`
+    ? `<span class="sr-only">Publicação de </span><time datetime="${e(p.publishedAt)}">${dayMonth(d)}</time><span class="sr-only"> de ${formatOperationalDate(d, "year")},</span> <span class="tpub-time">${weekdayTime(d)}</span>`
     : "Data não informada"}</h4>${status ? `<p class="tpub-status ${current ? "is-current" : "is-newer"}">${status}</p>` : ""}</div>
   <p class="tpub-origin">${origin(p)}</p><div class="tpub-changes">${changes(p)}${p.changes ? baseNote(p, next, byId) : ""}</div>${current ? ""
     : `<div class="tpub-action"><button type="button" class="text-link tpub-restore" data-restore="${e(p.id)}" aria-label="Restaurar a publicação de ${dateTime(p.publishedAt)}"${view.restoring ? " disabled" : ""}${described}>Restaurar</button></div>`}${view.restoring === p.id
@@ -177,7 +176,7 @@ export function studentHistoryState(html, titled = false) {
   return `<div class="student-history">${titled ? historyHeading() : ""}${html}</div>`;
 }
 
-const historyHeading = () => heading("", "Meu histórico", "Confira o que mudou em relação à versão que estava publicada antes de cada atualização.");
+const historyHeading = () => `${heading("", "Meu histórico", "Confira o que mudou em relação à versão que estava publicada antes de cada atualização.")}<p class="small">${timeZoneLabel}.</p>`;
 
 function studentHistoryPage() {
   const rows = state.report?.history || [];
@@ -189,11 +188,11 @@ function studentHistoryPage() {
     : '<p class="history-empty">As atualizações publicadas aparecerão aqui.</p>'}`);
 }
 
-// Datas por extenso no fuso do navegador, como o resto do portal: sem dd/mm ambíguo e com a hora, que separa duas
+// Datas por extenso no horário de Brasília, como o resto do portal: sem dd/mm ambíguo e com a hora, que separa duas
 // publicações do mesmo dia (o Canvas é verificado às 6h e às 18h).
-const longDate = (d) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-const dayMonth = (d) => d.toLocaleDateString("pt-BR", { day: "numeric", month: "long" });
-const weekdayTime = (d) => d.toLocaleString("pt-BR", { weekday: "long", hour: "2-digit", minute: "2-digit" });
+const longDate = (d) => formatOperationalDate(d, "longDate");
+const dayMonth = (d) => formatOperationalDate(d, "dayMonth");
+const weekdayTime = (d) => formatOperationalDate(d, "weekdayTime");
 
 function historyContext(rows) {
   return `<p class="history-context">${plural(rows.length, "publicação", "publicações")}${period(rows)}. Variações das médias em pontos percentuais (p.p.).</p>`;
@@ -201,14 +200,14 @@ function historyContext(rows) {
 
 // De quando a quando: ", em 9 de outubro de 2026", ", de 28 de agosto a 9 de outubro de 2026" (anos diferentes: os dois).
 function period(rows) {
-  const dates = rows.map((r) => new Date(r.publishedAt)).filter((d) => !Number.isNaN(d.getTime())).sort((a, b) => a - b);
+  const dates = rows.map((r) => instant(r.publishedAt)).filter(Boolean).sort((a, b) => a - b);
   const first = dates[0], last = dates.at(-1);
   return !first ? "" : longDate(first) === longDate(last) ? `, em ${longDate(last)}`
-    : `, de ${first.getFullYear() === last.getFullYear() ? dayMonth(first) : longDate(first)} a ${longDate(last)}`;
+    : `, de ${formatOperationalDate(first, "year") === formatOperationalDate(last, "year") ? dayMonth(first) : longDate(first)} a ${longDate(last)}`;
 }
 
 function publication(r, i, inForce) {
-  const when = new Date(r.publishedAt), valid = !Number.isNaN(when.getTime());
+  const when = instant(r.publishedAt), valid = !!when;
   const c = r.changes;
   const status = r.current
     ? `Em vigor${state.report.updateKind === "restore" ? " · versão restaurada" : ""}`

@@ -4303,14 +4303,14 @@ details ul, .onboarding ol { padding-left: 24px; }
 /* =========================================================
    40. Guia do curso — conteúdo institucional, sem dependência de notas
    ========================================================= */
-.course-guide { max-width: 72rem; min-width: 0; font-family: var(--font-ui); }
+.course-guide { max-width: 72rem; min-width: 0; font-family: var(--font-ui); container: course-guide / inline-size; }
 .course-guide .cg-panel[hidden] { display: none; }
 .course-guide :is(p, li, dd) { line-height: 1.65; overflow-wrap: anywhere; }
 .course-guide h2 { margin: 0 0 var(--space-3); font-size: 1.125rem; letter-spacing: -0.015em; line-height: 1.4; overflow-wrap: anywhere; }
 .course-guide p { margin: 0 0 var(--space-3); }
 .course-guide .small { font-size: 0.875rem; }
 .course-guide :is(a, button, summary, [role="tabpanel"]):focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
-.course-guide .cg-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 var(--space-5); border-bottom: 1px solid var(--color-line); }
+.course-guide .cg-tabs { --guide-tabs-orientation: horizontal; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 var(--space-5); border-bottom: 1px solid var(--color-line); }
 .course-guide .cg-tabs button { min-width: 0; min-height: 52px; padding: var(--space-3); margin-bottom: -1px; border: 0; border-bottom: 3px solid transparent; border-radius: var(--radius-sm) var(--radius-sm) 0 0; background: none; color: var(--color-text-muted); font: inherit; font-size: 0.9375rem; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 .course-guide .cg-tabs button:hover { background: color-mix(in srgb, var(--color-action) 7%, transparent); color: var(--color-text); }
 .course-guide .cg-tabs button[aria-selected="true"] { border-bottom-color: var(--color-action); background: color-mix(in srgb, var(--color-action) 9%, transparent); color: var(--color-text); }
@@ -4351,4 +4351,10 @@ details ul, .onboarding ol { padding-left: 24px; }
 @media (max-width: 600px) {
   .course-guide .cg-tabs button { padding: var(--space-3) var(--space-2); font-size: 0.875rem; }
   .course-guide .cg-requirements { grid-template-columns: minmax(0, 1fr); }
+}
+/* A largura em em acompanha a ampliação do texto, sem encolher a fonte ou partir palavras. */
+@container course-guide (max-width: 18em) {
+  .course-guide .cg-tabs { --guide-tabs-orientation: vertical; grid-template-columns: minmax(0, 1fr); border-bottom: 0; }
+  .course-guide .cg-tabs button { min-height: 44px; padding: var(--space-1); margin-bottom: 0; border-left: 3px solid transparent; border-bottom: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; text-align: left; overflow-wrap: normal; }
+  .course-guide .cg-tabs button[aria-selected="true"] { border-left-color: var(--color-action); }
 }

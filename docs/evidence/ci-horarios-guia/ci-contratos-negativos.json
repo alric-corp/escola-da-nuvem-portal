@@ -1,0 +1,52 @@
+[
+  {
+    "case": "baseline-sem-ajustes",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "job-sem-timeout",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "dependencias-sem-limite",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "download-sem-limite",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "falha-download-ocultada",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "download-continue-on-error",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "backend-volta-python312",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "instalador-sem-vinculo-interprete",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "versao-nao-registrada",
+    "exit_code": 1,
+    "detected": true
+  },
+  {
+    "case": "check-renomeado",
+    "exit_code": 1,
+    "detected": true
+  }
+]

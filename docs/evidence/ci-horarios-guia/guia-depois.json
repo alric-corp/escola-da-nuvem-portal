@@ -1,0 +1,672 @@
+{
+  "chromium": "153.0.8010.12",
+  "technique": "CDP Page.setFontSizes: standard16/24/32px; fixed13/20/26px; deviceScaleFactor inalterado",
+  "measurements": [
+    {
+      "viewport": 1440,
+      "textPercent": 100,
+      "height": 52,
+      "width": 1100.125,
+      "orientation": "horizontal",
+      "overflow": 0,
+      "rootFont": 17,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 15.9375,
+          "width": 366.703125,
+          "height": 52,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 15.9375,
+          "width": 366.703125,
+          "height": 52,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 15.9375,
+          "width": 366.71875,
+          "height": 52,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 1440,
+      "textPercent": 150,
+      "height": 70.5,
+      "width": 978,
+      "orientation": "horizontal",
+      "overflow": 0,
+      "rootFont": 24,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 22.5,
+          "width": 326,
+          "height": 70.5,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 22.5,
+          "width": 326,
+          "height": 70.5,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 22.5,
+          "width": 326,
+          "height": 70.5,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 1440,
+      "textPercent": 200,
+      "height": 135,
+      "width": 824,
+      "orientation": "horizontal",
+      "overflow": 0,
+      "rootFont": 32,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 30,
+          "width": 274.65625,
+          "height": 135,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 30,
+          "width": 274.671875,
+          "height": 135,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 30,
+          "width": 274.65625,
+          "height": 135,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 390,
+      "textPercent": 100,
+      "height": 66.1875,
+      "width": 360,
+      "orientation": "horizontal",
+      "overflow": 0,
+      "rootFont": 16,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 14,
+          "width": 120,
+          "height": 66.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 14,
+          "width": 120,
+          "height": 66.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 14,
+          "width": 120,
+          "height": 66.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 390,
+      "textPercent": 150,
+      "height": 132,
+      "width": 360,
+      "orientation": "vertical",
+      "overflow": 0,
+      "rootFont": 24,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 21,
+          "width": 360,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 21,
+          "width": 360,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 21,
+          "width": 360,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 390,
+      "textPercent": 200,
+      "height": 165.5625,
+      "width": 360,
+      "orientation": "vertical",
+      "overflow": 0,
+      "rootFont": 32,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 28,
+          "width": 360,
+          "height": 55.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 28,
+          "width": 360,
+          "height": 55.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 28,
+          "width": 360,
+          "height": 55.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 320,
+      "textPercent": 100,
+      "height": 85.78125,
+      "width": 290,
+      "orientation": "horizontal",
+      "overflow": 0,
+      "rootFont": 16,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 14,
+          "width": 96.65625,
+          "height": 85.78125,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 14,
+          "width": 96.671875,
+          "height": 85.78125,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 2
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 14,
+          "width": 96.65625,
+          "height": 85.78125,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 320,
+      "textPercent": 150,
+      "height": 132,
+      "width": 290,
+      "orientation": "vertical",
+      "overflow": 0,
+      "rootFont": 24,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 21,
+          "width": 290,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 21,
+          "width": 290,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 21,
+          "width": 290,
+          "height": 44,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "viewport": 320,
+      "textPercent": 200,
+      "height": 204.75,
+      "width": 290,
+      "orientation": "vertical",
+      "overflow": 0,
+      "rootFont": 32,
+      "buttons": [
+        {
+          "text": "Regras do curso",
+          "font": 28,
+          "width": 290,
+          "height": 55.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Regras",
+              "fragments": 1
+            },
+            {
+              "text": "do",
+              "fragments": 1
+            },
+            {
+              "text": "curso",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Plantões e comunidade",
+          "font": 28,
+          "width": 290,
+          "height": 94.375,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Plantões",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "comunidade",
+              "fragments": 1
+            }
+          ]
+        },
+        {
+          "text": "Faltas e solicitações",
+          "font": 28,
+          "width": 290,
+          "height": 55.1875,
+          "clipped": false,
+          "words": [
+            {
+              "text": "Faltas",
+              "fragments": 1
+            },
+            {
+              "text": "e",
+              "fragments": 1
+            },
+            {
+              "text": "solicitações",
+              "fragments": 1
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

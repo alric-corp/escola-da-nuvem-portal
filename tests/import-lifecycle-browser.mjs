@@ -361,7 +361,7 @@ try {
     await tab.getByRole("button", { name: /Publicar atualização/ }).click();
     await notices(tab).getByText("Atualização publicada. Os alunos já podem consultar.", { exact: true }).waitFor();
     await tab.getByRole("heading", { name: `Painel da ${A}`, exact: true }).waitFor();
-    const inForce = new Date(report.publication.publishedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    const inForce = new Date(report.publication.publishedAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
     assert.equal(log.dialogs.at(-1).message, `Publicar as notas para 1 aluno da ${A}?\n\nArquivo: notas-a.csv\n\nA publicação substitui a versão em vigor, de ${inForce}. Os alunos passam a ver as notas deste arquivo.`);
     assert.deepEqual(calls("POST", `/cohorts/${A}/publish`).map((c) => c.body), [{ draftId: `draft-${A}-1`, acknowledgeRemoved: false }]);
     assert.equal(calls("GET", "/me").length, meBefore + 1);

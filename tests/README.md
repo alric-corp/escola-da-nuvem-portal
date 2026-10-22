@@ -7,10 +7,17 @@ Os comandos rodam a partir da raiz do repositório.
 ## Preparação
 
 ```sh
-pip install -r requirements-dev.txt   # boto3 e Moto
+python3.13 -m venv .venv
+. .venv/bin/activate
+python --version
+python -m pip install -r requirements-dev.txt   # boto3 e Moto
 npm ci                                 # Playwright, na versão fixada em package.json
 npx playwright install chromium
 ```
+
+O check **Backend (Python + Moto)** executa backend, integração e suas duas mutações em Python 3.13, como o runtime declarado das Lambdas. As dependências de teste continuam fixadas em `requirements-dev.txt`. As ferramentas de deploy usam o ambiente isolado Python 3.12 da composite `setup-deploy-python`, com lock e hashes próprios; as mutações de release no job Frontend também preservam seu Python 3.12. Esses contextos não foram migrados. Testar no runner não certifica todo o ambiente AWS/ARM64.
+
+No job **Frontend (Node + Playwright)**, o limite total é de 30 minutos. Depois de `npm ci`, a instalação das dependências do sistema (`npx playwright install-deps chromium`) e o download do navegador (`npx playwright install chromium`) têm etapas e limites de cinco minutos separados. Uma falha ou timeout impede as suítes seguintes; não há redução de cobertura ou dispensa de falhas.
 
 ## Comandos
 
@@ -41,7 +48,7 @@ As suítes de navegador medem layout com as fontes do sistema. A evidência verd
 | Regras puras | `canvas-links.mjs` (links do Canvas anotados pelo backend), `student-journey.mjs` (módulos, revisão e próximos passos), `participation.mjs` (participação na turma, C7.2.3) |
 | Concorrência e lifecycle | `stale-responses.mjs` (C7.4, respostas assíncronas obsoletas), `feedback-lifecycle.mjs` (C7.5, Feedback e rascunhos de importação) |
 | Telas renderizadas como texto | `student-feedback.mjs`, `student-feedback-outcomes.mjs`, `teacher-home.mjs`, `teacher-publications.mjs`, `teacher-import.mjs`, `teacher-reminders.mjs`, `admin-access-page.mjs`, `admin-feedback-page.mjs`, `c1-reliability.mjs`, `c2-robustness.mjs` |
-| Pipeline de deploy do frontend | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1; ruleset; P-SC1: instalação isolada com hashes antes do OIDC, sem reinstalação depois das credenciais) |
+| Pipeline de deploy do frontend e configuração do CI | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1; ruleset; timeouts e instalação do Chromium; Python 3.13 dos testes e Python 3.12 isolado de deploy; P-SC1: instalação com hashes antes do OIDC, sem reinstalação depois das credenciais) |
 
 ## Navegador (`npm run test:browser`)
 

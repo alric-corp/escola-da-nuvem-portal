@@ -220,6 +220,7 @@ function renderTeacherStudents() {
 
 function render() {
   syncReadContext();
+  guideTabsObserver?.disconnect();
   if (!state.me) return publicPage();
   if (state.classReport) return renderClassReport();
   const focused = document.activeElement;
@@ -272,6 +273,9 @@ function render() {
   messageObserver?.disconnect();
   const messages = $(".student-feedback #my-feedback-heading");
   if (messages) messageObserver?.observe(messages);
+  const guide = $(".cg-tabs");
+  if (guide) guideTabsObserver?.observe(guide);
+  syncGuideTabs();
 }
 
 // Sem sessão: a landing, e nela a confirmação de cadastro. Fechada, o botão que abre o fluxo fica logo depois de
@@ -279,6 +283,7 @@ function render() {
 // cabeçalho, arte e rodapé continuam os da landing.
 function publicPage() {
   syncReadContext();
+  guideTabsObserver?.disconnect();
   const s = state.signupConfirmation;
   const focused = document.activeElement, focusId = focused?.id;
   const oldCodeField = $("#signup-code"), typed = oldCodeField?.value, caret = oldCodeField?.selectionStart;
@@ -1201,6 +1206,13 @@ function signOut() {
 }
 
 // Abas locais ao guia: não interferem nos parâmetros do callback OAuth nem criam uma nova rota.
+function syncGuideTabs() {
+  const tabs = $(".cg-tabs");
+  if (tabs) tabs.setAttribute("aria-orientation", getComputedStyle(tabs).getPropertyValue("--guide-tabs-orientation").trim() || "horizontal");
+}
+// Só atualiza a semântica após reflow; não recria abas, seleção nem foco no redimensionamento.
+const guideTabsObserver = typeof ResizeObserver === "function" ? new ResizeObserver(syncGuideTabs) : null;
+window.addEventListener("resize", syncGuideTabs);
 function selectGuideTab(tab) {
   if (!state.me || state.view !== "course-guide" || !guideTabs.includes(tab)) return;
   state.guideTab = tab;
@@ -1211,7 +1223,8 @@ document.addEventListener("keydown", (event) => {
   const tab = event.target.closest("[data-guide-tab]");
   if (!tab || !state.me || state.view !== "course-guide" || !guideTabs.includes(tab.dataset.guideTab)) return;
   const index = guideTabs.indexOf(tab.dataset.guideTab);
-  const next = { ArrowRight: (index + 1) % guideTabs.length, ArrowLeft: (index + guideTabs.length - 1) % guideTabs.length,
+  const vertical = tab.closest('[role="tablist"]').getAttribute("aria-orientation") === "vertical";
+  const next = { [vertical ? "ArrowDown" : "ArrowRight"]: (index + 1) % guideTabs.length, [vertical ? "ArrowUp" : "ArrowLeft"]: (index + guideTabs.length - 1) % guideTabs.length,
     Home: 0, End: guideTabs.length - 1 }[event.key];
   if (next == null) return;
   event.preventDefault();

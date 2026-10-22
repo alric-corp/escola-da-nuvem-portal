@@ -51,8 +51,8 @@ async function withStateAsync(values, fn) {
 const page = (values = {}, view = {}) => withState(values, () => adminFeedbackPage(view));
 const strip = (html) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/ ([,.:;?)…])/g, "$1").replace(/\( /g, "(").trim();
 const count = (html, needle) => html.split(needle).length - 1;
-// A hora como o navegador a escreve no fuso em que o teste roda (local ou UTC): só a data é fixa.
-const time = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+// O carimbo operacional permanece em Brasília mesmo se o processo estiver em outro fuso.
+const time = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
 // O elemento inteiro (com os filhos) que tem a classe, do começo da tag até o fechamento correspondente.
 function block(html, cls) {
   const at = html.search(new RegExp(`<(section|div|p|li|ul|dl|h2|h3)\\b[^>]*class="(?:[^"]*\\s)?${cls}(?:\\s[^"]*)?"`));

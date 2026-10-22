@@ -1,0 +1,19 @@
+{
+  "presentation": [
+    {
+      "timezone": "UTC",
+      "instant": "30/09/2026, 22:30",
+      "civil": "01/10/2026"
+    },
+    {
+      "timezone": "America/Sao_Paulo",
+      "instant": "30/09/2026, 22:30",
+      "civil": "01/10/2026"
+    },
+    {
+      "timezone": "Asia/Tokyo",
+      "instant": "30/09/2026, 22:30",
+      "civil": "01/10/2026"
+    }
+  ]
+}

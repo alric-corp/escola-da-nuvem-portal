@@ -37,7 +37,7 @@ export function courseGuidePage() {
   const selected = content.tabs.some((tab) => tab.id === state.guideTab) ? state.guideTab : "rules";
   const panels = { rules: rules(), support: support(), requests: requests() };
   return `<div class="course-guide">${heading("", content.title, content.description)}
-    <div class="cg-tabs" role="tablist" aria-label="Seções do Guia do curso">${content.tabs.map((tab) => `<button type="button" role="tab" id="guide-tab-${tab.id}" data-guide-tab="${tab.id}" aria-controls="guide-panel-${tab.id}" aria-selected="${selected === tab.id}" tabindex="${selected === tab.id ? "0" : "-1"}">${e(tab.label)}</button>`).join("")}</div>
+    <div class="cg-tabs" role="tablist" aria-label="Seções do Guia do curso" aria-orientation="horizontal">${content.tabs.map((tab) => `<button type="button" role="tab" id="guide-tab-${tab.id}" data-guide-tab="${tab.id}" aria-controls="guide-panel-${tab.id}" aria-selected="${selected === tab.id}" tabindex="${selected === tab.id ? "0" : "-1"}">${e(tab.label)}</button>`).join("")}</div>
     ${content.tabs.map((tab) => `<section class="cg-panel" role="tabpanel" id="guide-panel-${tab.id}" aria-labelledby="guide-tab-${tab.id}" tabindex="0"${selected === tab.id ? "" : " hidden"}>${panels[tab.id]}</section>`).join("")}
   </div>`;
 }

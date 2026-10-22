@@ -1,4 +1,4 @@
-import { current, e, heading, plural } from "../ui.js";
+import { current, e, formatOperationalDate, heading, plural, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 
 // Turmas e acessos (Expansão 8): o escopo dito — as solicitações e a criação de turma valem para o portal inteiro; instrutores,
@@ -11,7 +11,7 @@ import { state } from "../state.js";
 // carga escondia os formulários): o redesenho do fim da carga refaz os campos e apagaria o que fosse digitado neles.
 const requestStatus = { pending: ["Aguardando aprovação", "is-attention"], approved: ["Aprovada", "is-ok"], rejected: ["Recusada", "is-off"] };
 const filters = [["pending", "Pendentes"], ["approved", "Aprovadas"], ["rejected", "Recusadas"], ["all", "Todas"]];
-const longDate = (iso) => new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(iso));
+const longDate = (iso) => formatOperationalDate(iso, "longDate");
 const OP = "aa-op-status";
 
 // Ações que mudam algo: paradas durante qualquer operação, com o andamento como motivo (somado às descrições próprias), e
@@ -134,5 +134,5 @@ function createSection(view) {
 const createShortcut = '<a class="text-link aa-create-link" href="#aa-create-title">Criar turma<span class="sr-only"> — ir para o formulário, no fim da página</span></a>';
 
 export function accessPage(view = {}) {
-  return `<div class="admin-access">${heading("", "Turmas e acessos", "Pedidos de acesso de instrutores, quem acompanha cada turma e as contas dos alunos.", createShortcut)}${requestsSection(view)}${cohortSection(view)}${createSection(view)}</div>`;
+  return `<div class="admin-access">${heading("", "Turmas e acessos", "Pedidos de acesso de instrutores, quem acompanha cada turma e as contas dos alunos.", createShortcut)}<p class="small">${timeZoneLabel}.</p>${requestsSection(view)}${cohortSection(view)}${createSection(view)}</div>`;
 }

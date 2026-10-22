@@ -65,6 +65,68 @@ test("governança: checks obrigatórios cobrem todo PR sem credenciais nem aprov
   assert.doesNotMatch(read(".github/workflows/ci.yml"), /secrets\.|id-token|configure-aws-credentials|pull_request_target/);
 });
 
+test("CI: Chromium tem instalação separada e limitada antes das suítes, sem ocultar falhas", () => {
+  const ci = yaml(".github/workflows/ci.yml");
+  assert.deepEqual(Object.fromEntries(Object.entries(ci.jobs).map(([id, job]) => [id, job.name])), {
+    python: "Backend (Python + Moto)",
+    node: "Frontend (Node + Playwright)",
+    terraform: "Terraform (fmt, validate, test)",
+    "cicd-bootstrap": "Bootstrap do deploy do frontend (fmt, validate, test)",
+  });
+  const frontend = ci.jobs.node;
+  assert.equal(frontend["runs-on"], "ubuntu-24.04");
+  assert.equal(frontend["timeout-minutes"], 30);
+  assert.equal(frontend.steps.find((step) => usesOf(step) === "actions/setup-node").with["node-version"], "22");
+  const installs = frontend.steps.filter((step) => /npx playwright install/.test(step.run || ""));
+  assert.deepEqual(installs, [
+    { name: "Instala dependências do sistema para Chromium", "timeout-minutes": 5, run: "npx playwright install-deps chromium" },
+    { name: "Baixa o Chromium do Playwright", "timeout-minutes": 5, run: "npx playwright install chromium" },
+  ]);
+  const index = (step) => frontend.steps.indexOf(step);
+  const npm = frontend.steps.findIndex((step) => step.run === "npm ci");
+  const browser = frontend.steps.findIndex((step) => step.run === "npm run test:browser");
+  assert.ok(npm >= 0 && npm < index(installs[0]));
+  assert.ok(index(installs[0]) + 1 === index(installs[1]) && index(installs[1]) < browser);
+  // Os comandos exatos acima não têm || true; sem condições/dispensa, o GitHub só avança após sucesso.
+  for (const step of frontend.steps.slice(index(installs[0]))) {
+    assert.equal(step.if, undefined, step.name || step.run || step.uses);
+    assert.equal(step["continue-on-error"], undefined, step.name || step.run || step.uses);
+  }
+  assert.equal(frontend["continue-on-error"], undefined);
+  assert.equal(frontend.strategy, undefined, "a entrega não introduz sharding ou matriz");
+  assert.equal(frontend.steps.filter((step) => step.run === "npm test").length, 1);
+  assert.equal(frontend.steps.filter((step) => step.run === "npm run test:browser").length, 1);
+  for (const script of ["stale_mutations.py", "lifecycle_mutations.py", "release_mutations.py"])
+    assert.ok(frontend.steps.some((step) => (step.run || "").endsWith(`tests/contracts/${script}`)), script);
+});
+
+test("CI: backend e Moto usam Python 3.13; o runtime isolado de deploy continua separado", () => {
+  const ci = yaml(".github/workflows/ci.yml");
+  const backend = ci.jobs.python.steps;
+  const interpreter = backend.findIndex((step) => usesOf(step) === "actions/setup-python");
+  assert.equal(backend[interpreter].with["python-version"], "3.13");
+  const version = backend.findIndex((step) => step.run === "python --version");
+  const install = backend.findIndex((step) => step.run === "python -m pip install -r requirements-dev.txt");
+  assert.ok(interpreter < version && version < install);
+  assert.equal(backend.filter((step) => usesOf(step) === "actions/setup-python").length, 1);
+  const suites = [
+    "python -m unittest discover -s backend", "python -m unittest discover -s tests/integration",
+    "python tests/contracts/claim_mutations.py", "python tests/contracts/manual_recovery_mutations.py",
+  ];
+  const setupDeploy = backend.findIndex((step) => step.uses === "./.github/actions/setup-deploy-python");
+  for (const command of suites) {
+    const index = backend.findIndex((step) => step.run === command);
+    assert.ok(install < index && index < setupDeploy, command);
+  }
+  assert.equal(backend[install].if, undefined);
+  assert.equal(backend[install]["continue-on-error"], undefined);
+  assert.equal(ci.jobs.python.strategy, undefined);
+  assert.equal(actions["setup-deploy-python"].runs.steps[0].with["python-version"], "3.12");
+  assert.equal(ci.jobs.node.steps.find((step) => usesOf(step) === "actions/setup-python").with["python-version"], "3.12",
+    "o intérprete das mutações de release pertence a outro contexto");
+  // As garantias de venv, lock com hashes e instalação anterior ao OIDC são conferidas por P-SC1 abaixo.
+});
+
 test("D1: app.js carrega config.json relativo ao módulo, sem cache e sem ?v=", () => {
   const app = read("frontend/app.js");
   assert.ok(app.includes('fetch(new URL("./config.json", import.meta.url), { cache: "no-store" })'), "D1: config.json relativa ao módulo");

@@ -67,7 +67,7 @@ const contextOf = (html) => {
   return found[0];
 };
 const block = (html, id) => html.match(new RegExp(`<section class="timp-block[^"]*" aria-labelledby="${id}">[\\s\\S]*?</section>`))?.[0] || "";
-const time = (iso) => new Date(iso).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+const time = (iso) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
 test("E6-U1: três etapas na ordem da tarefa; antes da prévia, a 2 e a 3 dizem o que vem nelas; o arquivo escolhido aparece uma vez", () => {
   const empty = page();

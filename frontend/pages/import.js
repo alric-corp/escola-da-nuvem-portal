@@ -1,4 +1,4 @@
-import { current, date, demo, e, heading, icon, labels, nextCanvasSync, percent, plural } from "../ui.js";
+import { current, date, demo, e, heading, icon, labels, nextCanvasSync, percent, plural, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 import { blockedByIntegrity } from "../handlers/import.js";
 
@@ -201,6 +201,7 @@ function results(p) {
 export function importPage(view = {}) {
   const p = state.preview;
   return `<div class="teacher-import">${heading("", `Atualizar notas da ${e(state.code)}`, "Importe, confira e publique. Os alunos verão as notas somente após a publicação.")}
+  <p class="small">${timeZoneLabel}.</p>
   ${context()}
   <ol class="timp-steps" role="list"><li class="timp-step is-file">${fileStep(p, view)}</li><li class="timp-step is-review${p ? "" : " is-waiting"}">${p ? reviewStep(p, view)
     : waiting(2, "Prévia", "timp-review-title", "Depois de conferir o arquivo: integridade, o que muda ao publicar e as atividades liberadas.")}</li><li class="timp-step is-publish${p ? "" : " is-waiting"}">${p ? publishStep(p, view)
