@@ -182,6 +182,8 @@ def _catalog_items(client, course_id, module):
     for entry in entries:
         if not isinstance(entry, dict):
             raise CanvasError("Item do módulo Canvas inválido.")
+        if "published" in entry and type(entry["published"]) is not bool:
+            raise CanvasError("Estado de publicação do item Canvas inválido.")
         item_id = _canvas_id(entry.get("id"))
         if item_id in seen:
             raise CanvasError("Catálogo Canvas incompleto: item repetido.")
@@ -217,6 +219,8 @@ def course_catalog(client, course_id):
         seen.add(module_id)
         if "course_id" in module and _canvas_id(module["course_id"]) != course_id:
             raise CanvasError("Módulo Canvas não pertence ao curso solicitado.")
+        if "published" in module and type(module["published"]) is not bool:
+            raise CanvasError("Estado de publicação do módulo Canvas inválido.")
         if module.get("published") is False:
             continue
         name = module.get("name")

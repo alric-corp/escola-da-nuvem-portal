@@ -105,6 +105,27 @@ class CatalogCompletenessTests(unittest.TestCase):
                 pages = Pages({API + MODULES: ([value], '')})
                 with self.assertRaises(CanvasError): course_catalog(pages.client(), COURSE)
 
+    def test_present_published_is_boolean_for_modules_and_all_items(self):
+        for invalid in (None, "false", "true", 0, 1, [], {}):
+            for location in ("module", "inline", "fallback", "non-assignment"):
+                with self.subTest(published=invalid, location=location):
+                    value=module(published=invalid) if location=="module" else module()
+                    entry=item(type='Page' if location=="non-assignment" else 'Assignment',published=invalid)
+                    if location!="module":value['items']=[entry] if location!="fallback" else None
+                    pages=Pages({API+MODULES:([value],''),API+ITEMS:([entry],'')})
+                    repo=MemoryRepository()
+                    old={'courseId':COURSE,'modules':['anterior'],'items':{'11':{'module':0,'url':item()['html_url']}}}
+                    repo.put('CATALOG#4436','METADATA',old)
+                    with self.assertRaises(CanvasError):
+                        save_catalog(repo,course_catalog(pages.client(),COURSE))
+                    self.assertEqual(repo.get('CATALOG#4436','METADATA'),old)
+
+    def test_omitted_published_preserves_existing_visibility_policy(self):
+        value=module();value.pop('published')
+        pages=Pages({API+MODULES:([value],'')})
+        self.assertIn('11',course_catalog(pages.client(),COURSE)['items'])
+        self.assertEqual(pages.calls,[API+MODULES])
+
     def test_invalid_items_url_is_never_requested_and_does_not_return_candidate(self):
         bad = ['https://other.example.test/api/v1/courses/4436/modules/7/items',
                API + '/courses/99/modules/7/items', API + '/courses/4436/modules/8/items',
