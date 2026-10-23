@@ -57,6 +57,7 @@ async function open(role, width, available = true, text = 1) {
   });
   await page.goto(origin);
   await page.locator(role === "student" ? ".student-activities" : ".teacher-home").waitFor();
+  await page.locator(role === "student" ? "#activity-list .activity-card" : '[data-student-pending="101"]').first().waitFor();
   return { page, errors, calls, close: () => context.close() };
 }
 
