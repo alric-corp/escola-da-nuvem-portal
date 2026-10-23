@@ -40,7 +40,8 @@ const SCRIPTS = readdirSync(new URL("../.github/scripts/", import.meta.url), { w
 test("governança: checks obrigatórios cobrem todo PR sem credenciais nem aprovação humana", () => {
   const ci = yaml(".github/workflows/ci.yml");
   const ruleset = JSON.parse(read(".github/rulesets/main.json"));
-  assert.deepEqual(ci.on, { push: { branches: ["main"] }, pull_request: null });
+  assert.deepEqual(ci.on, { pull_request: { branches: ["main"], types: ["opened", "synchronize", "reopened"] } });
+  assert.deepEqual(ci.concurrency, { group: "ci-pr-${{ github.event.pull_request.number }}", "cancel-in-progress": true });
   assert.deepEqual(ci.permissions, { contents: "read" });
   assert.equal(ruleset.enforcement, "active");
   assert.deepEqual(ruleset.bypass_actors, []);
@@ -134,14 +135,18 @@ test("D1: app.js carrega config.json relativo ao módulo, sem cache e sem ?v=", 
   for (const file of ["frontend/index.html", "frontend/app.js"]) assert.doesNotMatch(read(file), /\?v=/, `${file}: ?v= não resolve o P2`);
 });
 
-test("workflow: gatilhos automático (CI verde na main) e manual, padrão prepare e nenhum input escolhe commit", () => {
-  // Automático: o CI concluído na main (todo push, inclusive merge de PR), sem filtro de caminhos; nada de push direto,
-  // pull_request ou workflow_run de outras branches. O gate exige o CI verde de push neste repositório.
-  assert.deepEqual(Object.keys(workflow.on), ["workflow_run", "workflow_dispatch"]);
-  assert.deepEqual(workflow.on.workflow_run, { workflows: ["CI"], types: ["completed"], branches: ["main"] });
+test("workflow: gatilhos automático (CI aprovado no PR) e manual, padrão prepare e nenhum input escolhe commit", () => {
+  // Push integrado dispara deploy; a aprovação vem do CI do PR e da árvore testada, não de outro CI pós-merge.
+  assert.deepEqual(Object.keys(workflow.on), ["push", "workflow_dispatch"]);
+  assert.deepEqual(workflow.on.push, { branches: ["main"] });
   const ci = yaml(".github/workflows/ci.yml");
-  assert.equal(ci.name, "CI", "o workflow_run segue o CI pelo nome");
-  assert.deepEqual(ci.on.push, { branches: ["main"] }, "o CI roda em todo push na main, sem filtro de caminhos");
+  assert.equal(ci.name, "CI");
+  assert.equal(ci.on.push, undefined, "a suíte completa não se repete no merge");
+  for (const job of Object.values(ci.jobs)) {
+    assert.equal(job.steps[0].uses.split("@")[0], "actions/checkout");
+    assert.equal(job.steps[0].with.ref, "${{ github.sha }}");
+    assert.deepEqual(job.steps[1], { name: "Verifica checkout testado ${{ github.sha }} do PR ${{ github.event.pull_request.number }}", run: 'test "$(git rev-parse HEAD)" = "$GITHUB_SHA"' });
+  }
   const inputs = workflow.on.workflow_dispatch.inputs;
   assert.deepEqual(inputs.operation.options, ["prepare", "verify", "publish", "activate", "rollback", "deploy"]);
   assert.equal(inputs.operation.default, "prepare");
@@ -181,7 +186,7 @@ test("workflow: permissões mínimas, id-token só nos jobs com OIDC e concorrê
   assert.deepEqual(workflow.concurrency, { group: "frontend-production", "cancel-in-progress": false });
   for (const [name, job] of Object.entries(jobs)) {
     const oidc = job.steps.some((s) => usesOf(s) === AWS_ACTION);
-    const expected = name === "gate" ? { contents: "read", actions: "read" } : oidc ? { contents: "read", "id-token": "write" } : { contents: "read" };
+    const expected = name === "gate" ? { contents: "read", actions: "read", "pull-requests": "read" } : oidc ? { contents: "read", "id-token": "write" } : { contents: "read" };
     assert.deepEqual(job.permissions, expected, name);
   }
   assert.deepEqual(Object.keys(jobs).filter((n) => steps(n).some((s) => usesOf(s) === AWS_ACTION)).sort(), ["activate", "publish", "verify"]);
@@ -425,7 +430,7 @@ test("CI roda as suítes da pipeline: histórico completo, mutações da release
   const bootstrap = ci.jobs["cicd-bootstrap"];
   assert.equal(bootstrap.defaults.run["working-directory"], "infra/cicd-bootstrap");
   assert.deepEqual(bootstrap.steps.filter((s) => s.run).map((s) => s.run),
-    ["terraform fmt -check -recursive", "terraform init -backend=false", "terraform validate", "terraform test",
+    ['test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', "terraform fmt -check -recursive", "terraform init -backend=false", "terraform validate", "terraform test",
       "python3 ../../tests/contracts/bootstrap_mutations.py"]);
 });
 
@@ -463,4 +468,14 @@ test("aprovação externa: gate, build e pacote recebido vinculados antes do OID
   assert.match(publication, /\*, approve\)/, "callback obrigatório, sem default que permita omissão");
   assert.ok(publication.indexOf("approve(manifest, assets, pointer, manifest_bytes)") < publication.indexOf("_put_release_object("));
   assert.match(publication, /\("manifest.json", manifest_bytes, MIME\[".json"\]\)/);
+});
+
+
+test("deploy usa aprovação do PR e não repete suítes completas em workflow ou composites", () => {
+  for (const text of [read(WORKFLOW), ...ACTIONS.map((name) => read(`.github/actions/${name}/action.yml`))]) {
+    assert.doesNotMatch(text, /npm (?:run )?(?:test(?::browser)?)(?:\s|$)|unittest discover|tests\/contracts\/\w+_mutations/);
+  }
+  const gate = read(".github/scripts/release_gate.py");
+  assert.match(gate, /problems \+= pr_approval_problems\(env, github_get\)/);
+  assert.equal(jobs.gate.permissions["pull-requests"], "read");
 });

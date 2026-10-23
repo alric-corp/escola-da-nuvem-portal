@@ -221,14 +221,14 @@ class PublicationApprovalTests(unittest.TestCase):
         self.assert_no_put()  # mas chamar o publicador com prepare nunca concede escrita
 
     def test_automatic_ci_publish_needs_no_manual_inputs(self):
-        self.env.update(GITHUB_EVENT_NAME="workflow_run", OPERATION="deploy", APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
+        self.env.update(GITHUB_EVENT_NAME="push", OPERATION="deploy", APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
         self.write_event(ci_run_event())
         self.run_cli()
         self.assertEqual(self.s3.put_object.call_count, self.modern_object_count)
 
     def test_forged_automatic_or_manual_context_never_disables_approval(self):
         original = dict(self.env)
-        for change in ({"GITHUB_EVENT_NAME": "workflow_run"}, {"SOURCE": "baseline"}, {"OPERATION": "prepare"},
+        for change in ({"GITHUB_EVENT_NAME": "push"}, {"SOURCE": "baseline"}, {"OPERATION": "prepare"},
                        {"APPROVED_RELEASE_ID": "a" * 12 + "-" + "b" * 12}, {"GITHUB_SHA": "e5" * 20}, {"GITHUB_REF": "refs/tags/main"}):
             with self.subTest(change=change):
                 self.env = dict(original, **change)  # evento original permanece igual
@@ -236,9 +236,9 @@ class PublicationApprovalTests(unittest.TestCase):
         self.env = original
 
     def test_untrusted_ci_event_and_missing_event_refuse_zero_put(self):
-        self.env.update(GITHUB_EVENT_NAME="workflow_run", OPERATION="deploy", APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
-        for event in (ci_run_event(conclusion="failure"), ci_run_event(event="pull_request"),
-                      ci_run_event(head_repository={"full_name": "fork/portal"}), {}):
+        self.env.update(GITHUB_EVENT_NAME="push", OPERATION="deploy", APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
+        for event in (ci_run_event(deleted=True), ci_run_event(ref="refs/heads/feature"),
+                      ci_run_event(repository={"full_name": "fork/portal"}), {}):
             with self.subTest(event=event):
                 self.write_event(event)
                 self.assert_no_put()
@@ -333,7 +333,7 @@ with mock_aws():
                                                        ("deploy", True, False), ("publish", False, True)):
             with self.subTest(operation=operation, automatic=automatic, missing_origin=missing_origin):
                 self.approve_current()
-                self.env.update(OPERATION=operation, GITHUB_EVENT_NAME="workflow_run" if automatic else "workflow_dispatch")
+                self.env.update(OPERATION=operation, GITHUB_EVENT_NAME="push" if automatic else "workflow_dispatch")
                 if automatic:
                     self.env.update(APPROVED_RELEASE_ID="", APPROVED_MANIFEST_SHA256="")
                 self.write_event(ci_run_event() if automatic else None)

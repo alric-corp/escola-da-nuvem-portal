@@ -6,7 +6,7 @@
 
 A API do GitHub é simulada (FakeGitHub e urlopen substituído), a AWS só aparece como cliente simulado e a rede fica
 bloqueada. O simulador de workflow lê o deploy-frontend.yml real e executa os passos de gate na ordem dos jobs, no
-disparo manual e no deploy automático (workflow_run do CI), com os outputs do gate decidindo jobs e passos.
+disparo manual e no deploy automático (push integrado), com os outputs do gate decidindo jobs e passos.
 """
 import contextlib
 import io
@@ -131,7 +131,7 @@ class RemoteHeadGateTests(unittest.TestCase):
 
     def test_main_at_the_run_commit_without_green_ci_is_denied(self):
         problems = gate.repository_problems(repo_env(), FakeGitHub(ci=("failure",)))
-        self.assertEqual(problems, ["CI (ci.yml, push) não está verde para este commit."])
+        self.assertTrue(any("Aprovação CI" in p for p in problems))
 
     def test_unprotected_environment_is_denied_even_with_main_current(self):
         # Sem restrição de branch (qualquer branch poderia usar o environment): recusa mesmo com a main correta.
@@ -236,7 +236,7 @@ class GitHubAdapterTests(unittest.TestCase):
 EXPRESSION = re.compile(r"\$\{\{ (inputs|vars|secrets|github|steps\.gate\.outputs|needs\.gate\.outputs)\.([\w-]+) \}\}")
 OPERATION_IS = re.compile(r"needs\.gate\.outputs\.operation == '(\w+)'")
 GATE_STEP = re.compile(r"python3 -B \.github/scripts/check-deploy-gate\.py --stage (repository|environment)")
-AUTOMATIC = "automático"            # workflow_run do CI verde na main: sem inputs
+AUTOMATIC = "automático"            # push integrado na main: sem inputs
 
 
 def load_workflow():
@@ -254,7 +254,7 @@ class Run:
     def __init__(self, workflow, operation, github, tmp, event=None, **inputs):
         self.workflow, self.github, self.tmp = workflow, github, Path(tmp)
         if operation == AUTOMATIC:
-            self.inputs = {}  # no workflow_run, inputs.* vira texto vazio
+            self.inputs = {}  # no push, inputs.* vira texto vazio
         else:
             self.inputs = {"operation": operation, "source": "main", "expected_main_sha": SHA, "release_id": "",
                            "expected_active_release": "", "confirm_release_id": "", "allow_config_change": "false",
@@ -277,7 +277,7 @@ class Run:
         if operation == AUTOMATIC:
             payload = self.tmp / "event.json"
             payload.write_text(json.dumps(event or ci_run_event()), encoding="utf-8")
-            self.runner.update(GITHUB_EVENT_NAME="workflow_run", GITHUB_EVENT_PATH=str(payload), GITHUB_ACTOR="github-actions")
+            self.runner.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(payload), GITHUB_ACTOR="github-actions")
 
     def resolve(self, value):
         if isinstance(value, bool):
@@ -384,7 +384,7 @@ class WorkflowWindowTests(unittest.TestCase):
                                        "approved-release-id": "", "approved-manifest-sha256": ""})
 
     def test_automatic_run_with_red_ci_reaches_no_environment_job(self):
-        for label, event in (("CI vermelho", ci_run_event(conclusion="failure")), ("CI de PR", ci_run_event(event="pull_request"))):
+        for label, event in (("push de exclusão", ci_run_event(deleted=True)), ("push de outra branch", ci_run_event(ref="refs/heads/feature"))):
             with self.subTest(label):
                 results = self.run_operation(AUTOMATIC, event=event)
                 self.assertEqual([(name, ok) for name, ok, _, _ in results], [("gate", False)])

@@ -257,7 +257,7 @@ No layout plano legado, o cache de 300 segundos podia misturar módulos novos e 
 
 ### Deploy seguro de módulos
 
-O fluxo vigente é **PR → CI → merge → CI verde na main → deploy automático do frontend**. A pipeline valida e publica o pacote completo, verifica a release remota, atualiza condicionalmente o index e invalida apenas `/` e `/index.html`. Não se faz deploy incremental de módulos na raiz.
+O fluxo vigente é **PR → CI → merge → deploy automático (push na main, com a árvore aprovada no PR) do frontend**. A pipeline valida e publica o pacote completo, verifica a release remota, atualiza condicionalmente o index e invalida apenas `/` e `/index.html`. Não se faz deploy incremental de módulos na raiz.
 
 A referência operacional é [infra/FRONTEND-RELEASES.md](../infra/FRONTEND-RELEASES.md), incluindo gates, configuração, operações manuais e rollback. `scripts/deploy_frontend.sh` permanece como script legado do layout plano, fora desse procedimento; seu comportamento não foi alterado.
 

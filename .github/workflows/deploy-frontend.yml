@@ -1,10 +1,8 @@
 name: Deploy do frontend
 
 # Pipeline de releases imutáveis do frontend (contrato em .github/scripts/frontend_release.py).
-# Automático: todo push na main, inclusive o merge de um PR, roda o CI (ci.yml). Com o CI verde, este workflow
-# executa a operação deploy no commit: build e validação sem AWS, publicação de releases/<id>/, ativação do
-# index.html, invalidação de / e /index.html e smoke no domínio público. CI vermelho, PR, fork ou outra branch não
-# publicam nada.
+# Automático: push na main publica somente a árvore comprovadamente testada pelos quatro checks do PR integrado.
+# O gate consulta PR, CI e commits Git; build/validação da release não repetem as suítes completas do CI.
 # Manual (workflow_dispatch na main, para recuperação e para a migração inicial da C7.3): prepare (padrão, sem AWS),
 # verify, publish, activate, rollback e deploy. Nenhum input escolhe commit: main é sempre o commit desta execução,
 # e baseline é a constante revisada em .github/release/baseline.json.
@@ -15,9 +13,7 @@ name: Deploy do frontend
 # e nos scripts, imediatamente antes da primeira escrita AWS (C). Se a main avançou, a execução é recusada sem
 # alterar nada: o commit mais novo tem o próprio deploy.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -81,7 +77,8 @@ jobs:
     permissions:
       contents: read
       actions: read
-    # Valores validados pelo gate. No automático não há inputs: operation=deploy, source=main e o commit do CI.
+      pull-requests: read
+    # Valores validados pelo gate. No automático não há inputs: operation=deploy, source=main e o commit integrado.
     outputs:
       operation: ${{ steps.gate.outputs.operation }}
       source: ${{ steps.gate.outputs.source }}

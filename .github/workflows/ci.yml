@@ -1,9 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 # Os jobs só leem o repositório: o GITHUB_TOKEN não precisa de permissão de escrita.
 permissions:
@@ -17,7 +21,10 @@ jobs:
       # Histórico completo: a baseline da pipeline de release (1daab31) é extraída do Git nos testes.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+      - name: Verifica checkout testado ${{ github.sha }} do PR ${{ github.event.pull_request.number }}
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -56,7 +63,10 @@ jobs:
       # Histórico completo: tests/release-cache-browser.mjs prepara a baseline 1daab31 a partir do Git.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+      - name: Verifica checkout testado ${{ github.sha }} do PR ${{ github.event.pull_request.number }}
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
@@ -95,6 +105,10 @@ jobs:
         working-directory: infra/terraform
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Verifica checkout testado ${{ github.sha }} do PR ${{ github.event.pull_request.number }}
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       # Node verifica as fontes no CI; o Terraform continua lendo apenas o YAML versionado.
       - uses: actions/setup-node@v7
         with:
@@ -139,6 +153,10 @@ jobs:
         working-directory: infra/cicd-bootstrap
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Verifica checkout testado ${{ github.sha }} do PR ${{ github.event.pull_request.number }}
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.15.8"

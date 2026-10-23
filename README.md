@@ -41,7 +41,7 @@ Os testes de backend, integração/Moto e suas mutações usam Python 3.13, alin
 
 O frontend já usa releases versionadas e publicação automática:
 
-**PR → CI aprovado → merge → CI da main aprovado → deploy automático do frontend.**
+**PR → CI aprovado → merge → deploy automático do frontend (push na main, sem repetir a suíte).**
 
 O workflow publica a release imutável no S3, ativa o index, invalida apenas `/` e `/index.html` no CloudFront e verifica a entrega pública. O deploy depende dos gates existentes e de `FRONTEND_DEPLOY_ENABLED=true`. Operações manuais, diagnóstico e rollback estão no [runbook de releases](infra/FRONTEND-RELEASES.md), a referência operacional do frontend.
 

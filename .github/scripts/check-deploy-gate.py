@@ -1,7 +1,7 @@
 """Pré-condições do deploy do frontend (falha fechada). Estágios em release_gate.py.
 
-  --stage repository   job gate: evento (CI verde na main ou disparo manual), main, SHA esperado, HEAD atual da main,
-                       CI verde, operação, kill switch, environment restrito à main (verificação A, antes de qualquer
+  --stage repository   job gate: evento (push na main ou disparo manual), main, SHA esperado, HEAD atual da main,
+                       CI do PR/árvore testada, operação, kill switch, environment restrito à main (verificação A, antes de qualquer
                        job do environment). Aprovado, grava operation, source e expected-main-sha nos outputs do passo:
                        os jobs seguintes usam só esses valores
   --stage environment  primeiro passo dos jobs do environment, já liberados: variables, ausência de chaves AWS
@@ -20,7 +20,7 @@ from release_gate import (ENVIRONMENT, environment_problems, main_head_problems,
 
 
 def load_event(env: dict):
-    """Evento original do runner: CI no automático e origem dos inputs de aprovação no manual; ilegível recusa."""
+    """Evento original do runner: push no automático e origem dos inputs de aprovação no manual; ilegível recusa."""
     if not env.get("GITHUB_EVENT_PATH"):
         return {} if env.get("GITHUB_EVENT_NAME") == "workflow_dispatch" else None
     try:

@@ -147,19 +147,39 @@ def repo_env(**overrides):
 
 
 def auto_env(**overrides):
-    """Gate do deploy automático: workflow_run do CI na main, sem inputs (o workflow passa os inputs vazios)."""
-    env = {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": REPO,
+    """Push/main: inputs vazios não escolhem a operação automática."""
+    env = {"GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/heads/main", "GITHUB_SHA": SHA, "GITHUB_REPOSITORY": REPO,
            "DEPLOY_ENABLED": "true"}
     env.update(overrides)
     return {k: v for k, v in env.items() if v is not None}
 
 
 def ci_run_event(**overrides):
-    """Payload do workflow_run: o CI (ci.yml) concluído verde por push na main deste repositório."""
-    run = {"id": 1, "name": "CI", "path": ".github/workflows/ci.yml", "event": "push", "head_branch": "main", "head_sha": SHA,
-           "status": "completed", "conclusion": "success", "head_repository": {"full_name": REPO}, "repository": {"full_name": REPO}}
-    run.update(overrides)
-    return {"action": "completed", "workflow_run": {k: v for k, v in run.items() if v is not None}}
+    """Nome histórico da fixture, agora representa o push integrado que inicia o deploy."""
+    event = {"ref": "refs/heads/main", "after": SHA, "deleted": False, "repository": {"full_name": REPO}}
+    event.update(overrides)
+    return {k: v for k, v in event.items() if v is not None}
+
+
+TESTED_SHA, PR_HEAD, PR_BASE, TREE_SHA = "28" * 20, "39" * 20, "f6" * 20, "17" * 20
+
+
+def ci_documents(ci=("success",), runs_sha=PR_HEAD):
+    from ci_approval import CHECKS, CHECKOUT_PREFIX
+    run = {"id": 81, "run_attempt": 1, "path": ".github/workflows/ci.yml", "head_sha": runs_sha,
+           "event": "pull_request", "status": "completed", "conclusion": ci[0] if ci else None,
+           "repository": {"full_name": REPO}, "head_repository": {"full_name": REPO}}
+    return {
+        "pulls": [{"number": 17}],
+        "pr": {"number": 17, "merged": True, "merge_commit_sha": SHA,
+               "base": {"ref": "main", "repo": {"full_name": REPO}},
+               "head": {"sha": PR_HEAD, "repo": {"full_name": REPO}}},
+        "runs": {"total_count": len(ci), "workflow_runs": [run] if ci else []}, "run": run,
+        "jobs": {"total_count": 4, "jobs": [{"name": name, "status": "completed", "conclusion": "success",
+                 "steps": [{"name": CHECKOUT_PREFIX + TESTED_SHA + " do PR 17", "conclusion": "success"}]} for name in CHECKS]},
+        "tested": {"sha": TESTED_SHA, "tree": {"sha": TREE_SHA}, "parents": [{"sha": PR_BASE}, {"sha": PR_HEAD}]},
+        "final": {"sha": SHA, "tree": {"sha": TREE_SHA}, "parents": [{"sha": PR_BASE}, {"sha": PR_HEAD}]},
+    }
 
 
 def environment_env(**overrides):
@@ -186,13 +206,28 @@ class FakeGitHub:
                  head=SHA, head_status=200, head_payload=_MAIN_REF):
         self.ci, self.env, self.env_status, self.branches, self.runs_sha, self.paths = ci, env, env_status, branches, runs_sha, []
         self.head, self.head_status, self.head_payload = head, head_status, head_payload
+        self.documents = ci_documents(ci, PR_HEAD if runs_sha == SHA else runs_sha)
 
     def __call__(self, path):
         self.paths.append(path)
         if path.endswith("/git/ref/heads/main"):
             return self.head_status, main_ref(self.head) if self.head_payload is _MAIN_REF else self.head_payload
+        if "/contents/.github/workflows/ci.yml" in path:
+            return 404, None  # este checkout já usa CI exclusivo do PR; sem fallback histórico
+        if "/commits/" in path and "/pulls?" in path:
+            return 200, self.documents["pulls"]
+        if path.endswith("/pulls/17"):
+            return 200, self.documents["pr"]
         if "/actions/workflows/ci.yml/runs?" in path:
-            return 200, {"workflow_runs": [{"head_sha": self.runs_sha, "conclusion": c} for c in self.ci]}
+            return 200, self.documents["runs"]
+        if path.endswith("/actions/runs/81"):
+            return 200, self.documents["run"]
+        if "/attempts/1/jobs?" in path:
+            return 200, self.documents["jobs"]
+        if path.endswith("/git/commits/" + TESTED_SHA):
+            return 200, self.documents["tested"]
+        if path.endswith("/git/commits/" + SHA):
+            return 200, self.documents["final"]
         if path.endswith("/deployment-branch-policies"):
             return 200, {"branch_policies": [{"name": n, "type": t} for n, t in self.branches]}
         if path.endswith(f"/environments/{ENVIRONMENT}"):
