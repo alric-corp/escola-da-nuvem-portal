@@ -1,0 +1,888 @@
+# Respostas observadas nos dispatchers; sem alteração das regras acadêmicas.
+AcademicThresholds:
+  type: object
+  required:
+    - kc
+    - lab
+  properties:
+    kc:
+      type: number
+      minimum: 1
+      maximum: 100
+    lab:
+      type: number
+      minimum: 1
+      maximum: 100
+AcademicStats:
+  type: object
+  required:
+    - kc
+    - lab
+    - total
+    - completed
+    - pending
+    - status
+  properties:
+    kc:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    lab:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    total:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    completed:
+      type: integer
+      minimum: 0
+    pending:
+      type: integer
+      minimum: 0
+    status:
+      type: string
+      enum:
+        - ok
+        - attention
+        - critical
+        - insufficient
+        - graduated
+ActivityDefinition:
+  type: object
+  required:
+    - id
+    - name
+    - kind
+    - points
+    - active
+    - filled
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    kind:
+      type: string
+      enum:
+        - kc
+        - lab
+    points:
+      type: string
+    active:
+      type: boolean
+    filled:
+      type: integer
+      minimum: 0
+    module:
+      type: string
+      nullable: true
+    moduleOrder:
+      type: integer
+      nullable: true
+    canvasUrl:
+      type: string
+      nullable: true
+    releasedAt:
+      type: string
+      format: date-time
+      nullable: true
+StudentActivity:
+  allOf:
+    - $ref: "#/ActivityDefinition"
+    - type: object
+      required:
+        - state
+        - needsReview
+        - score
+        - percent
+      properties:
+        state:
+          type: string
+          enum:
+            - pending
+            - completed
+            - unreleased
+            - exempt
+        needsReview:
+          type: boolean
+        score:
+          type: number
+          minimum: 0
+          nullable: true
+        percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+ActivityOverview:
+  allOf:
+    - $ref: "#/ActivityDefinition"
+    - type: object
+      required:
+        - completed
+        - pending
+        - needsReview
+        - average
+      properties:
+        completed:
+          type: integer
+          minimum: 0
+        pending:
+          type: integer
+          minimum: 0
+        needsReview:
+          type: integer
+          minimum: 0
+        average:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+StudentSummary:
+  allOf:
+    - $ref: "#/AcademicStats"
+    - type: object
+      required:
+        - id
+        - name
+        - email
+        - progress
+        - activities
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        activities:
+          type: array
+          items:
+            $ref: "#/StudentActivity"
+InstructorStudent:
+  allOf:
+    - $ref: "#/AcademicStats"
+    - type: object
+      required:
+        - id
+        - name
+        - email
+        - progress
+        - portalLinked
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        progress:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        portalLinked:
+          type: boolean
+        participationStatus:
+          type: string
+          enum:
+            - WITHDRAWN
+        canvasActivity:
+          $ref: ./schemas.yaml#/CanvasActivity
+ClassReportStudent:
+  allOf:
+    - $ref: "#/AcademicStats"
+    - type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        participationStatus:
+          type: string
+          enum:
+            - WITHDRAWN
+      not:
+        anyOf:
+          - required:
+              - id
+            properties:
+              id: {}
+          - required:
+              - email
+            properties:
+              email: {}
+          - required:
+              - canvasActivity
+            properties:
+              canvasActivity: {}
+          - required:
+              - canvasSubmissions
+            properties:
+              canvasSubmissions: {}
+ClassReport:
+  type: object
+  required:
+    - cohort
+    - updatedAt
+    - thresholds
+    - students
+  properties:
+    cohort:
+      type: string
+    updatedAt:
+      type: string
+      format: date-time
+      nullable: true
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    students:
+      type: array
+      items:
+        $ref: "#/ClassReportStudent"
+  not:
+    anyOf:
+      - required:
+          - student
+        properties:
+          student: {}
+      - required:
+          - canvasSubmissions
+        properties:
+          canvasSubmissions: {}
+      - required:
+          - canvasEngagement
+        properties:
+          canvasEngagement: {}
+CohortDescriptor:
+  type: object
+  required:
+    - code
+    - current
+    - canTeach
+  properties:
+    code:
+      type: string
+    current:
+      type: string
+      nullable: true
+    name:
+      type: string
+    canTeach:
+      type: boolean
+    canvasCourseId:
+      type: string
+      nullable: true
+    autoSync:
+      type: boolean
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    updatedAt:
+      type: string
+      format: date-time
+    updateKind:
+      type: string
+      enum:
+        - publish
+        - canvas
+        - restore
+  not:
+    anyOf:
+      - required:
+          - student
+        properties:
+          student: {}
+      - required:
+          - students
+        properties:
+          students: {}
+      - required:
+          - snapshot
+        properties:
+          snapshot: {}
+CohortListResponse:
+  type: object
+  required:
+    - cohorts
+  properties:
+    cohorts:
+      type: array
+      items:
+        $ref: "#/CohortDescriptor"
+PublicationRef:
+  type: object
+  required:
+    - id
+    - publishedAt
+  properties:
+    id:
+      type: string
+    publishedAt:
+      type: string
+      format: date-time
+PublicationRecord:
+  allOf:
+    - $ref: "#/PublicationRef"
+    - type: object
+      required:
+        - snapshot
+      properties:
+        snapshot:
+          type: string
+        filename:
+          type: string
+        history:
+          type: string
+        base:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - published
+        publishedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        cohort:
+          type: string
+        createdBy:
+          type: string
+        changes:
+          type: object
+        releasedAt:
+          type: object
+          additionalProperties:
+            type: string
+            format: date-time
+StudentChange:
+  type: object
+  required:
+    - kc
+    - lab
+    - pendingBefore
+    - pendingAfter
+    - activities
+    - removed
+  properties:
+    kc:
+      type: number
+      nullable: true
+    lab:
+      type: number
+      nullable: true
+    pendingBefore:
+      type: integer
+      minimum: 0
+    pendingAfter:
+      type: integer
+      minimum: 0
+    activities:
+      type: array
+      items:
+        type: object
+        required:
+          - name
+          - before
+          - after
+          - previousState
+          - state
+        properties:
+          name:
+            type: string
+          before:
+            type: number
+            minimum: 0
+            maximum: 100
+            nullable: true
+          after:
+            type: number
+            minimum: 0
+            maximum: 100
+            nullable: true
+          previousState:
+            type: string
+            enum:
+              - pending
+              - completed
+              - unreleased
+              - exempt
+              - null
+            nullable: true
+          state:
+            type: string
+            enum:
+              - pending
+              - completed
+              - unreleased
+              - exempt
+    removed:
+      type: array
+      items:
+        type: string
+  nullable: true
+StudentHistoryEntry:
+  type: object
+  required:
+    - publishedAt
+    - current
+    - kc
+    - lab
+    - total
+    - changes
+  properties:
+    publishedAt:
+      type: string
+      format: date-time
+    current:
+      type: boolean
+    kc:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    lab:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    total:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    changes:
+      $ref: "#/StudentChange"
+CohortFocus:
+  type: object
+  required:
+    - activityIds
+    - version
+  properties:
+    activityIds:
+      type: array
+      items:
+        type: string
+    version:
+      type: string
+      nullable: true
+CanvasSubmissionProvenance:
+  type: object
+  required:
+    - status
+    - reason
+    - attemptedAt
+    - lastValidObservedAt
+  properties:
+    status:
+      type: string
+      enum:
+        - current
+        - retained
+        - unknown
+    reason:
+      type: string
+      nullable: true
+    attemptedAt:
+      type: string
+      format: date-time
+      nullable: true
+    lastValidObservedAt:
+      type: string
+      format: date-time
+      nullable: true
+CanvasSubmission:
+  type: object
+  required:
+    - state
+    - attempt
+    - submittedAt
+    - gradedAt
+    - observedAt
+    - provenance
+  properties:
+    state:
+      type: string
+      enum:
+        - submitted
+        - pending_review
+        - graded
+        - unsubmitted
+        - not_applicable
+        - unknown
+    attempt:
+      type: integer
+      minimum: 0
+      nullable: true
+    submittedAt:
+      type: string
+      format: date-time
+      nullable: true
+    gradedAt:
+      type: string
+      format: date-time
+      nullable: true
+    observedAt:
+      type: string
+      format: date-time
+      nullable: true
+    provenance:
+      $ref: "#/CanvasSubmissionProvenance"
+  not:
+    anyOf:
+      - required:
+          - grade
+        properties:
+          grade: {}
+      - required:
+          - score
+        properties:
+          score: {}
+      - required:
+          - body
+        properties:
+          body: {}
+      - required:
+          - attachments
+        properties:
+          attachments: {}
+      - required:
+          - submission_comments
+        properties:
+          submission_comments: {}
+CanvasSubmissions:
+  type: object
+  required:
+    - courseId
+    - attemptedAt
+    - status
+    - items
+  properties:
+    courseId:
+      type: string
+    attemptedAt:
+      type: string
+      format: date-time
+      nullable: true
+    status:
+      type: string
+      enum:
+        - complete
+        - partial
+        - failed
+    items:
+      type: object
+      additionalProperties:
+        $ref: "#/CanvasSubmission"
+  not:
+    anyOf:
+      - required:
+          - studentIds
+        properties:
+          studentIds: {}
+      - required:
+          - canvasUserId
+        properties:
+          canvasUserId: {}
+      - required:
+          - students
+        properties:
+          students: {}
+StudentReport:
+  type: object
+  required:
+    - cohort
+    - publication
+    - updatedAt
+    - updateKind
+    - thresholds
+    - canvasCourseId
+    - student
+    - history
+    - focus
+  properties:
+    cohort:
+      type: string
+    publication:
+      $ref: "#/PublicationRef"
+    updatedAt:
+      type: string
+      format: date-time
+    updateKind:
+      type: string
+      enum:
+        - publish
+        - canvas
+        - restore
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    canvasCourseId:
+      type: string
+      nullable: true
+    student:
+      $ref: "#/StudentSummary"
+    history:
+      type: array
+      items:
+        $ref: "#/StudentHistoryEntry"
+      maxItems: 12
+    focus:
+      $ref: "#/CohortFocus"
+    canvasSubmissions:
+      $ref: "#/CanvasSubmissions"
+    viewAs:
+      type: object
+      required:
+        - studentId
+        - name
+      properties:
+        studentId:
+          type: string
+        name:
+          type: string
+  not:
+    anyOf:
+      - required:
+          - students
+        properties:
+          students: {}
+      - required:
+          - canvasEngagement
+        properties:
+          canvasEngagement: {}
+      - required:
+          - canvasSync
+        properties:
+          canvasSync: {}
+      - required:
+          - warnings
+        properties:
+          warnings: {}
+EmptyCohortReport:
+  type: object
+  required:
+    - cohort
+    - publication
+    - students
+    - history
+    - thresholds
+    - canvasCourseId
+  properties:
+    cohort:
+      type: string
+    publication:
+      type: object
+      nullable: true
+      enum:
+        - null
+    students:
+      type: array
+      items:
+        $ref: "#/InstructorStudent"
+      maxItems: 0
+    history:
+      type: array
+      items:
+        $ref: "#/PublicationRecord"
+      maxItems: 0
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    canvasCourseId:
+      type: string
+      nullable: true
+  not:
+    anyOf:
+      - required:
+          - student
+        properties:
+          student: {}
+      - required:
+          - canvasSubmissions
+        properties:
+          canvasSubmissions: {}
+      - required:
+          - canvasEngagement
+        properties:
+          canvasEngagement: {}
+InstructorReport:
+  type: object
+  required:
+    - cohort
+    - publication
+    - focus
+    - activities
+    - warnings
+    - students
+    - count
+    - updatedAt
+    - updateKind
+    - thresholds
+    - canvasCourseId
+    - canvasSync
+    - history
+  properties:
+    cohort:
+      type: string
+    publication:
+      $ref: "#/PublicationRecord"
+    focus:
+      $ref: "#/CohortFocus"
+    activities:
+      type: array
+      items:
+        $ref: "#/ActivityOverview"
+    warnings:
+      type: array
+      items:
+        type: string
+    students:
+      type: array
+      items:
+        $ref: "#/InstructorStudent"
+    count:
+      type: integer
+      minimum: 0
+    updatedAt:
+      type: string
+      format: date-time
+    updateKind:
+      type: string
+      enum:
+        - publish
+        - canvas
+        - restore
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    canvasCourseId:
+      type: string
+      nullable: true
+    canvasSync:
+      type: object
+      nullable: true
+      properties:
+        status:
+          type: string
+        at:
+          type: string
+          format: date-time
+        message:
+          type: string
+    history:
+      type: array
+      items:
+        $ref: "#/PublicationRecord"
+    canvasEngagement:
+      $ref: ./schemas.yaml#/CanvasEngagement
+  not:
+    anyOf:
+      - required:
+          - student
+        properties:
+          student: {}
+      - required:
+          - canvasSubmissions
+        properties:
+          canvasSubmissions: {}
+StudentDetailResponse:
+  type: object
+  required:
+    - student
+    - activities
+    - publicationId
+    - publishedAt
+    - remindersEnabled
+    - summary
+    - allActivities
+    - thresholds
+    - canvasCourseId
+    - history
+  properties:
+    student:
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+    activities:
+      type: array
+      items:
+        $ref: "#/StudentActivity"
+    publicationId:
+      type: string
+    publishedAt:
+      type: string
+      format: date-time
+    remindersEnabled:
+      type: boolean
+    summary:
+      allOf:
+        - $ref: "#/AcademicStats"
+        - type: object
+          required:
+            - progress
+          properties:
+            progress:
+              type: number
+              minimum: 0
+              maximum: 100
+              nullable: true
+    allActivities:
+      type: array
+      items:
+        $ref: "#/StudentActivity"
+    thresholds:
+      $ref: "#/AcademicThresholds"
+    canvasCourseId:
+      type: string
+      nullable: true
+    history:
+      type: array
+      items:
+        $ref: "#/StudentHistoryEntry"
+      maxItems: 12
+    canvasSubmissions:
+      $ref: "#/CanvasSubmissions"
+    participationStatus:
+      type: string
+      enum:
+        - WITHDRAWN
+    delivery:
+      type: object
+      nullable: true
+    ses:
+      type: object
+    message:
+      type: object
+    previewHash:
+      type: string
+  not:
+    anyOf:
+      - required:
+          - students
+        properties:
+          students: {}
+      - required:
+          - canvasEngagement
+        properties:
+          canvasEngagement: {}

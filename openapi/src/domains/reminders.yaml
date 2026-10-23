@@ -29,7 +29,11 @@ paths:
                 studentId: {}
       responses:
         "200":
-          $ref: ../components/responses.yaml#/SuccessObject
+          description: Resposta autorizada produzida pelo backend.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/report-schemas.yaml#/StudentDetailResponse
         "400":
           $ref: ../components/responses.yaml#/BadRequest
         "401":
