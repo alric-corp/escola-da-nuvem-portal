@@ -17,6 +17,7 @@ from reminders import cohort_thresholds, display_snapshot, participation, withdr
 import reminders
 from changes import snapshot_changes, change_counts, student_changes, student_history
 from canvas_activity import activity_summary, instructor_activity, student_activity
+from canvas_submissions import read_submissions
 from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
 from integrity import check as integrity_check
 import feedback
@@ -91,6 +92,14 @@ PARTICIPATION_STATUSES = ("ACTIVE", "WITHDRAWN")
 def participation_flag(withdrawn, student_id):
     """Campo esparso para o instrutor: só desistentes recebem participationStatus (sem marcas, nada muda)."""
     return {"participationStatus": "WITHDRAWN"} if student_id in withdrawn else {}
+
+
+def submission_view(repo, course_id, student_id, activities):
+    """Auxiliar atual, só depois da autorização e restrito às tarefas da publicação exibida."""
+    ids = {match.group(1) for activity in activities
+           if (match := re.search(r"\((\d+)\)\s*$", activity["id"]))}
+    collection = read_submissions(repo, course_id, student_id, ids) if course_id else None
+    return {"canvasSubmissions": collection} if collection is not None else {}
 
 
 def class_report(repo, code):
@@ -675,6 +684,7 @@ class Portal:
                   "canvasCourseId": cohort.get("canvasCourseId")} if operation == "pending-preview" else {}
         if operation == "pending-preview":
             detail["history"] = self.student_history(pk, publication, snap, raw_student["id"], detail["thresholds"])
+            detail.update(submission_view(self.repo, cohort.get("canvasCourseId"), raw_student["id"], snap["activities"]))
         if not reminders_enabled:
             return {"student": {k: student[k] for k in ("id", "name", "email")},
                     "activities": [a for a in student["activities"] if a["state"] == "pending"],
@@ -1083,7 +1093,8 @@ class Portal:
                 "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                 "updateKind": cohort.get("updateKind", "publish"),
                 "thresholds": thresholds, "canvasCourseId": cohort.get("canvasCourseId"),
-                "student": summary(student, snap["activities"], thresholds), "history": history, "focus": focus}
+                "student": summary(student, snap["activities"], thresholds), "history": history, "focus": focus,
+                **submission_view(self.repo, cohort.get("canvasCourseId"), student["id"], snap["activities"])}
 
     def _student_view(self, code, cohort, pk, body):
         """Admin vê o relatório de um aluno sem se autenticar como ele: somente leitura,

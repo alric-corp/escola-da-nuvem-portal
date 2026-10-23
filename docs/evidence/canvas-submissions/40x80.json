@@ -1,0 +1,39 @@
+{
+  "students": 40,
+  "assignments": 80,
+  "existing": false,
+  "existing_grade_path": {
+    "requests": 34,
+    "pages_by_kind": {
+      "assignments": 1,
+      "users": 1,
+      "graded": 32
+    },
+    "response_bytes": 1006044,
+    "csv_bytes": 10353,
+    "local_seconds": 0.014729166869074106
+  },
+  "additional_delivery_path": {
+    "requests": 5,
+    "pages_by_kind": {
+      "assignments": 1,
+      "grouped": 4
+    },
+    "response_bytes": 1827222,
+    "max_page_bytes": 453050,
+    "student_items": 40,
+    "max_item_bytes": 25528,
+    "total_stored_bytes": 1021488,
+    "local_collect_seconds": 0.021645084023475647,
+    "local_memory_save_seconds": 0.03180033294484019
+  },
+  "process_peak_rss_native_units": 50282496,
+  "rss_units": "bytes",
+  "environment": {
+    "python": "3.12.13",
+    "system": "Darwin",
+    "machine": "arm64",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "limits": "HTTP controlado sem rede; MemoryRepository; não certifica AWS/ARM64 ou latência Canvas."
+}

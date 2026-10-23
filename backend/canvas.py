@@ -14,6 +14,8 @@ import urllib.parse
 import urllib.request
 from decimal import Decimal
 
+AUX_MAX_PAGE_BYTES = 4 * 1024 * 1024
+
 
 class CanvasError(Exception):
     pass
@@ -56,20 +58,35 @@ class CanvasClient:
             raise CanvasError("Endereço de leitura do Canvas fora do contexto autorizado.")
         return url
 
-    def get_all(self, path):
+    def get_all(self, path, *, max_pages=None, deadline=None, fields=None, project=None):
         if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
             raise CanvasError("Caminho de leitura do Canvas inválido.")
         url, out, visited = self.base + path, [], set()
         expected_path = urllib.parse.urlsplit(url).path
         while url:
+            # Apenas coletores auxiliares optam por um orçamento. Nunca devolver uma
+            # lista truncada como se toda a paginação tivesse sido concluída.
+            if (max_pages is not None and len(visited) >= max_pages
+                    or deadline is not None and time.monotonic() >= deadline):
+                raise CanvasError("Coleta auxiliar Canvas excedeu o orçamento de leitura.")
             self._checked_url(url, expected_path)
             if url in visited:
                 raise CanvasError("Paginação cíclica do Canvas.")
             visited.add(url)
-            data, links = self._get(url)
+            data, links = self._get(url, deadline=deadline) if deadline is not None else self._get(url)
+            if deadline is not None and time.monotonic() >= deadline:
+                raise CanvasError("Coleta auxiliar Canvas excedeu o orçamento de leitura.")
             if not isinstance(data, list):
                 raise CanvasError("A lista do Canvas tem formato inválido.")
-            out.extend(data)
+            # O coletor de entregas descarta corpo/comentários a cada página, sem
+            # reter centenas de payloads pessoais até terminar o curso inteiro.
+            if project is not None:
+                out.extend(project(entry) for entry in data)
+            elif fields is None:
+                out.extend(data)
+            else:
+                out.extend({key: entry[key] for key in fields if key in entry} if isinstance(entry, dict) else entry
+                           for entry in data)
             following, parsed_until = [], 0
             for match in re.finditer(r'<([^<>]+)>([^,]*)', links):
                 if links[parsed_until:match.start()].strip(" ,\t"):
@@ -85,14 +102,27 @@ class CanvasClient:
             url = following[0] if following else None
         return out
 
-    def _get(self, url, attempts=3):
+    def _get(self, url, attempts=3, deadline=None):
         self._checked_url(url)
         request = urllib.request.Request(url, headers={"Authorization": "Bearer " + self.token})
         for attempt in range(attempts):
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise CanvasError("Coleta auxiliar Canvas excedeu o orçamento de leitura.")
             try:
-                with self.opener(request, timeout=30) as res:
+                with self.opener(request, timeout=30 if remaining is None else min(30, remaining)) as res:
                     try:
-                        data = json.load(res)
+                        if deadline is None:
+                            # O caminho acadêmico mantém o comportamento existente.
+                            data = json.load(res)
+                        else:
+                            # A projeção ocorre depois do parse. Limite o corpo antes
+                            # dele para não carregar entregas/anexos arbitrariamente
+                            # grandes em uma página auxiliar agrupada.
+                            body = res.read(AUX_MAX_PAGE_BYTES + 1)
+                            if len(body) > AUX_MAX_PAGE_BYTES:
+                                raise CanvasError("Página auxiliar Canvas excedeu o limite de tamanho.")
+                            data = json.loads(body)
                     except (ValueError, UnicodeError):
                         raise CanvasError("Resposta JSON do Canvas inválida.") from None
                     links = next((value for key, value in res.headers.items() if key.lower() == "link"), "")
@@ -111,7 +141,10 @@ class CanvasClient:
             except (urllib.error.URLError, TimeoutError):
                 if attempt == attempts - 1:
                     raise CanvasError("Não foi possível conectar ao Canvas.") from None
-            time.sleep(2 ** attempt)
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise CanvasError("Coleta auxiliar Canvas excedeu o orçamento de leitura.")
+            time.sleep(2 ** attempt if remaining is None else min(2 ** attempt, remaining))
 
 
 def _number(value):
