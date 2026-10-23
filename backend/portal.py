@@ -20,6 +20,7 @@ from canvas_activity import activity_summary, instructor_activity, student_activ
 from integrity import SYNC_MIN_ROSTER, blocking_message, issue_counts, roster_record
 from integrity import check as integrity_check
 import feedback
+import derived_access
 
 
 class APIError(Exception):
@@ -159,7 +160,7 @@ class Portal:
     def student_history(self, pk, publication, snap, student_id, thresholds):
         """Médias do aluno nas últimas 12 publicações (a atual incluída), mais recentes primeiro."""
         history = []
-        publications = sorted(self.repo.list(pk, "PUB#"), key=lambda p: p["publishedAt"], reverse=True)[:12]
+        publications = derived_access.recent_publications(self.repo, pk)
         if not any(p["id"] == publication["id"] for p in publications):
             publications = publications[:11] + [publication]
         for p in publications:
@@ -247,13 +248,20 @@ class Portal:
             self.repo.put("REQUESTS", uid, updated)
             return updated
         if path == "/cohorts" and method == "GET":
-            # Vínculo (STUDY#/TEACH#) já indica a turma sem reler o snapshot do S3 a cada
-            # login. Sem vínculo (primeiro acesso, ou CSV publicado sem e-mail até então),
-            # cai no fallback por e-mail, que ainda precisa do snapshot atual.
+            # STUDY/TEACH stay canonical. After explicit cutover, email candidates
+            # limit first-access discovery to relevant cohorts; their current
+            # snapshot and OWNER still authorize access. Until then, legacy Scan.
             bound = {b["code"] for b in self.repo.list(self.upk, "STUDY#")} if not self.admin else set()
             teaching = {t["code"] for t in self.repo.list(self.upk, "TEACH#")} if not self.admin else set()
             result = []
-            for cohort in self.repo.cohorts():
+            if not self.admin and derived_access.discovery_ready(self.repo):
+                codes = bound | teaching | {r["code"] for r in derived_access.candidates(self.repo, self.user["email"])}
+                cohorts = [self.repo.get("COHORT#" + c, "METADATA") for c in sorted(codes)]
+            else:
+                cohorts = self.repo.cohorts()
+            for cohort in cohorts:
+                if cohort is None:
+                    continue
                 code = cohort["code"]
                 teach = self.admin or code in teaching
                 if not teach and code not in bound:
@@ -270,7 +278,8 @@ class Portal:
             name = str(body.get("name", code)).strip()
             require(bool(re.fullmatch(r"[A-Z0-9-]{3,32}", code)) and 1 <= len(name) <= 100, 400, "Informe código e nome válidos.")
             cohort = {"code": code, "name": name, "current": None}
-            self.repo.put("COHORT#" + code, "METADATA", cohort, absent=True)
+            self.repo.transaction([("COHORT#" + code, "METADATA", cohort, None),
+                                   *derived_access.create_writes(self.repo, cohort)])
             return cohort
         match = re.fullmatch(r"/cohorts/([A-Z0-9-]+)/([a-z-]+)", path)
         require(match is not None, 404, "Rota não encontrada.")
@@ -993,6 +1002,12 @@ class Portal:
         proof = sync_run.completion_write(next_cohort, "published") if sync_run else None
         if proof:
             writes.append(proof)
+        # Build candidate projection completely before exposing the new current.
+        # No transaction-size assumption about class size; incomplete preparations
+        # are harmless candidates and cannot activate a partially indexed publish.
+        derived_access.prepare_discovery(self.repo, cohort["code"], snap)
+        writes += [derived_access.directory_write(self.repo, cohort["code"]),
+                   *derived_access.publication_history_writes(self.repo, cohort["code"], publication)]
         self.repo.transaction(writes)
         if proof:
             sync_run.accept(proof)
@@ -1011,7 +1026,9 @@ class Portal:
             report, "Esta publicação não pode ser restaurada porque não atende às validações atuais de integridade."))
         updated = {k: v for k, v in cohort.items() if not k.startswith("_")}
         updated.update(current=publication["id"], updatedAt=now(), updateKind="restore")
+        derived_access.prepare_discovery(self.repo, cohort["code"], self.snapshot(publication))
         self.repo.transaction([(pk, "METADATA", updated, cohort),
+                               derived_access.directory_write(self.repo, cohort["code"]),
                                (pk, "AUDIT#" + uuid.uuid4().hex,
                                 {"action": "restore", "by": self.uid, "at": now(), "publicationId": publication["id"]}, None)])
         return {"restored": True}

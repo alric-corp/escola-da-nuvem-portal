@@ -1,0 +1,1043 @@
+{
+  "reference": "142d4fa2150cece27cdc65a29f6b358dd3d9c6c3",
+  "python": "3.12.13",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "samples": 3,
+  "method": "Moto; synthetic data. Item bytes are JSON, not billed bytes. Local wall clock is emulator time, not AWS latency.",
+  "discovery": [
+    {
+      "cohorts": 5,
+      "noise": 0,
+      "role": "student",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 1,
+            "returned": 1,
+            "itemJsonBytes": 107
+          },
+          "get_item": {
+            "calls": 6,
+            "examined": 5,
+            "returned": 5,
+            "itemJsonBytes": 585
+          },
+          "scan": {
+            "calls": 1,
+            "examined": 11,
+            "returned": 5,
+            "itemJsonBytes": 695
+          },
+          "s3": {
+            "calls": 4,
+            "bodyBytes": 320
+          }
+        },
+        "localSamplesMs": [
+          11.57,
+          8.05,
+          8.196
+        ],
+        "medianMs": 8.196,
+        "minMs": 8.05,
+        "maxMs": 11.57
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 3,
+            "returned": 3,
+            "itemJsonBytes": 409
+          },
+          "get_item": {
+            "calls": 8,
+            "examined": 6,
+            "returned": 6,
+            "itemJsonBytes": 707
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 2,
+            "bodyBytes": 162
+          }
+        },
+        "localSamplesMs": [
+          6.834,
+          6.521,
+          6.721
+        ],
+        "medianMs": 6.721,
+        "minMs": 6.521,
+        "maxMs": 6.834
+      }
+    },
+    {
+      "cohorts": 5,
+      "noise": 0,
+      "role": "student",
+      "bindings": 1,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 2,
+            "returned": 2,
+            "itemJsonBytes": 213
+          },
+          "get_item": {
+            "calls": 6,
+            "examined": 5,
+            "returned": 5,
+            "itemJsonBytes": 585
+          },
+          "scan": {
+            "calls": 1,
+            "examined": 12,
+            "returned": 5,
+            "itemJsonBytes": 695
+          },
+          "s3": {
+            "calls": 4,
+            "bodyBytes": 320
+          }
+        },
+        "localSamplesMs": [
+          8.747,
+          6.923,
+          6.818
+        ],
+        "medianMs": 6.923,
+        "minMs": 6.818,
+        "maxMs": 8.747
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 4,
+            "returned": 4,
+            "itemJsonBytes": 515
+          },
+          "get_item": {
+            "calls": 9,
+            "examined": 7,
+            "returned": 7,
+            "itemJsonBytes": 840
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 2,
+            "bodyBytes": 162
+          }
+        },
+        "localSamplesMs": [
+          6.871,
+          8.022,
+          7.089
+        ],
+        "medianMs": 7.089,
+        "minMs": 6.871,
+        "maxMs": 8.022
+      }
+    },
+    {
+      "cohorts": 5,
+      "noise": 0,
+      "role": "mixed",
+      "bindings": 2,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 4,
+            "returned": 4,
+            "itemJsonBytes": 399
+          },
+          "get_item": {
+            "calls": 5,
+            "examined": 4,
+            "returned": 4,
+            "itemJsonBytes": 462
+          },
+          "scan": {
+            "calls": 1,
+            "examined": 14,
+            "returned": 5,
+            "itemJsonBytes": 695
+          },
+          "s3": {
+            "calls": 3,
+            "bodyBytes": 241
+          }
+        },
+        "localSamplesMs": [
+          7.834,
+          6.173,
+          6.655
+        ],
+        "medianMs": 6.655,
+        "minMs": 6.173,
+        "maxMs": 7.834
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 6,
+            "returned": 6,
+            "itemJsonBytes": 701
+          },
+          "get_item": {
+            "calls": 10,
+            "examined": 8,
+            "returned": 8,
+            "itemJsonBytes": 978
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 2,
+            "bodyBytes": 162
+          }
+        },
+        "localSamplesMs": [
+          7.344,
+          7.097,
+          7.062
+        ],
+        "medianMs": 7.097,
+        "minMs": 7.062,
+        "maxMs": 7.344
+      }
+    },
+    {
+      "cohorts": 5,
+      "noise": 0,
+      "role": "admin",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "get_item": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "scan": {
+            "calls": 1,
+            "examined": 11,
+            "returned": 5,
+            "itemJsonBytes": 695
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          1.254,
+          0.812,
+          0.859
+        ],
+        "medianMs": 0.859,
+        "minMs": 0.812,
+        "maxMs": 1.254
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 1,
+            "examined": 5,
+            "returned": 5,
+            "itemJsonBytes": 435
+          },
+          "get_item": {
+            "calls": 6,
+            "examined": 6,
+            "returned": 6,
+            "itemJsonBytes": 773
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          3.539,
+          2.99,
+          2.955
+        ],
+        "medianMs": 2.99,
+        "minMs": 2.955,
+        "maxMs": 3.539
+      }
+    },
+    {
+      "cohorts": 25,
+      "noise": 200,
+      "role": "student",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 1,
+            "returned": 1,
+            "itemJsonBytes": 107
+          },
+          "get_item": {
+            "calls": 30,
+            "examined": 21,
+            "returned": 21,
+            "itemJsonBytes": 2609
+          },
+          "scan": {
+            "calls": 10,
+            "examined": 247,
+            "returned": 25,
+            "itemJsonBytes": 3518
+          },
+          "s3": {
+            "calls": 20,
+            "bodyBytes": 1600
+          }
+        },
+        "localSamplesMs": [
+          46.361,
+          45.146,
+          44.362
+        ],
+        "medianMs": 45.146,
+        "minMs": 44.362,
+        "maxMs": 46.361
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 11,
+            "returned": 11,
+            "itemJsonBytes": 1617
+          },
+          "get_item": {
+            "calls": 32,
+            "examined": 22,
+            "returned": 22,
+            "itemJsonBytes": 2851
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 10,
+            "bodyBytes": 810
+          }
+        },
+        "localSamplesMs": [
+          23.458,
+          22.855,
+          22.6
+        ],
+        "medianMs": 22.855,
+        "minMs": 22.6,
+        "maxMs": 23.458
+      }
+    },
+    {
+      "cohorts": 25,
+      "noise": 200,
+      "role": "student",
+      "bindings": 1,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 2,
+            "returned": 2,
+            "itemJsonBytes": 213
+          },
+          "get_item": {
+            "calls": 30,
+            "examined": 21,
+            "returned": 21,
+            "itemJsonBytes": 2609
+          },
+          "scan": {
+            "calls": 10,
+            "examined": 248,
+            "returned": 25,
+            "itemJsonBytes": 3518
+          },
+          "s3": {
+            "calls": 20,
+            "bodyBytes": 1600
+          }
+        },
+        "localSamplesMs": [
+          43.267,
+          41.248,
+          41.445
+        ],
+        "medianMs": 41.445,
+        "minMs": 41.248,
+        "maxMs": 43.267
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 12,
+            "returned": 12,
+            "itemJsonBytes": 1723
+          },
+          "get_item": {
+            "calls": 33,
+            "examined": 23,
+            "returned": 23,
+            "itemJsonBytes": 2984
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 10,
+            "bodyBytes": 810
+          }
+        },
+        "localSamplesMs": [
+          24.619,
+          23.502,
+          24.755
+        ],
+        "medianMs": 24.619,
+        "minMs": 23.502,
+        "maxMs": 24.755
+      }
+    },
+    {
+      "cohorts": 25,
+      "noise": 200,
+      "role": "mixed",
+      "bindings": 2,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 5,
+            "returned": 5,
+            "itemJsonBytes": 481
+          },
+          "get_item": {
+            "calls": 29,
+            "examined": 20,
+            "returned": 20,
+            "itemJsonBytes": 2486
+          },
+          "scan": {
+            "calls": 11,
+            "examined": 251,
+            "returned": 25,
+            "itemJsonBytes": 3520
+          },
+          "s3": {
+            "calls": 19,
+            "bodyBytes": 1521
+          }
+        },
+        "localSamplesMs": [
+          75.033,
+          42.078,
+          41.911
+        ],
+        "medianMs": 42.078,
+        "minMs": 41.911,
+        "maxMs": 75.033
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 15,
+            "returned": 15,
+            "itemJsonBytes": 1991
+          },
+          "get_item": {
+            "calls": 35,
+            "examined": 25,
+            "returned": 25,
+            "itemJsonBytes": 3255
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 10,
+            "bodyBytes": 810
+          }
+        },
+        "localSamplesMs": [
+          24.619,
+          24.067,
+          24.076
+        ],
+        "medianMs": 24.076,
+        "minMs": 24.067,
+        "maxMs": 24.619
+      }
+    },
+    {
+      "cohorts": 25,
+      "noise": 200,
+      "role": "admin",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "get_item": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "scan": {
+            "calls": 10,
+            "examined": 247,
+            "returned": 25,
+            "itemJsonBytes": 3518
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          16.045,
+          15.991,
+          15.37
+        ],
+        "medianMs": 15.991,
+        "minMs": 15.37,
+        "maxMs": 16.045
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 1,
+            "examined": 25,
+            "returned": 25,
+            "itemJsonBytes": 2175
+          },
+          "get_item": {
+            "calls": 26,
+            "examined": 26,
+            "returned": 26,
+            "itemJsonBytes": 3540
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          12.815,
+          11.861,
+          11.686
+        ],
+        "medianMs": 11.861,
+        "minMs": 11.686,
+        "maxMs": 12.815
+      }
+    },
+    {
+      "cohorts": 50,
+      "noise": 800,
+      "role": "student",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 1,
+            "returned": 1,
+            "itemJsonBytes": 107
+          },
+          "get_item": {
+            "calls": 61,
+            "examined": 41,
+            "returned": 41,
+            "itemJsonBytes": 5153
+          },
+          "scan": {
+            "calls": 36,
+            "examined": 892,
+            "returned": 50,
+            "itemJsonBytes": 7086
+          },
+          "s3": {
+            "calls": 40,
+            "bodyBytes": 3202
+          }
+        },
+        "localSamplesMs": [
+          153.091,
+          188.749,
+          169.711
+        ],
+        "medianMs": 169.711,
+        "minMs": 153.091,
+        "maxMs": 188.749
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 22,
+            "returned": 22,
+            "itemJsonBytes": 3278
+          },
+          "get_item": {
+            "calls": 65,
+            "examined": 44,
+            "returned": 44,
+            "itemJsonBytes": 5810
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 21,
+            "bodyBytes": 1701
+          }
+        },
+        "localSamplesMs": [
+          51.794,
+          49.869,
+          47.509
+        ],
+        "medianMs": 49.869,
+        "minMs": 47.509,
+        "maxMs": 51.794
+      }
+    },
+    {
+      "cohorts": 50,
+      "noise": 800,
+      "role": "student",
+      "bindings": 1,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 2,
+            "returned": 2,
+            "itemJsonBytes": 213
+          },
+          "get_item": {
+            "calls": 61,
+            "examined": 41,
+            "returned": 41,
+            "itemJsonBytes": 5153
+          },
+          "scan": {
+            "calls": 36,
+            "examined": 893,
+            "returned": 50,
+            "itemJsonBytes": 7086
+          },
+          "s3": {
+            "calls": 40,
+            "bodyBytes": 3202
+          }
+        },
+        "localSamplesMs": [
+          157.558,
+          157.332,
+          158.662
+        ],
+        "medianMs": 157.558,
+        "minMs": 157.332,
+        "maxMs": 158.662
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 23,
+            "returned": 23,
+            "itemJsonBytes": 3384
+          },
+          "get_item": {
+            "calls": 66,
+            "examined": 45,
+            "returned": 45,
+            "itemJsonBytes": 5943
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 21,
+            "bodyBytes": 1701
+          }
+        },
+        "localSamplesMs": [
+          55.933,
+          53.255,
+          50.047
+        ],
+        "medianMs": 53.255,
+        "minMs": 50.047,
+        "maxMs": 55.933
+      }
+    },
+    {
+      "cohorts": 50,
+      "noise": 800,
+      "role": "mixed",
+      "bindings": 2,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 5,
+            "returned": 5,
+            "itemJsonBytes": 481
+          },
+          "get_item": {
+            "calls": 60,
+            "examined": 40,
+            "returned": 40,
+            "itemJsonBytes": 5030
+          },
+          "scan": {
+            "calls": 36,
+            "examined": 896,
+            "returned": 50,
+            "itemJsonBytes": 7086
+          },
+          "s3": {
+            "calls": 39,
+            "bodyBytes": 3123
+          }
+        },
+        "localSamplesMs": [
+          158.799,
+          152.076,
+          147.646
+        ],
+        "medianMs": 152.076,
+        "minMs": 147.646,
+        "maxMs": 158.799
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 3,
+            "examined": 26,
+            "returned": 26,
+            "itemJsonBytes": 3652
+          },
+          "get_item": {
+            "calls": 68,
+            "examined": 47,
+            "returned": 47,
+            "itemJsonBytes": 6214
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 21,
+            "bodyBytes": 1701
+          }
+        },
+        "localSamplesMs": [
+          49.185,
+          49.384,
+          48.212
+        ],
+        "medianMs": 49.185,
+        "minMs": 48.212,
+        "maxMs": 49.384
+      }
+    },
+    {
+      "cohorts": 50,
+      "noise": 800,
+      "role": "admin",
+      "bindings": 0,
+      "equivalent": true,
+      "before": {
+        "operations": {
+          "query": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "get_item": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "scan": {
+            "calls": 36,
+            "examined": 892,
+            "returned": 50,
+            "itemJsonBytes": 7086
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          97.879,
+          104.009,
+          97.481
+        ],
+        "medianMs": 97.879,
+        "minMs": 97.481,
+        "maxMs": 104.009
+      },
+      "after": {
+        "operations": {
+          "query": {
+            "calls": 2,
+            "examined": 50,
+            "returned": 50,
+            "itemJsonBytes": 4350
+          },
+          "get_item": {
+            "calls": 51,
+            "examined": 51,
+            "returned": 51,
+            "itemJsonBytes": 7010
+          },
+          "scan": {
+            "calls": 0,
+            "examined": 0,
+            "returned": 0,
+            "itemJsonBytes": 0
+          },
+          "s3": {
+            "calls": 0,
+            "bodyBytes": 0
+          }
+        },
+        "localSamplesMs": [
+          26.161,
+          25.349,
+          25.186
+        ],
+        "medianMs": 25.349,
+        "minMs": 25.186,
+        "maxMs": 26.161
+      }
+    }
+  ],
+  "history": [
+    {
+      "publications": 12,
+      "before": {
+        "query": {
+          "calls": 1,
+          "examined": 12,
+          "returned": 12,
+          "itemJsonBytes": 1608
+        },
+        "get_item": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "after": {
+        "query": {
+          "calls": 3,
+          "examined": 12,
+          "returned": 12,
+          "itemJsonBytes": 2184
+        },
+        "get_item": {
+          "calls": 13,
+          "examined": 13,
+          "returned": 13,
+          "itemJsonBytes": 1691
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "equivalent": true
+    },
+    {
+      "publications": 100,
+      "before": {
+        "query": {
+          "calls": 4,
+          "examined": 100,
+          "returned": 100,
+          "itemJsonBytes": 13400
+        },
+        "get_item": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "after": {
+        "query": {
+          "calls": 3,
+          "examined": 12,
+          "returned": 12,
+          "itemJsonBytes": 2184
+        },
+        "get_item": {
+          "calls": 13,
+          "examined": 13,
+          "returned": 13,
+          "itemJsonBytes": 1692
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "equivalent": true
+    },
+    {
+      "publications": 1000,
+      "before": {
+        "query": {
+          "calls": 40,
+          "examined": 1000,
+          "returned": 1000,
+          "itemJsonBytes": 134000
+        },
+        "get_item": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "after": {
+        "query": {
+          "calls": 3,
+          "examined": 12,
+          "returned": 12,
+          "itemJsonBytes": 2184
+        },
+        "get_item": {
+          "calls": 13,
+          "examined": 13,
+          "returned": 13,
+          "itemJsonBytes": 1693
+        },
+        "scan": {
+          "calls": 0,
+          "examined": 0,
+          "returned": 0,
+          "itemJsonBytes": 0
+        }
+      },
+      "equivalent": true
+    }
+  ]
+}

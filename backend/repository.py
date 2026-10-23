@@ -77,6 +77,30 @@ class Repository:
             args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
 
     def cohorts(self):
+        from derived_access import DIRECTORY, discovery_ready
+        if not discovery_ready(self):
+            return self.legacy_cohorts()
+        result = [self.get("COHORT#" + row["code"], "METADATA")
+                  for row in self.list(DIRECTORY, "COHORT#")]
+        return sorted((c for c in result if c is not None), key=lambda c: c["code"])
+
+    def recent_references(self, pk, limit):
+        """Bounded chronological Query; continue even an empty page with a cursor."""
+        from boto3.dynamodb.conditions import Key
+        args = {"KeyConditionExpression": Key("PK").eq(pk) & Key("SK").begins_with("RECENT#"),
+                "ScanIndexForward": False, "ConsistentRead": True, "Limit": limit}
+        items = []
+        while len(items) < limit:
+            args["Limit"] = limit - len(items)
+            result = self.table.query(**args)
+            items.extend(self.decode(item) for item in result["Items"])
+            if "LastEvaluatedKey" not in result:
+                break
+            args["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+        return items
+
+    def legacy_cohorts(self):
+        """Temporary legacy path until the explicit administrative cutover."""
         from boto3.dynamodb.conditions import Attr
         args = {"FilterExpression": Attr("SK").eq("METADATA") & Attr("PK").begins_with("COHORT#"), "ConsistentRead": True}
         items = []
