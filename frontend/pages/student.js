@@ -1,10 +1,10 @@
 import { activityModule, groupActivities, needsReview, nextActivities } from "../student-journey.js";
 import { canvasActivityLink } from "../canvas-links.js";
-import { badge, canvasLinksEnabled, current, demo, e, formatOperationalDate, goalIndicator, gradingHelp, heading, icon, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, updateInfo } from "../ui.js";
+import { badge, canvasLinksEnabled, current, demo, e, formatOperationalDate, goalIndicator, gradingHelp, heading, icon, instant, nextCanvasSync, normalize, percent, percentStudent, personalChanges, plural, timeZoneLabel, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 
 export function studentPage(name) {
-  const s = state.report.student;
+  const s = { ...state.report.student, activities: withCanvasSubmissions(state.report.student.activities, state.report.canvasSubmissions) };
   const pending = s.activities.filter((a) => a.state === "pending");
   const pendingKc = pending.filter((a) => a.kind === "kc").length;
   const pendingLab = pending.filter((a) => a.kind === "lab").length;
@@ -18,7 +18,7 @@ export function studentPage(name) {
   return `<div class="student-home">${heading("", `Bom ter você aqui, ${e(name)}.`, "Acompanhe suas conquistas e organize os próximos passos.")}
   <section class="journey student-summary" aria-labelledby="summary-heading"><div class="summary-overview"><div class="summary-text"><h2 id="summary-heading">Seu resumo</h2>${coverage(s)}${s.completed + s.pending ? `<ul class="summary-counts" role="list"><li class="count-pending">${pending.length} sem nota</li><li class="count-review">${review.length} para revisar</li></ul>` : ""}<button class="button primary" data-view="activities">Ver minhas atividades ${icon("arrow")}</button></div></div>
   <div class="summary-goals">${goalIndicator("Média em KCs", s.kc, thresholds.kc, pendingKc, "KC")}${goalIndicator("Média em Labs", s.lab, thresholds.lab, pendingLab, "LAB")}</div><div class="grade-context">${gradingHelp(thresholds)}</div></section>
-  ${updateInfo()}
+  ${updateInfo()}${submissionContext(state.report.canvasSubmissions)}
   <div class="student-columns"><section class="panel next-steps" aria-labelledby="pending-heading"><div class="panel-title"><div><h2 id="pending-heading">${focus.length ? "Foco indicado pelo instrutor" : "Por onde começar"}</h2><p class="small">${focus.length ? "Até três atividades indicadas para a turma. Aqui aparecem apenas as que estão sem nota ou podem ser revisadas por você." : "Até três atividades: primeiro as sem nota, na ordem da publicação; depois, sugestões de revisão."}</p></div></div>
   ${pending.length || review.length ? `<div class="next-summary">${pending.length ? `<button class="button secondary" data-view="activities" data-pending="all">Ver minhas pendências · ${pending.length}</button>` : ""}${review.length ? `<button class="button secondary" data-view="activities" data-activity-filter="review">Revisar resultados · ${review.length}</button>` : ""}</div>` : ""}
   ${next.length ? `<div class="next-list">${next.map((a) => activityCard(a)).join("")}</div>` : `<p class="empty compact">${focus.length ? "Você já tem notas na referência nas atividades indicadas ou está dispensado delas. Consulte as demais atividades abaixo." : s.activities.some((a) => ["pending", "completed"].includes(a.state)) ? "As atividades avaliadas estão na referência. Continue acompanhando as próximas liberações." : "Ainda não há atividades para entrega ou revisão nesta publicação."}</p>`}
@@ -61,7 +61,37 @@ const activitiesHeading = () => heading("", "Minhas atividades", "Notas registra
 
 export function activityCard(a, studentView = true) {
   const link = demo || !canvasLinksEnabled ? null : canvasActivityLink(a);
-  return `<div class="activity-card"><span class="activity-symbol ${a.kind}">${icon(a.kind === "kc" ? "book" : "network")}</span><div><small>${a.kind === "kc" ? "KNOWLEDGE CHECK" : "LABORATÓRIO"}</small><strong>${e(a.name)}</strong>${link ? `<a class="activity-link" href="${e(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(`${link.label}: ${a.name} (abre em nova aba)`)}">${e(link.label)} ${icon("external", 16)}</a>` : ""}</div>${a.state === "completed" ? `<div class="activity-result"><strong class="activity-grade">${(studentView ? percentStudent : percent)(a.percent)}</strong>${needsReview(a) ? '<span class="review-hint">Sugestão de revisão</span>' : ""}</div>` : badge(a.state)}</div>`;
+  return `<div class="activity-card"><span class="activity-symbol ${a.kind}">${icon(a.kind === "kc" ? "book" : "network")}</span><div><small>${a.kind === "kc" ? "KNOWLEDGE CHECK" : "LABORATÓRIO"}</small><strong>${e(a.name)}</strong>${link ? `<a class="activity-link" href="${e(link.url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(`${link.label}: ${a.name} (abre em nova aba)`)}">${e(link.label)} ${icon("external", 16)}</a>` : ""}${submissionInfo(a.canvasSubmission)}</div>${a.state === "completed" ? `<div class="activity-result"><strong class="activity-grade">${(studentView ? percentStudent : percent)(a.percent)}</strong>${needsReview(a) ? '<span class="review-hint">Sugestão de revisão</span>' : ""}</div>` : badge(a.state)}</div>`;
+}
+
+// Dado auxiliar atual, associado pelo ID da tarefa, nunca pela posição/nome ou por uma nota.
+// Não altera a lista acadêmica nem os filtros, médias, lembretes ou a publicação histórica.
+export function withCanvasSubmissions(activities, collection) {
+  if (!collection || typeof collection.items !== "object" || !collection.items) return activities;
+  return activities.map((a) => {
+    const id = /\((\d+)\)\s*$/.exec(a.id)?.[1];
+    const item = id && Object.hasOwn(collection.items, id) ? collection.items[id] : null;
+    const value = ["unreleased", "exempt"].includes(a.state) ? { state: "not_applicable" } : item || { state: "unknown" };
+    return { ...a, canvasSubmission: value };
+  });
+}
+
+export function submissionContext(collection) {
+  if (!collection) return "";
+  const quality = collection.status === "failed" ? " A última tentativa de coleta falhou; informações anteriores podem estar retidas."
+    : collection.status === "partial" ? " A coleta está parcial; alguns dados podem estar retidos ou indisponíveis." : "";
+  return `<p class="small canvas-submissions-note">Situação das entregas no Canvas, separada das notas desta publicação. Não confirma novas interações após a observação.${quality} ${timeZoneLabel}.</p>`;
+}
+
+function submissionInfo(value) {
+  if (!value || typeof value !== "object") return "";
+  const labels = { submitted: "Entrega registrada; aguardando avaliação", pending_review: "Entrega em revisão",
+    graded: "Avaliação registrada no Canvas", unsubmitted: "Sem entrega registrada", not_applicable: "Situação da entrega não aplicável", unknown: "Sem informação de entrega" };
+  const observed = instant(value.observedAt);
+  const retained = value.provenance?.status === "retained";
+  const label = value.state === "submitted" && value.provenance?.reason === "evaluation-unconfirmed"
+    ? "Entrega registrada; avaliação atual não confirmada" : labels[value.state] || labels.unknown;
+  return `<span class="canvas-submission">${e(label)}${observed || retained ? `<span class="canvas-submission-observation">${observed ? `Observação: <time datetime="${e(value.observedAt)}">${formatOperationalDate(value.observedAt)}</time>` : "Data de observação indisponível"}${retained ? " · Informação retida" : ""}</span>` : ""}</span>`;
 }
 
 export function evolution() {
@@ -91,7 +121,7 @@ export function evolution() {
 }
 
 export function activitiesPage() {
-  const activities = state.report.student.activities;
+  const activities = withCanvasSubmissions(state.report.student.activities, state.report.canvasSubmissions);
   const thresholds = state.report.thresholds || { kc: 70, lab: 95 };
   const filtered = activities.filter(
     (a) =>
@@ -110,7 +140,7 @@ export function activitiesPage() {
     : search
       ? `<div class="empty"><p>Nenhuma atividade encontrada para “${e(search)}”${filtersOn ? " com os filtros selecionados" : ""}.</p>${clear(filtersOn ? "Limpar busca e filtros" : "Limpar busca")}</div>`
       : `<div class="empty"><p>Nenhuma atividade encontrada neste filtro.</p>${clear("Limpar filtros")}</div>`;
-  return `<div class="student-activities">${activitiesHeading()}${updateInfo()}${gradingHelp(thresholds)}
+  return `<div class="student-activities">${activitiesHeading()}${updateInfo()}${gradingHelp(thresholds)}${submissionContext(state.report.canvasSubmissions)}
   <section class="panel"><div class="table-tools activity-filters"><label for="activity-kind">Tipo de atividade <select id="activity-kind">${[
     ["all", "KCs e LABs"],
     ["kc", "Somente KCs"],
