@@ -24,7 +24,7 @@ test("entrega associa somente assignment ID e não modifica notas, universo ou a
 });
 
 test("rótulos são conservadores, com recência própria, zero acadêmico e retenção visível", () => {
-  for (const [status, label] of [["submitted", "Entrega registrada; aguardando avaliação"], ["pending_review", "Entrega em revisão"],
+  for (const [status, label] of [["submitted", "Entrega registrada; avaliação atual não confirmada"], ["pending_review", "Entrega em revisão"],
     ["graded", "Avaliação registrada no Canvas"], ["unsubmitted", "Sem entrega registrada"], ["unknown", "Sem informação de entrega"],
     ["not_applicable", "Situação da entrega não aplicável"], ["novo-estado", "Sem informação de entrega"]]) {
     const [row] = withCanvasSubmissions([activity], envelope({ state: status, observedAt: at, provenance: { status: "retained" } }));
@@ -58,4 +58,16 @@ test("páginas e detalhe autorizado preservam filtros acadêmicos e distinguem p
   state.pendingError = null;
   assert.match(pendingPage(), /Entrega em revisão/);
   assert.doesNotMatch(pendingPage(), /correção do professor|reenviar atividade/i);
+});
+
+test("falha de coleta não transforma avaliação não confirmada em espera confirmada", () => {
+  const before = { state: "submitted", observedAt: at, provenance: { status: "current", reason: "evaluation-unconfirmed" } };
+  // A leitura preserva o estado/observação, mas o motivo descreve a falha mais recente.
+  const after = { ...before, provenance: { status: "retained", reason: "failed" } };
+  for (const value of [before, after]) {
+    const html = activityCard({ ...activity, canvasSubmission: value });
+    assert.match(html, /Entrega registrada; avaliação atual não confirmada/);
+    assert.doesNotMatch(html, /aguardando avaliação/);
+  }
+  assert.match(activityCard({ ...activity, canvasSubmission: after }), /Informação retida/);
 });

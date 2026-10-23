@@ -12,7 +12,7 @@ const activities = ["submitted", "unsubmitted", "pending_review", "graded", "unk
 }));
 const collection = { courseId: "7", attemptedAt: at, status: "partial", items: Object.fromEntries(
   ["submitted", "unsubmitted", "pending_review", "graded", "unknown", "not_applicable"].map((state, i) => [String(100 + i), {
-    state, observedAt: i === 4 ? null : at, provenance: { status: i === 0 ? "retained" : "current" },
+    state, observedAt: i === 4 ? null : at, provenance: { status: i === 0 ? "retained" : "current", ...(i === 0 ? { reason: "failed" } : {}) },
   }])) };
 const student = { id: "101", name: "Aluna Fictícia", email: "aluna@example.test", kc: 0, lab: null, total: 0, progress: 16.67,
   completed: 1, pending: 5, status: "insufficient", activities };
@@ -64,7 +64,8 @@ test("aluno vê entrega independente da nota, filtra por notas e usa teclado em 
   for (const [width, text] of [[1440, 1], [390, 1], [320, 2]]) {
     const c = await open("student", width, true, text);
     try {
-      assert.match(await c.page.locator(".student-activities").innerText(), /Entrega registrada; aguardando avaliação/);
+      assert.match(await c.page.locator(".student-activities").innerText(), /Entrega registrada; avaliação atual não confirmada/);
+      assert.doesNotMatch(await c.page.locator(".student-activities").innerText(), /aguardando avaliação/);
       assert.match(await c.page.locator(".student-activities").innerText(), /Informação retida/);
       assert.match(await c.page.locator(".canvas-submissions-note").innerText(), /separada das notas desta publicação/);
       const filter = c.page.getByRole("button", { name: "Sem nota", exact: true });

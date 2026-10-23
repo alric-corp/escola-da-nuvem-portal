@@ -89,7 +89,7 @@ function submissionInfo(value) {
     graded: "Avaliação registrada no Canvas", unsubmitted: "Sem entrega registrada", not_applicable: "Situação da entrega não aplicável", unknown: "Sem informação de entrega" };
   const observed = instant(value.observedAt);
   const retained = value.provenance?.status === "retained";
-  const label = value.state === "submitted" && value.provenance?.reason === "evaluation-unconfirmed"
+  const label = value.state === "submitted" && (retained || value.provenance?.reason === "evaluation-unconfirmed")
     ? "Entrega registrada; avaliação atual não confirmada" : labels[value.state] || labels.unknown;
   return `<span class="canvas-submission">${e(label)}${observed || retained ? `<span class="canvas-submission-observation">${observed ? `Observação: <time datetime="${e(value.observedAt)}">${formatOperationalDate(value.observedAt)}</time>` : "Data de observação indisponível"}${retained ? " · Informação retida" : ""}</span>` : ""}</span>`;
 }
