@@ -1,6 +1,25 @@
 # 05 · Descobrir as turmas do aluno pelo vínculo, sem scan
 
-**Status:** 🟨 parcial — otimização por vínculo implementada; scan global permanece · **Prioridade:** média · **Esforço:** médio · **Área:** backend
+**Status:** 🟨 implementado e testado; migração/cutover produtivo pendentes · **Prioridade:** média · **Esforço:** médio · **Área:** backend
+
+
+## Implementação desta entrega
+
+O caminho novo está implementado em `backend/derived_access.py`, integrado aos
+writers reais de criação/publicação/restore e a `Repository`/`Portal`. Após
+cutover simulado, `/cohorts` usa Query por e-mail/vínculos para pessoas e diretório
+paginado para administradores, sem Scan; autorização permanece canônica. O
+[modelo, roteiro e recuperação](../derived-access.md) documentam os acessos.
+
+O backfill administrativo é dry-run por padrão, idempotente e retomável, e o
+cutover é explícito e condicionado às revisões. Não foi executado na AWS.
+Até a implantação compatível e reconciliação/cutover reais, produção pode
+continuar usando o fallback legado com Scan. Portanto este TODO permanece
+aberto operacionalmente; código/teste não são prova de implantação.
+
+Os testes Moto e o benchmark de operações desta entrega ficam em
+`tests/integration/test_derived_access.py` e `scripts/benchmark_derived_access.py`.
+As medições históricas abaixo permanecem como registro das fases anteriores.
 
 ## Medição AS-06 em 22/10/2026
 

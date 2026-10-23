@@ -1,6 +1,6 @@
 # Releases do frontend pelo GitHub Actions
 
-Publicação versionada do frontend: releases imutáveis em `releases/<id>/` e um `index.html` ponteiro na raiz. O workflow [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml) publica **automaticamente** cada push na `main` depois do CI verde e oferece operações manuais para recuperação.
+Publicação versionada do frontend: releases imutáveis em `releases/<id>/` e um `index.html` ponteiro na raiz. O workflow [`deploy-frontend.yml`](../.github/workflows/deploy-frontend.yml) publica **automaticamente** cada push na `main` cuja árvore foi aprovada no CI do PR integrado e oferece operações manuais para recuperação.
 
 **Estado verificado em 21/10/2026 (Brasília): ativo.** A `main` após o PR #13, `c62f924033b6ea44cd09c4c1094b1a88610d2fa3`, passou os quatro checks no [CI 39692747676](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39692747676) e foi publicada/ativada pelo [deploy automático 39694238148](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39694238148), release `c62f924033b6-b17c56bb10be`, com invalidação concluída e smoke público aprovado. `FRONTEND_DEPLOY_ENABLED=true` foi confirmado nessa verificação. Isso comprova a entrega estática, sem substituir QA autenticado real.
 
@@ -30,11 +30,12 @@ O `release_id` amarra commit, assets, config, rotas da API e builder. A baseline
 ## Deploy automático
 
 ```
-push na main (inclusive merge de PR)
-  → CI (ci.yml): backend, integração, frontend e navegador, Terraform, bootstrap e mutações
-  → [CI verde] Deploy do frontend (workflow_run), operação deploy:
-      gate     sem AWS: CI verde de push na main deste repositório, commit do CI = commit da execução = HEAD
-               atual da main, CI reconferido na API, kill switch, environment restrito à main
+PR para main (opened, synchronize, reopened)
+  → CI completo: backend, integração, frontend/navegador, Terraform, bootstrap e mutações (quatro checks)
+  → merge → push/main → Deploy do frontend, operação deploy:
+      gate     sem AWS: PR efetivamente integrado, CI do PR + quatro jobs success da mesma tentativa,
+               checkout Git testado e árvore integral equivalente ao merge final, HEAD atual, kill switch,
+               environment restrito à main
       build    environment production, sem AWS: empacota, valida offline, contra o publicado e no Chromium
       publish  environment production, OIDC: revalida o pacote, publica releases/<id>/ (If-None-Match), ativa
                (index.html com If-Match), invalida / e /index.html, espera a conclusão e faz o smoke público
@@ -49,7 +50,7 @@ O artefato `activation-<run>-<tentativa>` guarda o registro: release ativa, ante
 
 O gate ou o build impedem a publicação quando:
 - o CI fica vermelho ou é cancelado;
-- o CI vem de PR, de fork ou de outra branch;
+- não há um PR integrado correspondente e CI pertinente, ou a combinação de base/head não foi testada;
 - a `main` avança antes de uma escrita. O commit mais novo tem o próprio deploy;
 - o kill switch está desligado;
 - a config do environment difere da publicada. É preciso um `deploy` manual com `allow_config_change`.
@@ -91,9 +92,22 @@ e hash do manifesto. O publicador reconfere o evento original do runner e a apro
 em memória que serão enviados, imediatamente antes do primeiro `PutObject`, preservando a guarda de HEAD.
 Não existe input para dispensar essa validação. Uma recusa produz zero chamadas de `PutObject`.
 
-O automático (`workflow_run`) continua sem inputs de aprovação humana: aceita somente o CI verde de
-push na main, com evento/repositório/commit validados, e mantém os gates de HEAD, environment, integridade
-e kill switch. `source=baseline` continua preso a `baseline.json`; não pode publicar um pacote moderno.
+O automático (`push/main`) continua sem inputs de aprovação humana: aceita a evidência do CI
+`pull_request` do PR efetivamente integrado e exige os quatro jobs bem-sucedidos da mesma tentativa.
+Cada checkout é explicitamente `github.sha` (merge temporário), verificado por `git rev-parse HEAD`;
+a API de jobs registra SHA e número do PR no nome desse passo. O gate cruza isso com o commit Git (pais base/head)
+e a árvore inteira do merge final. SHA da branch, merge temporário e merge final podem diferir.
+
+Se a base mudou e o conteúdo integrado difere da árvore testada, o deploy bloqueia. Atualize o PR e rode seu CI antes da
+integração. Se a árvore integral é idêntica apesar da base diferente, o gate registra a equivalência; não existe uma segunda suíte completa escondida no deploy. O primeiro merge desta mudança
+já funciona pelo novo modelo, pois seu CI registra os checkouts. A concorrência do CI cancela somente
+execuções ultrapassadas do mesmo PR, nunca um deploy produtivo em andamento.
+
+Operações manuais mantêm suas aprovações e a prova do PR. Para uma revisão histórica cujo `ci.yml`
+ainda declarava `push/main`, aceita-se o CI histórico desse SHA com os quatro jobs success; a main
+nova não pode usar essa compatibilidade para dispensar evidência. Baseline, releases antigas e rollback
+continuam preservados. Detalhes e limitações em [CI e evidência do PR](../docs/ci-pr-evidence.md).
+`source=baseline` continua preso a `baseline.json`; não pode publicar um pacote moderno.
 
 No fluxo manual de publicação da main, qualquer novo commit exige uma nova preparação e revisão: source SHA, Release ID, manifesto e
 ponteiro mudam. Compare os hashes/tamanhos/MIME/cache de cada asset,
@@ -103,7 +117,7 @@ O deploy automático segue o CI verde sem essa preparação ou aprovação manua
 
 ### Revalidação do HEAD da main
 
-O HEAD atual de `refs/heads/main` é lido na API do GitHub (`GET /repos/{repo}/git/ref/heads/main`, com o `GITHUB_TOKEN` do job e `contents: read`). Ele precisa ser igual, nos 40 hex, ao `GITHUB_SHA` e ao SHA esperado (o `expected_main_sha` no manual, o commit do CI no automático):
+O HEAD atual de `refs/heads/main` é lido na API do GitHub (`GET /repos/{repo}/git/ref/heads/main`, com o `GITHUB_TOKEN` do job e `contents: read`). Ele precisa ser igual, nos 40 hex, ao `GITHUB_SHA` e ao SHA esperado (o `expected_main_sha` no manual, o commit integrado no automático):
 
 | Verificação | Quando | Onde |
 |---|---|---|
@@ -127,7 +141,7 @@ Qualquer resposta que não prove a igualdade recusa a execução:
 
 1. **Environment `production`**, configurado pela interface do GitHub, conforme a política de deploy automático:
    - *deployment branches and tags*: *Selected branches and tags*, só a regra `main`, do tipo branch. **Obrigatório**: o gate recusa um environment ausente, sem restrição, com outra branch, com curinga ou com tag. Sem o environment, o GitHub o criaria sem restrição no primeiro job; o gate, que roda antes, recusa;
-   - *required reviewers*: **desativado**; sem timer de espera nem regras customizadas de aprovação de deployment. O deploy segue automaticamente o CI verde na `main`;
+   - *required reviewers*: **desativado**; sem timer de espera nem regras customizadas de aprovação de deployment. O deploy segue automaticamente o merge aprovado no CI do PR;
    - *prevent self-review* não se aplica sem revisores. A restrição de branch e environment também está na trust da role (`ref` = `refs/heads/main` e environment `production`) e no gate.
 2. **Variables do environment**:
    - `AWS_ROLE_ARN`, `AWS_REGION`, `FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`;
@@ -135,7 +149,7 @@ Qualquer resposta que não prove a igualdade recusa a execução:
    - `FRONTEND_CONFIG_JSON`: `terraform output -json frontend_config`, numa linha.
 
    **Nenhum secret AWS**: o gate falha se `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` ou `AWS_SESSION_TOKEN` existirem.
-3. **Bootstrap da role**, localmente e com credencial administrativa, conforme [cicd-bootstrap/README.md](cicd-bootstrap/README.md). O plan esperado é **2 to add** (role e policy inline). O state fica numa chave própria. A role nunca acessa state, e o workflow nunca roda Terraform. A trust não restringe o evento: o deploy automático (`workflow_run`) e o manual (`workflow_dispatch`) produzem o mesmo `sub` (environment `production`) e o mesmo `ref` (`refs/heads/main`).
+3. **Bootstrap da role**, localmente e com credencial administrativa, conforme [cicd-bootstrap/README.md](cicd-bootstrap/README.md). O plan esperado é **2 to add** (role e policy inline). O state fica numa chave própria. A role nunca acessa state, e o workflow nunca roda Terraform. A trust não restringe o evento: o deploy automático (`push`) e o manual (`workflow_dispatch`) produzem o mesmo `sub` (environment `production`) e o mesmo `ref` (`refs/heads/main`).
 4. **Kill switch**: a variable de repositório `FRONTEND_DEPLOY_ENABLED`. Fica `false` até a migração e depois `true`, que liga o deploy automático. Volta a `false` para congelar os deploys.
 5. **Proteção da `main`**: PR obrigatório e somente os quatro checks do CI como critério de merge, sem aprovação humana ou Code Owners. Use o [ruleset mínimo abaixo](#governança-da-main-repositório-público).
 
@@ -143,7 +157,7 @@ Quem tem escrita no repositório integra na `main` e, com isso, publica; também
 
 ## Governança da main (repositório público)
 
-**Decisão vigente de 19/10/2026:** toda alteração entra por Pull Request. A aprovação dos status checks do CI é o único critério obrigatório de merge. Não exigir aprovação humana, Code Owners ou aprovação manual de deployment. Esta decisão substitui recomendações anteriores de revisão humana obrigatória para merge ou deployment. O deploy automático depois do CI verde na `main` permanece sujeito aos gates técnicos de segurança e aos pré-requisitos de ativação.
+**Decisão vigente de 19/10/2026:** toda alteração entra por Pull Request. A aprovação dos status checks do CI é o único critério obrigatório de merge. Não exigir aprovação humana, Code Owners ou aprovação manual de deployment. Esta decisão substitui recomendações anteriores de revisão humana obrigatória para merge ou deployment. O deploy automático após o merge aprovado no CI do PR permanece sujeito aos gates técnicos de segurança e aos pré-requisitos de ativação.
 
 O arquivo [`.github/rulesets/main.json`](../.github/rulesets/main.json) é a definição versionada do ruleset; adicionar o arquivo ao Git não configura o GitHub. Na verificação de 21/10/2026, o ruleset `25416927` estava ativo e sem bypass, o environment `production` restrito à branch `main` e o automático habilitado. **Histórico:** no preflight de 19/10/2026, a `main` ainda estava sem proteção/ruleset e não havia environment nem variable `FRONTEND_DEPLOY_ENABLED`. A configuração inicial abaixo já foi concluída; esta revisão documental não altera settings, visibilidade, AWS ou kill switch.
 
@@ -165,7 +179,7 @@ Todos são jobs do workflow **CI**, executados em `pull_request` (inclusive Draf
 
 Não usar `[skip ci]` nem adicionar filtros de caminhos ao CI obrigatório: um workflow ignorado pode deixar checks permanentemente pendentes, como explica a [documentação do GitHub](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks). Se os jobs forem renomeados, atualizar o ruleset junto e confirmar os novos contextos num PR antes de exigi-los. As [regras de status checks](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets#require-status-checks-to-pass-before-merging) permitem fixar a origem no app GitHub Actions.
 
-No repositório público, o CI de PR usa somente `contents: read`, sem credenciais AWS, OIDC ou secrets de produção. Contribuições de forks seguem as permissões e eventual liberação de execução do GitHub Actions para contribuidores externos; isso não é aprovação de merge ou deployment. Não usar `pull_request_target` para executar código do PR com privilégios. O deploy só aceita `workflow_run` do `ci.yml`, com sucesso, originado de `push` na `main` deste repositório, e confere novamente o SHA e o CI pela API. OIDC restrito ao environment/branch, IAM de menor privilégio, rejeição de chaves estáticas e falha fechada continuam obrigatórios.
+No repositório público, o CI de PR usa somente `contents: read`, sem credenciais AWS, OIDC ou secrets de produção. Contribuições de forks seguem as permissões e eventual liberação de execução do GitHub Actions para contribuidores externos; isso não é aprovação de merge ou deployment. Não usar `pull_request_target` para executar código do PR com privilégios. O deploy automático inicia em `push/main` e exige pela API um PR integrado correspondente, seus quatro checks e o checkout testado com árvore integral equivalente ao merge final. Não executa código de PR com credenciais. OIDC restrito ao environment/branch, IAM de menor privilégio, rejeição de chaves estáticas e falha fechada continuam obrigatórios.
 
 ### Checklist de configuração inicial (já concluída)
 
@@ -190,7 +204,7 @@ O instalador recusa credenciais AWS já disponíveis, roda `pip check` e só adi
 **Etapa única já concluída.** A sequência abaixo preserva a referência da migração do layout plano para releases versionadas; não é um procedimento de atualização do portal atual, que já serve uma release moderna. Não repetir sonda, publicação ou ativação da baseline como parte de um merge normal.
 
 1. `prepare`, source `baseline`: conferir o id `1daab314413e-59ca26f6e38c`, a equivalência com os 30 arquivos publicados e o Chromium.
-2. `verify`: conferir as claims reais e decidir sobre `trusted_job_workflow_ref` num apply revisado (V1). O `event_name` do deploy automático é `workflow_run`, e a trust não o restringe.
+2. `verify`: conferir as claims reais e decidir sobre `trusted_job_workflow_ref` num apply revisado (V1). O `event_name` do deploy automático é `push`, e a trust não o restringe.
 3. Kill switch ligado, depois `verify` com `s3_probe=true` (V2). O esperado:
    - passos 1 e 4: `AccessDenied`;
    - passo 2: `200`;
@@ -198,7 +212,7 @@ O instalador recusa credenciais AWS já disponíveis, roda `pip check` e só adi
    - `index.html` intacto.
 4. `deploy`, source `baseline`. Ou, em duas execuções, `publish` com source `baseline` e depois `activate` com `release_id=1daab314413e-59ca26f6e38c` e `expected_active_release=legacy`. A partir do legado só a baseline é aceita, e só se o `index.html` publicado for o da C7.3.
 5. Conferir o portal.
-6. Após a migração, todo push na `main` com CI verde e gates satisfeitos publica a `main`. A primeira publicação moderna substituiu a baseline. Uma operação manual atual com `source=main` deve seguir a [aprovação do pacote](#aprovação-do-pacote-nas-publicações-manuais-da-main); um re-run automático exige que o commit da execução ainda seja o HEAD.
+6. Após a migração, todo push integrado na `main` com evidência do CI do PR e gates satisfeitos publica a `main`. A primeira publicação moderna substituiu a baseline. Uma operação manual atual com `source=main` deve seguir a [aprovação do pacote](#aprovação-do-pacote-nas-publicações-manuais-da-main); um re-run automático exige que o commit da execução ainda seja o HEAD.
 
 ## Rollback
 
@@ -227,7 +241,7 @@ A volta da baseline ao **layout plano** não passa pela pipeline. O procedimento
 
 ## Falhas e diagnóstico
 
-Acompanhe em Actions → *Deploy do frontend*: uma execução por CI concluído na `main`, com evento `workflow_run`. O resumo de cada job diz o que foi aprovado ou recusado.
+Acompanhe em Actions → *Deploy do frontend*: uma execução por push integrado na `main`, com evento `push`, sem repetir o CI. O resumo de cada job diz o que foi aprovado ou recusado.
 
 - **No gate ou no primeiro passo de um job**: o motivo está listado e nada mudou. Exemplos: CI vermelho, kill switch, `main` avançada, environment ou variables ausentes, chave AWS estática.
 - **No `build`**: validação offline, contra o publicado ou no Chromium. Nada mudou.
@@ -250,7 +264,7 @@ O frontend é publicado automaticamente; o backend (Terraform em `infra/terrafor
 
 ## O que a pipeline nunca faz
 
-- Publicar sem o CI verde de um push na `main` deste repositório, fora da `main`, a partir de PR ou fork, ou sem aprovação do kill switch no gate.
+- Publicar sem evidência do PR integrado e do conteúdo testado, fora da `main`, diretamente de um PR ou fork, ou sem aprovação do kill switch no gate.
 - Publicar no manual sem o SHA confirmado.
 - Ativar no `publish` manual: só o `deploy` ativa, e só a release que acabou de publicar, para frente.
 - Usar chaves AWS permanentes.

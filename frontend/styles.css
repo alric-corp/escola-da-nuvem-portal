@@ -4358,3 +4358,9 @@ details ul, .onboarding ol { padding-left: 24px; }
   .course-guide .cg-tabs button { min-height: 44px; padding: var(--space-1); margin-bottom: 0; border-left: 3px solid transparent; border-bottom: 0; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; text-align: left; overflow-wrap: normal; }
   .course-guide .cg-tabs button[aria-selected="true"] { border-left-color: var(--color-action); }
 }
+
+/* =========================================================
+   41. Situação auxiliar das entregas — junto à atividade, separada das notas
+   ========================================================= */
+.activity-card .canvas-submission { display: block; margin-top: var(--space-2); color: var(--color-text-muted); font-size: .8125rem; line-height: 1.5; overflow-wrap: anywhere; }
+.activity-card .canvas-submission-observation { display: block; font-size: .75rem; }

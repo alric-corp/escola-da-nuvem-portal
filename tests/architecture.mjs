@@ -813,7 +813,13 @@ test("Guia do curso só lê state, ui e o conteúdo centralizado, sem rede ou ef
 });
 
 test("Guia do curso: seção 40 do CSS só alcança a nova página", () => {
-  const selectors = cssRules(cssSection(read("frontend/styles.css"), "40. Guia do curso")).flatMap((r) => r.selectors);
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "40. Guia do curso", "41. Situação auxiliar")).flatMap((r) => r.selectors);
   assert.ok(selectors.length >= 10, `seletores lidos: ${selectors.length}`);
   assert.deepEqual(selectors.filter((s) => !/^(\.course-guide\b|\.layout:has\(\.course-guide\))/.test(s)), []);
+});
+
+test("situação de entrega só acrescenta apresentação dentro do cartão de atividade", () => {
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "41. Situação auxiliar")).flatMap((r) => r.selectors);
+  assert.equal(selectors.length, 2);
+  assert.ok(selectors.every((s) => /^\.activity-card \.canvas-submission(?:-observation)?$/.test(s)));
 });

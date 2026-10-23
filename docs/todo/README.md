@@ -10,7 +10,7 @@ com seu histórico e evidências de implementação.
 
 | ID | Item | Estado |
 | --- | --- | --- |
-| 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Pendente — otimização por vínculo entregue; scan global permanece |
+| 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Implementado/testado — migração e cutover produtivos pendentes; fallback legado com Scan até lá |
 | 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
 

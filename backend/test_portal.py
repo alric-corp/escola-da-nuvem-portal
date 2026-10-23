@@ -890,7 +890,7 @@ class IntegrityPortalTests(unittest.TestCase):
         with patch.object(self.repo, "transaction", wraps=self.repo.transaction) as tx:
             publication = self.call("publish", {"draftId": preview["draft"]["id"]})["publication"]
         keys = [sk.split("#")[0] for _, sk, _, _ in tx.call_args.args[0]]
-        self.assertEqual(keys, ["METADATA", "DRAFT", "PUB", "AUDIT"])
+        self.assertEqual(keys, ["METADATA", "DRAFT", "PUB", "AUDIT", "COHORT", "RECENT"])
         [audit] = self.audits()
         self.assertEqual(set(audit), {"action", "origin", "by", "byEmail", "cohort", "publicationId", "at", "filename",
                                       "students", "activities", "warnings"})

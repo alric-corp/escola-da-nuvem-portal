@@ -52,12 +52,12 @@ def publication_context(env, event):
             actual[key.upper()] = value
         operation, source, expected = actual["OPERATION"], actual["SOURCE"], actual["EXPECTED_MAIN_SHA"]
         problems = input_problems(actual, operation, source)
-    elif env.get("GITHUB_EVENT_NAME") == "workflow_run":
+    elif env.get("GITHUB_EVENT_NAME") == "push":
         (operation, source, expected), problems = run_parameters(env, event)
         # Inputs manuais não escolhem o caminho automático, mesmo se injetados no payload/env.
         for key, value in (("OPERATION", operation), ("SOURCE", source), ("EXPECTED_MAIN_SHA", expected)):
             if env.get(key) != value:
-                problems.append(f"{key} diverge do CI que originou o workflow_run.")
+                problems.append(f"{key} diverge do push que originou o deploy.")
     else:
         raise ReleaseError("Evento não autorizado para publicação.")
     if operation not in ("prepare", "publish", "deploy") or source not in ("main", "baseline"):

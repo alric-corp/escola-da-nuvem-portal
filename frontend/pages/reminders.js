@@ -1,7 +1,7 @@
 import { badge, date, demo, e, errorPanel, heading, metric, percent, plural, timeZoneLabel } from "../ui.js";
 import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
-import { activityCard, activityGroups } from "./student.js";
+import { activityCard, activityGroups, submissionContext, withCanvasSubmissions } from "./student.js";
 
 // Lembretes (Expansão 7; docs/design-visual.md): "Lembretes" (o remetente) e "Lembretes em lote", sob .teacher-reminders. As
 // operações são as do handler, com as mesmas chamadas, a mesma confirmação e as mesmas guardas; a tela só mostra o que o
@@ -54,12 +54,12 @@ export function pendingPage() {
   if (state.pendingError) return title + errorPanel(state.pendingError, "retry-pending");
   if (!p)
     return `${title}<section class="panel" role="status">Carregando pendências…</section>`;
-  return `${title}<section class="panel"><div class="panel-title"><div><h2>Atividades sem nota registrada</h2><p class="small">${e(p.student.email || "E-mail ausente no Canvas")} · Publicação de ${date(p.publishedAt)}</p></div><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar pendências</button></div><div class="two-columns">${[
+  return `${title}${submissionContext(p.canvasSubmissions)}<section class="panel"><div class="panel-title"><div><h2>Atividades sem nota registrada</h2><p class="small">${e(p.student.email || "E-mail ausente no Canvas")} · Publicação de ${date(p.publishedAt)}</p></div><button class="button secondary" data-student-pending="${e(p.student.id)}">Atualizar pendências</button></div><div class="two-columns">${[
     ["kc", "KCs sem nota"],
     ["lab", "LABs sem nota"],
   ]
     .map(([kind, label]) => {
-      const items = p.activities.filter((a) => a.kind === kind);
+      const items = withCanvasSubmissions(p.activities, p.canvasSubmissions).filter((a) => a.kind === kind);
       return `<section aria-label="${label}"><h3>${label} (${items.length})</h3>${items.length ? items.map(activityCard).join("") : '<p class="small">Nenhuma pendência nesta categoria.</p>'}</section>`;
     })
     .join("")}</div></section>${participationPanel(p)}${reminderPreview(p)}${studentDetail(p)}`;
@@ -81,7 +81,7 @@ function studentDetail(p) {
   if (!p.summary || !p.allActivities) return "";
   const s = p.summary, t = p.thresholds || { kc: 70, lab: 95 };
   return `<section class="metrics" aria-label="Desempenho do aluno">${metric("Média em KCs", percent(s.kc), `Referência: ${t.kc}% ou mais`, "metric-primary")}${metric("Média em Labs", percent(s.lab), `Referência: ${t.lab}% ou mais`)}${metric("Com nota", percent(s.progress), `${plural(s.completed, "atividade", "atividades")} · ${s.pending} sem nota`)}${metric("Situação", badge(s.status), "Critério da turma")}</section>
-  <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${activityGroups(p.allActivities, false)}</section>
+  <section class="panel"><h2>Todas as atividades</h2><p class="small">Notas, pendências e sugestões de revisão por módulo, como o aluno vê.</p>${activityGroups(withCanvasSubmissions(p.allActivities, p.canvasSubmissions), false)}</section>
   ${p.history?.length ? `<section class="panel"><h2>Histórico do aluno</h2><div class="table-scroll"><table><thead><tr><th>Publicação</th><th>KCs</th><th>Labs</th><th>Média geral</th></tr></thead><tbody>${p.history.map((h) => `<tr><td>${date(h.publishedAt)}${h.current ? " · atual" : ""}</td><td>${percent(h.kc)}</td><td>${percent(h.lab)}</td><td>${percent(h.total)}</td></tr>`).join("")}</tbody></table></div></section>` : ""}`;
 }
 

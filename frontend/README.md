@@ -39,7 +39,7 @@ O build não precisa de Node/npm. Ele copia somente os arquivos web previstos pa
 
 ## Implantar
 
-O frontend segue **PR → CI → merge → CI verde na main → deploy automático**, sujeito ao kill switch e aos gates existentes. A configuração de produção acompanha cada release; publicar o frontend não implanta o backend nem publica notas acadêmicas.
+O frontend segue **PR → CI → merge → deploy automático (push na main, com a árvore aprovada no PR)**, sujeito ao kill switch e aos gates existentes. A configuração de produção acompanha cada release; publicar o frontend não implanta o backend nem publica notas acadêmicas.
 
 Use o [runbook de releases](../infra/FRONTEND-RELEASES.md) para publicação, operação manual e recuperação. O build plano local continua útil para desenvolvimento; `scripts/deploy_frontend.sh` é legado e não é o procedimento normal de publicação. Não sincronizar `frontend/dist` na raiz do bucket nem invalidar `/*` para atualizar uma release.
 

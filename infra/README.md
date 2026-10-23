@@ -1,6 +1,6 @@
 # Infraestrutura do portal AWS re/Start
 
-Infraestrutura e backend têm implantação separada com Terraform e credenciais locais do AWS CLI. O frontend é publicado automaticamente pelo GitHub Actions após CI verde na `main`, conforme o [runbook de releases](FRONTEND-RELEASES.md). A sincronização Canvas existente executa às 6h e às 18h (horário de Brasília), independentemente do deploy da interface.
+Infraestrutura e backend têm implantação separada com Terraform e credenciais locais do AWS CLI. O frontend é publicado automaticamente pelo GitHub Actions após merge na `main`, com CI aprovado no PR e árvore testada equivalente, conforme o [runbook de releases](FRONTEND-RELEASES.md). A sincronização Canvas existente executa às 6h e às 18h (horário de Brasília), independentemente do deploy da interface.
 
 O ambiente da turma `BRSA0267` foi implantado. Consulte o [registro da implantação e verificações](DEPLOYMENT.md) para endereço, recursos e configuração do administrador.
 
@@ -99,7 +99,7 @@ O envio `COGNITO_DEFAULT` tem limite documentado de **50 mensagens por dia por c
 
 ## 4. Gerar e publicar o frontend
 
-O procedimento normal é **PR → CI aprovado → merge na `main` → CI da main aprovado → deploy automático**. A pipeline publica uma release imutável, ativa o `index.html` condicionalmente, invalida somente `/` e `/index.html` e executa o smoke público. O [runbook de releases](FRONTEND-RELEASES.md) é a referência para pré-condições, acompanhamento, operações manuais e recuperação. O portal usa o endereço CloudFront existente; domínio personalizado não é requisito.
+O procedimento normal é **PR → CI aprovado → merge na `main` → deploy automático, sem segunda suíte**. A pipeline publica uma release imutável, ativa o `index.html` condicionalmente, invalida somente `/` e `/index.html` e executa o smoke público. O [runbook de releases](FRONTEND-RELEASES.md) é a referência para pré-condições, acompanhamento, operações manuais e recuperação. O portal usa o endereço CloudFront existente; domínio personalizado não é requisito.
 
 Para gerar apenas um build local com a configuração pública:
 

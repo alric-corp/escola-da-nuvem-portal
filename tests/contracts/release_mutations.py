@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CORE = ".github/scripts/frontend_release.py"
 GATE = ".github/scripts/release_gate.py"
+CI_APPROVAL = ".github/scripts/ci_approval.py"
 ACCESS = ".github/scripts/verify-access.py"
 WORKFLOW = ".github/workflows/deploy-frontend.yml"
 ACTIVATE_ACTION = ".github/actions/activate-release/action.yml"
@@ -128,7 +129,7 @@ CASES = [
     ("gate_sha_ignorado", GATE, "    elif expected != sha:", "    elif False:", 1, GATES, "test_refusals_before_any_api_call"),
     ("gate_sem_kill_switch", GATE, '    if operation in PRODUCTIVE and env.get("DEPLOY_ENABLED") != "true":', "    if False:", 1,
      GATES, "test_refusals_before_any_api_call"),
-    ("gate_sem_ci", GATE, '    if status != 200 or not any(r.get("head_sha") == sha', '    if False and not any(r.get("head_sha") == sha', 1,
+    ("gate_sem_ci", GATE, "    problems += pr_approval_problems(env, github_get)\n", "", 1,
      GATES, "test_ci_must_be_green_for_this_exact_commit"),
     # B.3 (mantenedor único): revisor e bypass são opcionais; existência e restrição à main continuam obrigatórias.
     ("gate_environment_ausente_aceito", GATE, "    if status == 404:\n", "    if False:\n", 1,
@@ -153,8 +154,8 @@ CASES = [
      PIPELINE, "permissões mínimas"),
     ("workflow_publica_por_padrao", WORKFLOW, "        default: prepare", "        default: publish", 1,
      PIPELINE, "gatilhos automático"),
-    # Um push direto publicaria antes do CI terminar.
-    ("workflow_push", WORKFLOW, "on:\n  workflow_run:", "on:\n  push:\n    branches: [main]\n  workflow_run:", 1,
+    # O modelo agora é push/main com prova do PR, nunca workflow_run pós-merge.
+    ("workflow_run_legado", WORKFLOW, "on:\n  push:\n    branches: [main]", "on:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\n    branches: [main]", 1,
      PIPELINE, "gatilhos automático"),
     ("workflow_guarda_token", WORKFLOW, "          persist-credentials: false\n          fetch-depth: 0\n      - name: Variables",
      "          persist-credentials: true\n          fetch-depth: 0\n      - name: Variables", 3, PIPELINE, "gatilhos automático"),
@@ -205,19 +206,31 @@ CASES = [
      "        except ReleaseError as err:\n            fail(str(err))\n", "", 1, HEAD, "test_s3_probe_revalidates_before_writing"),
     ("composite_publica_sem_sha", PUBLISH_ACTION, "        EXPECTED_MAIN_SHA: ${{ inputs.expected-main-sha }}\n", "", 1,
      PIPELINE, "HEAD da main revalidado"),
-    # B.4: deploy automático depois do CI verde na main (workflow_run), com publicação e ativação no mesmo run.
-    ("workflow_run_qualquer_branch", WORKFLOW, "    branches: [main]\n  workflow_dispatch:", "  workflow_dispatch:", 1,
+    # Transição PR-only: mantém recusas de origem/evento/SHA, agora no push integrado.
+    ("push_qualquer_branch", WORKFLOW, "    branches: [main]\n  workflow_dispatch:", "  workflow_dispatch:", 1,
      PIPELINE, "gatilhos automático"),
-    ("auto_ci_vermelho_aceito", GATE, '    if run.get("conclusion") != "success":', "    if False:", 1,
+    ("auto_branch_aceita", GATE, '    if event.get("ref") != "refs/heads/main" or event.get("deleted") is not False:',
+     '    if event.get("deleted") is not False:', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_exclusao_aceita", GATE, '    if event.get("ref") != "refs/heads/main" or event.get("deleted") is not False:',
+     '    if event.get("ref") != "refs/heads/main":', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_outro_repositorio_aceito", GATE, '    if repository.get("full_name") != env.get("GITHUB_REPOSITORY"):',
+     '    if False:', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("auto_commit_do_push_ignorado", GATE, '    return ("deploy", "main", expected if isinstance(expected, str) else ""), problems',
+     '    return ("deploy", "main", env.get("GITHUB_SHA", "")), problems', 1,
      GATES, "test_automatic_refusals_before_any_api_call"),
-    ("auto_pull_request_aceito", GATE, '    if run.get("event") != "push" or run.get("head_branch") != "main":',
-     '    if run.get("head_branch") != "main":', 1, GATES, "test_automatic_refusals_before_any_api_call"),
-    ("auto_outro_repositorio_aceito", GATE, '    if head_repository.get("full_name") != env.get("GITHUB_REPOSITORY"):', "    if False:", 1,
-     GATES, "test_automatic_refusals_before_any_api_call"),
-    ("auto_outro_workflow_aceito", GATE, '    if str(run.get("path", "")).split("@")[0] != CI_WORKFLOW:', "    if False:", 1,
-     GATES, "test_automatic_refusals_before_any_api_call"),
-    ("auto_commit_do_ci_ignorado", GATE, '    return ("deploy", "main", head if isinstance(head, str) else ""), problems',
-     '    return ("deploy", "main", env.get("GITHUB_SHA", "")), problems', 1, GATES, "test_automatic_refusals_before_any_api_call"),
+    ("ci_tree_divergente_aceita", CI_APPROVAL, '        if final_tree != tested_tree:', '        if False:', 1,
+     "test_ci_pr_approval", "test_tree_and_base_change_are_independently_refused"),
+    ("ci_base_nova_conteudo_diferente_aceito", CI_APPROVAL, '        if final_tree != tested_tree:', '        if final_tree != tested_tree and not base_changed:', 1,
+     "test_ci_pr_approval", "test_base_changed_identical_tree_passes_and_changed_content_refuses"),
+    ("ci_sem_quatro_checks", CI_APPROVAL, '    if len(jobs) != len(CHECKS) or {job.get("name") for job in jobs} != set(CHECKS):', '    if False:', 1,
+     "test_ci_pr_approval", "test_four_jobs_must_be_successful_same_attempt_and_same_checkout"),
+    ("ci_checkout_divergente_aceito", CI_APPROVAL, '    if not legacy and len(tested) != 1:', '    if False:', 1,
+     "test_ci_pr_approval", "test_four_jobs_must_be_successful_same_attempt_and_same_checkout"),
+    ("ci_checkout_outro_pr_aceito", CI_APPROVAL, '        if not match or int(match[2]) != pr_number:', '        if not match:', 1,
+     "test_ci_pr_approval", "test_green_ci_for_another_pr_with_same_head_and_tree_is_refused"),
+    ("ci_sem_merge_pr", CI_APPROVAL, '            if (pr.get("merged") is True and pr.get("merge_commit_sha") == sha',
+     '            if (pr.get("merge_commit_sha") == sha', 1,
+     "test_ci_pr_approval", "test_wrong_or_unmerged_pr_and_wrong_repository_are_refused"),
     ("auto_inputs_escolhem_operacao", GATE, '    if name == "workflow_dispatch":',
      '    if name == "workflow_dispatch" or env.get("OPERATION"):', 1, GATES, "test_inputs_never_choose_the_automatic_operation"),
     ("deploy_sem_config", GATE, "    if operation in BUILDS and source == \"main\":", "    if operation in (\"prepare\", \"publish\") and source == \"main\":", 1,

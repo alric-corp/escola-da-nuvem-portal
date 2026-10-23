@@ -18,7 +18,7 @@ from unittest.mock import patch
 import boto3
 from moto import mock_aws
 
-from release_fixtures import (BUCKET, ENVDOC, ENVDOC_SOLO, REGION, REPO, RID, ROLE, SHA, FakeGitHub, auto_env, block_network, child_env,
+from release_fixtures import (BUCKET, ENVDOC, ENVDOC_SOLO, REGION, REPO, RID, ROLE, SHA, FakeGitHub, PR_HEAD, auto_env, block_network, child_env,
                               ci_run_event, config, environment_env, fr, load_script, repo_env)
 
 import release_cli  # noqa: E402 - SCRIPTS já está no sys.path (release_fixtures)
@@ -48,14 +48,13 @@ class RepositoryGateTests(unittest.TestCase):
             with self.subTest(operation, **extra):
                 self.assertEqual(gate.repository_problems(repo_env(OPERATION=operation, **extra), github), [])
         ci_query = next(p for p in github.paths if "ci.yml" in p)
-        self.assertIn(f"head_sha={SHA}", ci_query)
-        self.assertIn("event=push", ci_query)
-        self.assertIn("status=success", ci_query)
+        self.assertIn(f"head_sha={PR_HEAD}", ci_query)
+        self.assertIn("event=pull_request", ci_query)
 
     def test_refusals_before_any_api_call(self):
         cases = {
-            "evento push": (repo_env(GITHUB_EVENT_NAME="push"), "workflow_run"),
-            "evento pull_request": (repo_env(GITHUB_EVENT_NAME="pull_request"), "workflow_run"),
+            "evento workflow_run": (repo_env(GITHUB_EVENT_NAME="workflow_run"), "Só push"),
+            "evento pull_request": (repo_env(GITHUB_EVENT_NAME="pull_request"), "Só push"),
             "branch não autorizada": (repo_env(GITHUB_REF="refs/heads/feat/x"), "fora da branch main"),
             "tag": (repo_env(GITHUB_REF="refs/tags/v1"), "fora da branch main"),
             "sha divergente": (repo_env(EXPECTED_MAIN_SHA="e5" * 20), "diverge"),
@@ -85,7 +84,7 @@ class RepositoryGateTests(unittest.TestCase):
         for label, github in {"sem execução": FakeGitHub(ci=()), "falhou": FakeGitHub(ci=("failure",)),
                               "outro commit": FakeGitHub(runs_sha="e5" * 20)}.items():
             with self.subTest(label):
-                self.assertIn("CI (ci.yml, push) não está verde para este commit.", gate.repository_problems(repo_env(), github))
+                self.assertTrue(any("Aprovação CI" in p for p in gate.repository_problems(repo_env(), github)))
 
     def test_environment_must_exist_and_deploy_only_from_main(self):
         without = lambda **changes: dict(ENVDOC_SOLO, **changes)  # noqa: E731
@@ -122,21 +121,21 @@ class RepositoryGateTests(unittest.TestCase):
 
     def test_review_note_describes_the_configured_model(self):
         self.assertIn("Sem revisor obrigatório", gate.self_review_note(ENVDOC_SOLO))
-        self.assertIn("deploy automático segue o CI verde na main", gate.self_review_note(ENVDOC_SOLO))
+        self.assertIn("deploy automático segue o CI do PR integrado", gate.self_review_note(ENVDOC_SOLO))
         self.assertIn("não é revisão independente", gate.self_review_note(ENVDOC))
         strict = dict(ENVDOC, protection_rules=[dict(ENVDOC["protection_rules"][0], prevent_self_review=True)])
         self.assertEqual(gate.self_review_note(strict), "prevent_self_review ativo.")
 
 
 class AutomaticDeployGateTests(unittest.TestCase):
-    """Deploy automático: só o CI (ci.yml) verde, de push na main deste repositório, inicia o deploy daquele commit."""
+    """Push/main integrado: somente a árvore aprovada pelos quatro checks do PR pode ser publicada."""
 
     def test_green_ci_of_a_push_on_main_deploys_that_exact_commit(self):
         github = FakeGitHub()
         self.assertEqual(gate.run_parameters(auto_env(), ci_run_event()), (("deploy", "main", SHA), []))
         self.assertEqual(gate.repository_problems(auto_env(), github, ci_run_event()), [])
         ci_query = next(p for p in github.paths if "ci.yml" in p)
-        self.assertIn(f"head_sha={SHA}", ci_query, "o CI verde é reconferido na API para o commit exato")
+        self.assertIn(f"head_sha={PR_HEAD}", ci_query, "o CI verde é reconferido na API para o commit exato")
         self.assertIn(f"/repos/{REPO}/git/ref/heads/main", github.paths)
 
     def test_inputs_never_choose_the_automatic_operation_source_or_commit(self):
@@ -146,21 +145,12 @@ class AutomaticDeployGateTests(unittest.TestCase):
 
     def test_automatic_refusals_before_any_api_call(self):
         cases = {
-            "CI falhou": (auto_env(), ci_run_event(conclusion="failure"), "não terminou verde"),
-            "CI cancelado": (auto_env(), ci_run_event(conclusion="cancelled"), "não terminou verde"),
-            "CI sem conclusão": (auto_env(), ci_run_event(conclusion=None), "não terminou verde"),
-            "CI de pull request": (auto_env(), ci_run_event(event="pull_request"), "não é de um push na main"),
-            "CI de outra branch": (auto_env(), ci_run_event(head_branch="feat/x"), "não é de um push na main"),
-            "fork com branch main": (auto_env(), ci_run_event(event="pull_request", head_repository={"full_name": "fork/portal-teste"}),
-                                     "outro repositório"),
-            "push de outro repositório": (auto_env(), ci_run_event(head_repository={"full_name": "fork/portal-teste"}), "outro repositório"),
-            "repositório ausente": (auto_env(), ci_run_event(head_repository=None), "outro repositório"),
-            "outro workflow": (auto_env(), ci_run_event(path=".github/workflows/outro.yml"), "não veio do CI"),
-            "payload ausente": (auto_env(), None, "não veio do CI"),
-            "payload sem workflow_run": (auto_env(), {"action": "completed"}, "não terminou verde"),
-            "main avançou antes do evento": (auto_env(GITHUB_SHA="e5" * 20), ci_run_event(), "diverge"),
-            "commit do CI malformado": (auto_env(), ci_run_event(head_sha=SHA[:12]), "40 hex"),
-            "commit do CI ausente": (auto_env(), ci_run_event(head_sha=None), "40 hex"),
+            "push de outra branch": (auto_env(), ci_run_event(ref="refs/heads/feature"), "main existente"),
+            "push de exclusão": (auto_env(), ci_run_event(deleted=True), "main existente"),
+            "push de outro repositório": (auto_env(), ci_run_event(repository={"full_name": "fork/portal"}), "outro repositório"),
+            "payload ausente": (auto_env(), None, "main existente"),
+            "after divergente": (auto_env(), ci_run_event(after="e5" * 20), "diverge"),
+            "after curto": (auto_env(), ci_run_event(after=SHA[:12]), "40 hex"),
             "fora da main": (auto_env(GITHUB_REF="refs/heads/feat/x"), ci_run_event(), "fora da branch main"),
             "kill switch desligado": (auto_env(DEPLOY_ENABLED="false"), ci_run_event(), "Kill switch"),
             "kill switch ausente": (auto_env(DEPLOY_ENABLED=None), ci_run_event(), "Kill switch"),
@@ -175,7 +165,7 @@ class AutomaticDeployGateTests(unittest.TestCase):
     def test_head_ci_and_environment_are_still_checked_in_the_api(self):
         cases = {
             "main avançou": (FakeGitHub(head="e5" * 20), "A main avançou"),
-            "CI da API não verde": (FakeGitHub(ci=("failure",)), "CI (ci.yml, push) não está verde"),
+            "CI da API não verde": (FakeGitHub(ci=("failure",)), "Aprovação CI"),
             "environment ausente": (FakeGitHub(env_status=404), "ausente"),
             "environment sem restrição": (FakeGitHub(env=dict(ENVDOC_SOLO, deployment_branch_policy=None)), "customizada"),
         }
@@ -187,7 +177,7 @@ class AutomaticDeployGateTests(unittest.TestCase):
     def test_cli_reads_the_event_file_and_publishes_the_decision_only_when_approved(self):
         with tempfile.TemporaryDirectory() as tmp:
             event_file, output_file = Path(tmp) / "event.json", Path(tmp) / "output"
-            for label, event, expected in (("aprovado", ci_run_event(), 0), ("CI vermelho", ci_run_event(conclusion="failure"), 1)):
+            for label, event, expected in (("aprovado", ci_run_event(), 0), ("CI vermelho", ci_run_event(after="e5" * 20), 1)):
                 with self.subTest(label):
                     event_file.write_text(json.dumps(event), encoding="utf-8")
                     output_file.write_text("", encoding="utf-8")
@@ -206,7 +196,7 @@ class AutomaticDeployGateTests(unittest.TestCase):
                         self.assertEqual(outputs, f"operation=deploy\nsource=main\nexpected-main-sha={SHA}\n")
                     else:
                         self.assertEqual(outputs, "", "gate recusado não publica decisão")
-            self.assertIn("evento: `workflow_run`; operação: `deploy`", (Path(tmp) / "summary.md").read_text(encoding="utf-8"))
+            self.assertIn("evento: `push`; operação: `deploy`", (Path(tmp) / "summary.md").read_text(encoding="utf-8"))
         for label, path in (("sem arquivo", None), ("arquivo inexistente", "/nao/existe.json")):
             with self.subTest(label):
                 self.assertIsNone(check_gate.load_event(auto_env(GITHUB_EVENT_PATH=path)))

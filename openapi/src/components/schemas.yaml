@@ -130,16 +130,8 @@ CanvasEngagement:
       type: string
       enum: [complete, partial, failed, legacy]
 CohortReport:
-  type: object
-  description: O formato acadêmico permanece caracterizado pelos testes existentes. Estas propriedades
-    auxiliares são aditivas e aparecem somente no ramo de instrutor/admin; o relatório individual não as expõe.
-  properties:
-    canvasEngagement:
-      $ref: '#/CanvasEngagement'
-    students:
-      type: array
-      items:
-        type: object
-        properties:
-          canvasActivity:
-            $ref: '#/CanvasActivity'
+  description: Relatório autorizado; ramos concretos distinguem ausência de publicação, aluno e instrutor.
+  oneOf:
+    - $ref: ./report-schemas.yaml#/EmptyCohortReport
+    - $ref: ./report-schemas.yaml#/StudentReport
+    - $ref: ./report-schemas.yaml#/InstructorReport

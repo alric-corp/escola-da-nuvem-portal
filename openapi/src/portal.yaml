@@ -120,3 +120,49 @@ components:
       $ref: ./components/schemas.yaml#/CanvasEngagement
     CohortReport:
       $ref: ./components/schemas.yaml#/CohortReport
+    AcademicThresholds:
+      $ref: ./components/report-schemas.yaml#/AcademicThresholds
+    AcademicStats:
+      $ref: ./components/report-schemas.yaml#/AcademicStats
+    ActivityDefinition:
+      $ref: ./components/report-schemas.yaml#/ActivityDefinition
+    StudentActivity:
+      $ref: ./components/report-schemas.yaml#/StudentActivity
+    ActivityOverview:
+      $ref: ./components/report-schemas.yaml#/ActivityOverview
+    StudentSummary:
+      $ref: ./components/report-schemas.yaml#/StudentSummary
+    InstructorStudent:
+      $ref: ./components/report-schemas.yaml#/InstructorStudent
+    ClassReportStudent:
+      $ref: ./components/report-schemas.yaml#/ClassReportStudent
+    ClassReport:
+      $ref: ./components/report-schemas.yaml#/ClassReport
+    CohortDescriptor:
+      $ref: ./components/report-schemas.yaml#/CohortDescriptor
+    CohortListResponse:
+      $ref: ./components/report-schemas.yaml#/CohortListResponse
+    PublicationRef:
+      $ref: ./components/report-schemas.yaml#/PublicationRef
+    PublicationRecord:
+      $ref: ./components/report-schemas.yaml#/PublicationRecord
+    StudentChange:
+      $ref: ./components/report-schemas.yaml#/StudentChange
+    StudentHistoryEntry:
+      $ref: ./components/report-schemas.yaml#/StudentHistoryEntry
+    CohortFocus:
+      $ref: ./components/report-schemas.yaml#/CohortFocus
+    CanvasSubmissionProvenance:
+      $ref: ./components/report-schemas.yaml#/CanvasSubmissionProvenance
+    CanvasSubmission:
+      $ref: ./components/report-schemas.yaml#/CanvasSubmission
+    CanvasSubmissions:
+      $ref: ./components/report-schemas.yaml#/CanvasSubmissions
+    StudentReport:
+      $ref: ./components/report-schemas.yaml#/StudentReport
+    EmptyCohortReport:
+      $ref: ./components/report-schemas.yaml#/EmptyCohortReport
+    InstructorReport:
+      $ref: ./components/report-schemas.yaml#/InstructorReport
+    StudentDetailResponse:
+      $ref: ./components/report-schemas.yaml#/StudentDetailResponse

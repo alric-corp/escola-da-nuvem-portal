@@ -9,9 +9,11 @@ qualquer falha faz a execução terminar com erro, o que aciona o alarme do Clou
 import json
 import logging
 import os
+import time
 
 from canvas import CanvasClient, CanvasError, course_catalog, course_csv, course_students, token_expires_at
 from canvas_activity import save_activity
+from canvas_submissions import COLLECTION_SECONDS, collect_submissions, save_submissions
 from portal import APIError, save_catalog, save_roster, sync_from_canvas
 from grades import ValidationError
 from repository import Conflict, Repository
@@ -36,6 +38,7 @@ def read_token(secret_arn):
 
 
 def run(repo, client, event=None, clock=None):
+    started = time.monotonic()
     context = scheduled_context(event)
     results, failures, catalogs, rosters = {}, [], {}, {}
     for cohort in repo.cohorts():
@@ -106,6 +109,11 @@ def run(repo, client, event=None, clock=None):
                 except Conflict:
                     # Uma tentativa mais nova substituiu a prova; a antiga não pode sobrescrevê-la.
                     pass
+    # As notas de todas as turmas têm prioridade. O caminho auxiliar não consome
+    # o tempo reservado às tentativas acadêmicas ou muda a prova dos lembretes.
+    deadline = min(started + 240, time.monotonic() + COLLECTION_SECONDS)
+    for course, students in rosters.items():
+        _save_submissions(repo, client, course, students, deadline=deadline)
     return results, failures
 
 
@@ -117,6 +125,24 @@ def _save_activity(repo, course, students, attempted_at, **options):
     except Exception:
         # Métricas são auxiliares. Sem payload, e-mail, token ou exceção no log.
         logging.warning("Coleta de atividade Canvas não salva; notas seguem normalmente.")
+
+
+def _save_submissions(repo, client, course, students, *, deadline):
+    attempted_at = _now()
+    try:
+        candidate = collect_submissions(client, course, students, deadline=deadline)
+        save_submissions(repo, course, candidate, _now(), attempted_at=attempted_at, deadline=deadline)
+    except Conflict:
+        logging.warning("Tentativa auxiliar de entregas Canvas superada; notas seguem normalmente.")
+    except Exception:
+        # Sem payload, identificação pessoal ou erro do provedor nos logs.
+        logging.warning("Coleta auxiliar de entregas Canvas indisponível; notas seguem normalmente.")
+        try:
+            save_submissions(repo, course, None, _now(), attempted_at=attempted_at, failed=True)
+        except Exception:
+            # Inclusive CAS superada/registro running após escrita parcial: leitura
+            # continua conservadora, sem renovar observações anteriores.
+            logging.warning("Tentativa de entregas Canvas não finalizada; dados anteriores preservados.")
 
 
 TOKEN_METRIC = "CanvasTokenDaysLeft"

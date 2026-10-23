@@ -12,7 +12,11 @@ paths:
         - portal/access
       responses:
         "200":
-          $ref: ../components/responses.yaml#/SuccessObject
+          description: Resposta autorizada produzida pelo backend.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/report-schemas.yaml#/CohortListResponse
         "400":
           $ref: ../components/responses.yaml#/BadRequest
         "401":

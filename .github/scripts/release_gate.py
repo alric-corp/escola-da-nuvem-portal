@@ -1,7 +1,7 @@
 """Pré-condições do workflow de deploy do frontend (falha fechada).
 
 Estágio "repository" (job gate, sem environment e sem AWS): evento, branch, SHA esperado, HEAD atual da main no
-GitHub, CI verde do SHA, operação, kill switch e proteções do environment production lidas pela API do GitHub.
+GitHub, CI do PR e árvore testada, operação, kill switch e proteções do environment production lidas pela API do GitHub.
 Estágio "environment" (primeiro passo dos jobs do environment, já liberados, e antes de qualquer credencial):
 variables do environment, ausência de chaves AWS estáticas e, de novo, o HEAD atual da main.
 main_head_problems também é a guarda que os scripts chamam imediatamente antes da primeira escrita AWS.
@@ -13,6 +13,7 @@ import re
 
 from frontend_release import RELEASE_ID_RE, SHA_RE, ReleaseError, validate_config, validate_public_origin
 from publication_approval import input_problems, publication_context
+from ci_approval import pr_approval_problems
 
 OPERATIONS = ("prepare", "verify", "publish", "activate", "rollback", "deploy")
 PRODUCTIVE = ("publish", "activate", "rollback", "deploy")
@@ -26,35 +27,25 @@ CI_WORKFLOW = ".github/workflows/ci.yml"
 
 
 def run_parameters(env: dict, event) -> tuple:
-    """((operação, origem, SHA esperado), problemas do evento) desta execução.
-
-    workflow_dispatch: os inputs do operador. workflow_run (automático, depois de todo push na main): deploy da main
-    com o commit do CI concluído, aceito só se esse CI é o ci.yml, rodou por push na main deste repositório e
-    terminou verde. No automático nada do payload escolhe operação, origem ou release.
-    """
+    """Inputs só no manual; push/main escolhe deploy do próprio commit integrado."""
     name = env.get("GITHUB_EVENT_NAME")
     if name == "workflow_dispatch":
         return (env.get("OPERATION", ""), env.get("SOURCE", ""), env.get("EXPECTED_MAIN_SHA", "")), []
-    if name != "workflow_run":
-        return ("", "", ""), ["Só o CI verde na main (workflow_run) ou o disparo manual (workflow_dispatch) iniciam este workflow."]
-    run = event.get("workflow_run") if isinstance(event, dict) else None
-    run = run if isinstance(run, dict) else {}
-    head_repository = run.get("head_repository") if isinstance(run.get("head_repository"), dict) else {}
+    if name != "push":
+        return ("", "", ""), ["Só push na main ou workflow_dispatch iniciam este workflow."]
+    event = event if isinstance(event, dict) else {}
     problems = []
-    if str(run.get("path", "")).split("@")[0] != CI_WORKFLOW:
-        problems.append(f"O workflow_run não veio do CI ({CI_WORKFLOW}).")
-    if run.get("event") != "push" or run.get("head_branch") != "main":
-        problems.append("O CI que disparou o deploy não é de um push na main.")
-    if head_repository.get("full_name") != env.get("GITHUB_REPOSITORY"):
-        problems.append("O CI que disparou o deploy é de outro repositório.")
-    if run.get("conclusion") != "success":
-        problems.append("O CI deste commit não terminou verde: deploy bloqueado.")
-    head = run.get("head_sha")
-    return ("deploy", "main", head if isinstance(head, str) else ""), problems
+    if event.get("ref") != "refs/heads/main" or event.get("deleted") is not False:
+        problems.append("O push não corresponde à main existente.")
+    repository = event.get("repository") if isinstance(event.get("repository"), dict) else {}
+    if repository.get("full_name") != env.get("GITHUB_REPOSITORY"):
+        problems.append("O push é de outro repositório.")
+    expected = event.get("after")
+    return ("deploy", "main", expected if isinstance(expected, str) else ""), problems
 
 
 def repository_problems(env: dict, github_get, event=None) -> list:
-    """github_get(path) -> (status, objeto JSON); event: payload do workflow_run. Nenhuma decisão depende de entrada
+    """github_get(path) -> (status, objeto JSON); event: payload original do push. Nenhuma decisão depende de entrada
     não validada."""
     (operation, source, expected), problems = run_parameters(env, event)
     problems += input_problems(env, operation, source)
@@ -73,9 +64,9 @@ def repository_problems(env: dict, github_get, event=None) -> list:
         problems.append("source=baseline só se aplica a prepare/publish/deploy.")
     sha = env.get("GITHUB_SHA", "")
     if not SHA_RE.fullmatch(expected):
-        problems.append("expected_main_sha (ou o commit do CI) precisa ser o SHA completo (40 hex).")
+        problems.append("expected_main_sha (ou o commit do push) precisa ser o SHA completo (40 hex).")
     elif expected != sha:
-        problems.append("expected_main_sha (ou o commit do CI) diverge do commit desta execução: a main avançou?")
+        problems.append("expected_main_sha (ou o commit do push) diverge do commit desta execução: a main avançou?")
     release_id, expected_active = env.get("RELEASE_ID", ""), env.get("EXPECTED_ACTIVE_RELEASE", "")
     if operation in ("activate", "rollback") and not RELEASE_ID_RE.fullmatch(release_id):
         problems.append("release_id obrigatório e no formato <12 hex>-<12 hex>.")
@@ -92,10 +83,7 @@ def repository_problems(env: dict, github_get, event=None) -> list:
     env = dict(env, EXPECTED_MAIN_SHA=expected)
     problems += main_head_problems(env, github_get)
     repo = env["GITHUB_REPOSITORY"]
-    status, runs = github_get(f"/repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&event=push&status=success&per_page=10")
-    if status != 200 or not any(r.get("head_sha") == sha and r.get("conclusion") == "success"
-                                for r in (runs or {}).get("workflow_runs", [])):
-        problems.append("CI (ci.yml, push) não está verde para este commit.")
+    problems += pr_approval_problems(env, github_get)
     problems += environment_protection_problems(repo, github_get)
     return problems
 
@@ -156,7 +144,7 @@ def self_review_note(envdoc: dict) -> str:
     """Nota do resumo do gate sobre o modelo de aprovação configurado no environment."""
     rule = {r.get("type"): r for r in envdoc.get("protection_rules", [])}.get("required_reviewers", {})
     if not rule.get("reviewers"):
-        return ("Sem revisor obrigatório (mantenedor único): o deploy automático segue o CI verde na main; no disparo "
+        return ("Sem revisor obrigatório (mantenedor único): o deploy automático segue o CI do PR integrado; no disparo "
                 "manual produtivo da main, o SHA e o manifesto previamente aprovados são conferidos.")
     if rule.get("prevent_self_review"):
         return "prevent_self_review ativo."
