@@ -12,8 +12,6 @@ implementação. Propostas fora do planejamento atual ficam em
 | ID | Item | Estado |
 | --- | --- | --- |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
-| 26 | [Limpar o Foco da turma](26-limpar-foco-da-turma.md) | Defeito reproduzido: remover o último item impede salvar o foco vazio |
-| 27 | [Atalhos e filtros do painel](27-atalhos-e-filtros-do-painel.md) | Inconsistência reproduzida entre o número do cartão e a lista filtrada |
 | 28 | [Vínculos adicionais de instrutores](28-vinculos-adicionais-de-instrutores.md) | Lacuna de jornada: aprovado sem ação para outra turma ou devolução de acesso |
 | 29 | [Diagnóstico da sincronização por etapa](29-diagnostico-da-sincronizacao-por-etapa.md) | Notas sem mudanças podem ocultar a falha auxiliar na apresentação do relatório |
 | 30 | [QA manual e limpeza](30-atualizar-qa-manual-e-limpeza.md) | Roteiros antigos precisam acompanhar os perfis, releases e projeções atuais |
@@ -36,9 +34,15 @@ controlados, dispatcher e renderização reais. O item 30 decorre da comparaçã
 dos scripts com os contratos atuais; nenhum script produtivo foi executado.
 Essas evidências não comprovam frequência ou incidente em produção.
 
-Ordem sugerida: corrigir 26/27 juntos, completar a jornada 28 e melhorar o
-diagnóstico 29. A atualização local do kit 30 pode avançar em paralelo; o QA
+Ordem sugerida no levantamento inicial: corrigir 26/27 juntos, completar a
+jornada 28 e melhorar o diagnóstico 29. A atualização local do kit 30 pode avançar em paralelo; o QA
 autenticado continua dependendo de identidades e execução autorizadas.
+
+**Evolução nesta branch:** o titular substituiu a correção do 26 pela
+[remoção do Foco da turma](concluido/26-remover-foco-da-turma.md). Essa remoção e
+a [correção dos atalhos do 27](concluido/27-atalhos-e-filtros-do-painel.md)
+estão implementadas, com integração/publicação ainda pendentes. Os documentos
+ficam em `concluido/` pelo escopo de desenvolvimento; não declaram implantação.
 
 Não foram criados itens duplicados para implantação/cutover do 05, limpeza do
 legado do 13, rotação Canvas do 17 ou destino institucional de solicitações,

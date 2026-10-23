@@ -4,6 +4,12 @@
 
 **Status:** ✅ concluída (aplicado em produção) · **Prioridade:** média · **Esforço:** médio · **Área:** instrutor
 
+> Evolução de produto em 23/10/2026: a nova implementação retira o Foco da turma
+> do frontend por decisão do titular e preserva a visão por atividade. A rota e
+> os dados legados não são removidos. As seções abaixo registram a entrega
+> histórica; não significam que seus controles permanecem na interface atual.
+> A integração/publicação dessa remoção ainda depende do PR correspondente.
+
 ## Problema
 O instrutor não via quais atividades concentravam pendências ou notas baixas na turma. O **Foco da turma** era escolhido em três campos de seleção com até cerca de 166 opções, sem nenhum dado de apoio.
 

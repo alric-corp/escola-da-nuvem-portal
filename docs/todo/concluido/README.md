@@ -14,6 +14,11 @@ por decisão do titular, sem ser contado como implementado.
 Os IDs foram preservados. O [backlog ativo](../README.md) mantém
 os itens que ainda precisam de decisão ou trabalho.
 
+Na branch atual, os itens [26 — Remover Foco da turma](26-remover-foco-da-turma.md)
+e [27 — Atalhos e filtros](27-atalhos-e-filtros-do-painel.md) também estão
+implementados, totalizando **25 documentos numerados** nesta pasta. Sua
+integração/publicação permanece pendente; não são evidência de produção.
+
 “Concluído” significa que a implementação do escopo entregue está presente
 no repositório. Não significa uma certificação funcional universal de produção.
 A revisão original não consultou AWS, Canvas nem contas de alunos; as conferências

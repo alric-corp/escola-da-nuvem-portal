@@ -7,7 +7,7 @@ Descrição do funcionamento atual do portal Escola da Nuvem · AWS re/Start (`f
 | Documento | Conteúdo |
 | --- | --- |
 | [jornada-aluno.md](jornada-aluno.md) | Do primeiro acesso à consulta de notas e histórico |
-| [jornada-instrutor.md](jornada-instrutor.md) | Acesso, sincronização/importação de notas, foco da turma e lembretes |
+| [jornada-instrutor.md](jornada-instrutor.md) | Acesso, sincronização/importação de notas, acompanhamento por aluno/atividade e lembretes |
 | [jornada-admin.md](jornada-admin.md) | Criação de turmas, aprovação de instrutores e operações manuais |
 | [regras-de-notas.md](regras-de-notas.md) | Importação do CSV, cálculo de médias, situação e revisão |
 | [canvas-materiais-complementares.md](canvas-materiais-complementares.md) | Materiais complementares do curso 4413 (BRSA0257), fora do gradebook |

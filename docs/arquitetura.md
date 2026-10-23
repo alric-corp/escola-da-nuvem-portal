@@ -63,7 +63,7 @@ EventBridge Scheduler (6h e 18h) ──► Lambda "canvas-sync" (backend/canvas_
 | `POST /cohorts/{code}/preview` | instrutor | Validar CSV, gravar rascunho e devolver prévia e diferenças |
 | `POST /cohorts/{code}/publish` | instrutor (autor da prévia) | Publicar rascunho (recusado após 29 dias) |
 | `POST /cohorts/{code}/restore` | instrutor | Voltar a uma publicação anterior |
-| `POST /cohorts/{code}/focus-activities` | instrutor | Definir até 3 atividades de foco |
+| `POST /cohorts/{code}/focus-activities` | instrutor | Compatibilidade com foco legado; sem ação na interface atual |
 | `GET/POST /cohorts/{code}/instructors` | admin | Listar e vincular instrutores |
 | `POST /cohorts/{code}/revoke-instructor` | admin | Remover vínculo |
 | `POST /cohorts/{code}/pending-preview` | instrutor | Pendências de um aluno e prévia do lembrete |
@@ -167,7 +167,7 @@ Módulos ES servidos como estão, sem bundler: `index.html` carrega um único sc
 
 | Módulo | Responsabilidade |
 | --- | --- |
-| `app.js` | Raiz da composição: `render()` e a escolha da página pela view, listeners globais e `actions`, `busy()`, `start()`/`boot()`, sessão, troca de turma, student-view e composição entre domínios. Chama `api.js` direto no boot, no relatório, no resumo da turma, no foco e em operações curtas que terminam em `boot()`. |
+| `app.js` | Raiz da composição: `render()` e a escolha da página pela view, listeners globais e `actions`, `busy()`, `start()`/`boot()`, sessão, troca de turma, student-view e composição entre domínios. Chama `api.js` direto no boot, no relatório, no resumo da turma e em operações curtas que terminam em `boot()`. |
 | `api.js` | Rede: chamadas autenticadas à API (rotas, token, retentativa de GET, mensagens de erro, expiração da sessão via `configure({ config, onSessionExpired })`), envio de anexos direto ao S3 e as duas chamadas públicas da confirmação de cadastro ao Cognito, sem token. Não conhece DOM, `state` nem navegação. |
 | `state.js` | O objeto `state`, o mesmo em todos os módulos: fonte única do estado de interface e de domínio no navegador. Não importa nada. |
 | `ui.js` | Helpers de apresentação, markup compartilhado (menu, cabeçalhos, `errorPanel()`) e `notice()`. Lê `state` quando precisa, mas não é dono dele. |
