@@ -1,6 +1,6 @@
 // Painel do instrutor (Expansão 4), sem navegador: a página renderizada como texto. Contagens, filtros, ordenação e CSV
 // são os de antes (tests/participation.mjs); aqui, o que a Expansão 4 decide: atalhos com o número do próprio filtro,
-// médias com uma casa sem cruzar a referência, situação por texto e forma, Foco da turma com o estado do salvamento,
+// médias com uma casa sem cruzar a referência, situação por texto e forma, ausência dos controles de foco removidos,
 // estados vazios, semântica da tabela e texto do usuário sempre escapado. Dados fictícios.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -102,41 +102,15 @@ test("E4-U4: quem fica fora das três situações é dito com palavras; a régua
   assert.deepEqual([...scale.matchAll(/class="is-(\w+)" style="flex-grow:(\d+)"/g)].map(([, k, n]) => [k, Number(n)]), [["ok", 1], ["attention", 2], ["critical", 1], ["other", 2]]);
 });
 
-test("E4-U5: Foco da turma — alterações pendentes, salvando, salvo e erro na própria seção; Salvar só é a ação principal com algo a salvar", () => {
+test("E4-U5: painel não oferece Foco da turma nem controles de edição com dados legados", () => {
   const saved = { activityIds: ["a1", "a2"], version: "v1" };
-  const focus = (values, view) => (page({ report: report(ROSTER, { focus: saved }), ...values }, view).match(/<section class="tp-focus"[\s\S]*?<\/section>/) || [""])[0];
-  const save = (html) => (html.match(/<button class="button (\w+)" type="submit"([^>]*)>Salvar foco da turma<\/button>/) || []).slice(1, 3);
-  const plain = focus({});
-  assert.deepEqual([...plain.matchAll(/<span class="tp-focus-name">([^<]*)<\/span>/g)].map(([, n]) => n), ["254-NF- KC Introdução à rede", "255--Lab - Sub-redes"]);
-  assert.match(plain, /<ol class="focus-list">/);
-  assert.match(strip(plain), /1 aluno sem nota · 3 em revisão/);
-  assert.doesNotMatch(plain, /tp-focus-status/);
-  assert.deepEqual(save(plain), ["secondary", ""]);
-  // Rascunho igual ao salvo: nada a avisar. Outra ordem é outra escolha (o aluno vê na ordem do foco).
-  assert.doesNotMatch(focus({ focusDraft: ["a1", "a2"] }), /tp-focus-status/);
-  const reordered = focus({ focusDraft: ["a2", "a1"] });
-  assert.match(strip(reordered), /Alterações ainda não salvas: os alunos continuam vendo o foco anterior\./);
-  assert.deepEqual(save(reordered), ["primary", ' aria-describedby="tp-focus-status"']);
-  // Salvando: Salvar e Remover parados, andamento anunciado.
-  const saving = focus({ focusDraft: ["a1"] }, { focus: { kind: "saving" } });
-  assert.match(saving, /<p class="tp-focus-status" id="tp-focus-status" role="status" tabindex="-1">Salvando o foco da turma…<\/p>/);
-  assert.match(saving, /type="submit" disabled aria-describedby="tp-focus-status">/);
-  assert.ok([...saving.matchAll(/<button class="text-link tp-remove"[^>]*>/g)].every(([b]) => / disabled/.test(b)));
-  // Salvo: só enquanto nada mudou depois.
-  const ok = { focus: { kind: "saved", message: "Foco da BRSA0267 atualizado." } };
-  assert.match(focus({}, ok), /role="status" tabindex="-1">Foco da BRSA0267 atualizado\.<\/p>/);
-  assert.doesNotMatch(focus({ focusDraft: ["a1"] }, ok), /atualizado/);
-  // Erro: o motivo do servidor (escapado), como alerta, e o rascunho continua.
-  const error = focus({ focusDraft: ["a1"] }, { focus: { kind: "error", message: "O foco foi alterado por <b>outro</b> instrutor." } });
-  assert.match(error, /role="alert" tabindex="-1"><strong>O foco não foi salvo\.<\/strong> <span>O foco foi alterado por &lt;b&gt;outro&lt;\/b&gt; instrutor\.<\/span><\/p>/);
-  assert.deepEqual([...error.matchAll(/data-remove-focus="([^"]*)"/g)].map(([, id]) => id), ["a1"]);
-  // Vazio: Salvar parado (como antes) e a explicação do que o aluno vê sem seleção.
-  const empty = (page().match(/<section class="tp-focus"[\s\S]*?<\/section>/) || [""])[0];
-  assert.match(strip(empty), /Nenhuma atividade no foco: o aluno vê até três atividades na ordem da publicação, primeiro as sem nota e depois as de revisão\./);
-  assert.deepEqual(save(empty), ["secondary", " disabled"]);
-  // Atividade que saiu da publicação aparece pelo id, sem contagens; sem publicação, não há foco.
-  assert.match(focus({ focusDraft: ["sumiu"] }), /<span class="tp-focus-name">sumiu<\/span><\/span><button/);
-  assert.doesNotMatch(page({ report: report([], { publication: null }) }), /tp-focus/);
+  for (const values of [{}, { focusDraft: ["a1"] }]) {
+    const html = page({ report: report(ROSTER, { focus: saved }), ...values }, { focus: { kind: "saving" } });
+    assert.doesNotMatch(html, /Foco da turma|focus-form|tp-focus|data-(?:add|remove)-focus|Salvar foco/);
+    assert.match(html, /Situação da turma/);
+    assert.match(html, /Desempenho dos alunos/);
+    assert.equal(rows(html).length, ROSTER.length);
+  }
 });
 
 test("E4-U6: estados vazios dizem o que limita e oferecem limpar; turma sem publicação não mostra números vazios", () => {

@@ -1,14 +1,10 @@
-// C2 — robustez pré-integração (docs/design-visual.md), com API fictícia (nunca AWS, Canvas, restauração ou foco reais; tudo
+// C2 — robustez pré-integração (docs/design-visual.md), com API fictícia (nunca AWS, Canvas ou restauração real; tudo
 // fora da origem local é abortado), relógio fixo e dados sintéticos:
 // C2-01 — a dúvida da restauração (rede, 5xx, resposta perdida) longe de Publicações da turma: um aviso curto (a operação, a
 //         turma, a dúvida e onde ver) e a orientação inteira guardada em Publicações da turma de origem, para a sessão que
 //         restaurou, até a consulta feita ali ou outra restauração da turma; anunciada uma vez; nada se repete sozinho.
-// C2-02 — salvamentos do foco que se sobrepõem na mesma sessão (Consultar atualização ou a ida e volta de turma durante o
-//         salvamento; a Visão por atividade muda o rascunho enquanto ele está pendente): a resposta de um não mexe no
-//         andamento, no rascunho, no resultado nem no relatório do outro, e não se apresenta como o resultado do outro.
-// Garantias do servidor (backend/portal.py): restauração e foco recusam tudo antes da escrita, que é condicional
-// (expectedCurrent, versão do foco); 5xx e falta de resposta deixam o resultado desconhecido. Ignorar uma resposta antiga na
-// tela não desfaz nada no servidor: o simulador grava como Portal._restore e Portal._focus_activities.
+// A escrita de foco não integra mais a interface (TODO 26). Estas regressões preservam toda a restauração e sua
+// classificação de recusa/resultado desconhecido, contexto da sessão e orientação de consulta segura.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
@@ -48,7 +44,6 @@ const ACTIVITIES = Array.from({ length: 8 }, (_, i) => ({ id: `a${i + 1}`, name:
 const SYNC = { status: "unchanged", message: "Nenhuma mudança no Canvas desde a última publicação.", at: "2026-10-11T09:00:12Z", students: 6, publicationId: null };
 const MESSAGES = {
   restore: { 409: "A turma foi atualizada. Recarregue o histórico.", 403: "Você não tem acesso a esta operação.", 500: "Erro interno ao restaurar." },
-  focus: { 409: "O foco foi alterado por outro instrutor. Consulte a atualização antes de salvar.", 403: "Você não tem acesso a esta operação.", 500: "Erro interno ao salvar o foco." },
 };
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 
@@ -63,10 +58,7 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// control: people (o /me responde people[who], com userId próprio), who, expireNext, restoreMode e focusMode ("ok" | 409 | 403 |
-// 500 | 503 | "network" | "lost" = o servidor aplica e a resposta se perde; lidos quando o pedido chega), holds ("restore",
-// "focus": antes de gravar; "focus-after": depois de gravar, com a resposta retida), reports (leituras do relatório).
-// O estado do servidor (versão em vigor e foco por turma) muda como em Portal._restore e Portal._focus_activities.
+// control: pessoas, sessão, modo da restauração e respostas retidas. O campo focus do relatório permanece como dado legado.
 // window.__ann registra cada anúncio acessível: um aviso novo na região aria-live (#notices) ou um elemento com role="alert"
 // ou role="status" que entra na página.
 async function open({ width = 1440, height = 900, text = 1, role = "instructor", people, view = "history" } = {}) {
@@ -74,8 +66,8 @@ async function open({ width = 1440, height = 900, text = 1, role = "instructor",
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date("2026-10-11T15:00:00-03:00"));
   people ||= role === "admin" ? ["admin.a@example.test", "admin.b@example.test"] : ["instrutor.a@example.test", "instrutor.b@example.test"];
-  const errors = [], control = { people, who: 0, restoreMode: "ok", focusMode: "ok", holds: {}, calls: [], restores: [], focusPosts: [], dialogs: [], reports: 0,
-    focusVersion: 0, server: { BRSA0267: { current: "p13", updateKind: "canvas", focus: { activityIds: ["a1", "a2", "a3"], version: "v0" } },
+  const errors = [], control = { people, who: 0, restoreMode: "ok", holds: {}, calls: [], restores: [], dialogs: [], reports: 0,
+    server: { BRSA0267: { current: "p13", updateKind: "canvas", focus: { activityIds: ["a1", "a2", "a3"], version: "v0" } },
       BRSA0268: { current: "q2", updateKind: "canvas", focus: { activityIds: [], version: null } } } };
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("dialog", (dialog) => { control.dialogs.push(dialog.message()); return dialog.accept(); });
@@ -135,18 +127,6 @@ async function open({ width = 1440, height = 900, text = 1, role = "instructor",
       s.current = body.publicationId; s.updateKind = "restore";
       return mode === "lost" ? route.abort("failed") : route.fulfill({ json: { restored: true } });
     }
-    if (endpoint.endsWith("/focus-activities")) {
-      const body = request.postDataJSON(), mode = control.focusMode, s = control.server[code];
-      control.focusPosts.push({ code, ...body });
-      await hold("focus");
-      if (mode === "network") return route.abort("failed");
-      if (mode !== "ok" && mode !== "lost") return fail(route, "focus", mode);
-      if (body.expectedVersion !== s.focus.version) return fail(route, "focus", 409);
-      s.focus = { activityIds: body.activityIds, version: `v${++control.focusVersion}` };
-      const focus = { ...s.focus };
-      await hold("focus-after");
-      return mode === "lost" ? route.abort("failed") : route.fulfill({ json: { focus } });
-    }
     return route.fulfill({ status: 404, json: { error: "não simulado: " + endpoint } });
   });
   await page.goto(origin);
@@ -159,8 +139,6 @@ const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimation
 // Espera com limite, sem falhar: um resultado errado ou ausente falha na asserção seguinte, não por tempo esgotado.
 const until = (page, fn, arg) => page.waitForFunction(fn, arg, { timeout: 5000 }).catch(() => {}).then(() => settle(page));
 const quiet = async (page) => { await page.waitForTimeout(150); await settle(page); };
-// Um pedido esperado que um defeito impediria: espera no máximo 3 s e segue (a asserção seguinte acusa).
-const arrive = (page, h) => Promise.race([h.arrived.promise, page.waitForTimeout(3000)]);
 const notices = (page) => page.locator("#notices .notice span").allTextContents();
 const text = async (locator) => ((await locator.count()) ? (await locator.first().innerText()).replace(/\s+/g, " ").trim() : null);
 const restoreButton = (page, id) => page.locator(`[data-restore="${id}"]`);
@@ -188,32 +166,10 @@ async function switchPerson(page, control, who) {
   await quiet(page);
 }
 const doubt = (page) => page.locator(".tpub-op.is-error");
-const focusStatus = (page) => page.locator("#tp-focus-status");
-const removeFocus = (page, n) => page.getByRole("button", { name: `Remover ${200 + n - 1}-KC - Atividade ${n} do foco`, exact: true });
-const saveFocus = (page) => page.locator('#focus-form [type="submit"]');
-const focusNames = (page) => page.locator(".focus-list .tp-focus-name").allTextContents();
-const NAME = (n) => `${200 + n - 1}-KC - Atividade ${n}`;
-// A Visão por atividade (o link da seção do foco), uma atividade a mais no rascunho e a volta ao painel.
-async function addFromOverview(page, id) {
-  await page.locator('#focus-form [data-view="activity-overview"]').click();
-  await page.getByRole("heading", { name: "Visão por atividade", exact: true }).waitFor();
-  await page.locator(`[data-add-focus="${id}"]`).click();
-  await quiet(page);
-  await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
-  await page.locator(".teacher-home h1").waitFor();
-  await quiet(page);
-}
-const rerender = async (page) => { await openPublications(page); await openPanel(page); };
-
 const TOAST = (code) => `Não foi possível confirmar a restauração da turma ${code}. Ela pode ter sido concluída: veja Publicações.`;
 const REASON = { network: "A conexão com o portal falhou.", lost: "A conexão com o portal falhou.", 500: MESSAGES.restore[500],
   503: "O portal está temporariamente indisponível. Tente novamente em instantes." };
 const GUIDANCE = (mode) => `Não foi possível confirmar a restauração. ${REASON[mode]} Ela pode ter sido concluída: consulte a atualização antes de tentar de novo. Consultar atualização`;
-const PRIOR = {
-  ok: (code) => `O salvamento anterior do foco da ${code} foi concluído.`,
-  refused: (code, reason) => `O salvamento anterior do foco da ${code} foi recusado. ${reason}`,
-  unsure: (code) => `Não foi possível confirmar o salvamento anterior do foco da ${code}: ele pode ter sido concluído.`,
-};
 // Começa uma restauração da p12 na BRSA0267, leva a pessoa à outra turma e solta a resposta (no modo pedido).
 async function restoreAway(page, control, holdNext, mode) {
   control.restoreMode = mode;
@@ -417,232 +373,4 @@ test("C2-N8: teclado — a orientação guardada não rouba o foco ao abrir Publ
   assert.equal(control.restores.length, 1);
   assert.deepEqual(errors, []);
   await context.close();
-});
-
-// ---------------------------------------------------------------- C2-02
-
-test("C2-F0: alcançabilidade — clique duplo, Enter com Salvar parado e renders não abrem um segundo salvamento; Consultar atualização e a ida e volta de turma abrem; a Visão por atividade muda o rascunho durante o salvamento", async () => {
-  // Clique duplo, Enter e renders no mesmo relatório: um pedido só, Salvar parado.
-  let { context, page, errors, control, holdNext } = await open({ view: "overview" });
-  await removeFocus(page, 2).click();
-  let h = holdNext("focus");
-  await saveFocus(page).dblclick();
-  await h.arrived.promise;
-  await saveFocus(page).focus().catch(() => {});
-  await page.keyboard.press("Enter");
-  await rerender(page);
-  assert.equal(await saveFocus(page).isDisabled(), true, "Salvar parado depois de renders");
-  assert.equal(control.focusPosts.length, 1, "clique duplo, Enter e renders: um pedido");
-  // Na mesma tela, a Visão por atividade continua aberta e muda o rascunho enquanto o salvamento espera.
-  await addFromOverview(page, "a4");
-  assert.deepEqual(await focusNames(page), [NAME(1), NAME(3), NAME(4)], "o rascunho mudou durante o salvamento");
-  h.gate.resolve();
-  await context.close();
-  // Consultar atualização e a ida e volta de turma durante o salvamento: um relatório novo, com Salvar livre — um segundo
-  // salvamento da mesma turma, na mesma sessão, começa pelo fluxo normal.
-  for (const away of [(p) => consult(p, ".teacher-home"), async (p) => { await cohort(p, "BRSA0268"); await cohort(p, "BRSA0267"); }]) {
-    ({ context, page, errors, control, holdNext } = await open({ view: "overview" }));
-    await removeFocus(page, 2).click();
-    h = holdNext("focus");
-    await saveFocus(page).click();
-    await h.arrived.promise;
-    await away(page);
-    assert.equal(await saveFocus(page).isDisabled(), false, "Salvar livre no relatório novo");
-    await removeFocus(page, 3).click();
-    const second = holdNext("focus");
-    await saveFocus(page).click();
-    await arrive(page, second);
-    assert.equal(control.focusPosts.length, 2, "o segundo salvamento saiu com o primeiro pendente");
-    h.gate.resolve(); second.gate.resolve();
-    assert.deepEqual(errors, []);
-    await context.close();
-  }
-});
-
-// A pendente; Consultar atualização; um rascunho novo e B pendente (a mesma turma, a mesma sessão).
-async function twoSaves(page, control, holdNext, { modeA = "ok", modeB = "ok", afterA = false } = {}) {
-  await removeFocus(page, 2).click();
-  control.focusMode = modeA;
-  const a = holdNext(afterA ? "focus-after" : "focus");
-  await saveFocus(page).click();
-  await a.arrived.promise;
-  await consult(page, ".teacher-home");
-  await removeFocus(page, afterA ? 1 : 3).click();
-  control.focusMode = modeB;
-  const b = holdNext("focus");
-  await saveFocus(page).click();
-  await arrive(page, b);
-  assert.equal(control.focusPosts.length, 2, "dois salvamentos pendentes");
-  return { a, b };
-}
-const release = async (page, h) => { const done = settled(page, "/focus-activities"); h.gate.resolve(); await done(); };
-
-test("C2-F1: a resposta do salvamento anterior (sucesso) não desfaz o andamento nem o rascunho do novo, não se apresenta como dele e não mexe no relatório novo; o novo recebe a recusa do servidor", async () => {
-  const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-  const { a, b } = await twoSaves(page, control, holdNext);
-  await release(page, a);
-  const checkB = async (label) => {
-    assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…", `${label}: o andamento de B`);
-    assert.equal(await saveFocus(page).isDisabled(), true, `${label}: Salvar parado`);
-    assert.deepEqual(await focusNames(page), [NAME(1), NAME(2)], `${label}: o rascunho de B`);
-  };
-  await checkB("resposta de A");
-  assert.deepEqual(await notices(page), [PRIOR.ok("BRSA0267")], "o aviso é do salvamento anterior");
-  await rerender(page);
-  await checkB("depois de um render");
-  // B partiu da versão de antes de A: o servidor recusa (409, versão) e B vê a recusa na seção, com o rascunho.
-  await release(page, b);
-  assert.equal(await text(focusStatus(page)), `O foco não foi salvo. ${MESSAGES.focus[409]}`);
-  assert.deepEqual(await focusNames(page), [NAME(1), NAME(2)], "o rascunho de B continua");
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a3"], "o servidor ficou com A");
-  assert.equal(control.focusPosts.length, 2, "nenhum pedido a mais");
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("C2-F2: respostas invertidas — B confirmado primeiro; a recusa de A depois não aparece como de B; e o sucesso atrasado de A (gravado antes de B) não sobrescreve a confirmação de B", async () => {
-  // B responde primeiro (gravou); A chega depois com 409 (a versão mudou): o aviso é do salvamento anterior.
-  let { context, page, errors, control, holdNext } = await open({ view: "overview" });
-  let { a, b } = await twoSaves(page, control, holdNext);
-  await release(page, b);
-  assert.equal(await text(focusStatus(page)), "Foco da BRSA0267 atualizado.");
-  await release(page, a);
-  assert.deepEqual(await notices(page), [PRIOR.refused("BRSA0267", MESSAGES.focus[409])]);
-  assert.equal(await text(focusStatus(page)), "Foco da BRSA0267 atualizado.", "a seção continua com o resultado de B");
-  assert.deepEqual(await focusNames(page), [NAME(1), NAME(2)]);
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a2"]);
-  assert.deepEqual(errors, []);
-  await context.close();
-  // A gravou e a resposta atrasou; a consulta mostra A; B grava em cima de A e responde; a resposta de A chega por último.
-  ({ context, page, errors, control, holdNext } = await open({ view: "overview" }));
-  ({ a, b } = await twoSaves(page, control, holdNext, { afterA: true }));
-  await release(page, b);
-  assert.equal(await text(focusStatus(page)), "Foco da BRSA0267 atualizado.");
-  assert.deepEqual(await focusNames(page), [NAME(3)]);
-  await release(page, a);
-  assert.deepEqual(await notices(page), [PRIOR.ok("BRSA0267")]);
-  await rerender(page);
-  assert.deepEqual(await focusNames(page), [NAME(3)], "a confirmação de B continua na tela");
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a3"]);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("C2-F3: erro ou dúvida do salvamento anterior depois de o novo começar — o aviso diz que é do anterior; o novo segue e mostra o próprio resultado", async () => {
-  for (const [modeA, expected] of [["network", PRIOR.unsure("BRSA0267")], [500, PRIOR.unsure("BRSA0267")], [403, PRIOR.refused("BRSA0267", MESSAGES.focus[403])]]) {
-    const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-    const { a, b } = await twoSaves(page, control, holdNext, { modeA });
-    await release(page, a);
-    assert.deepEqual(await notices(page), [expected], String(modeA));
-    assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…", `${modeA}: o andamento de B`);
-    await release(page, b);
-    assert.equal(await text(focusStatus(page)), "Foco da BRSA0267 atualizado.", `${modeA}: o resultado de B`);
-    assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a2"]);
-    assert.equal(control.focusPosts.length, 2, `${modeA}: nenhum pedido a mais`);
-    assert.deepEqual(errors, [], String(modeA));
-    await context.close();
-  }
-});
-
-test("C2-F4: troca de turma — a resposta do salvamento da turma de origem não desfaz o salvamento em andamento na outra, nem leva rascunho; o aviso diz a turma de origem", async () => {
-  const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-  await removeFocus(page, 2).click();
-  const a = holdNext("focus");
-  await saveFocus(page).click();
-  await a.arrived.promise;
-  await cohort(page, "BRSA0268");
-  assert.equal(await page.locator(".focus-list").count(), 0, "a outra turma começa sem o rascunho");
-  await addFromOverview(page, "a5");
-  const b = holdNext("focus");
-  await saveFocus(page).click();
-  await arrive(page, b);
-  await release(page, a);
-  assert.deepEqual(await notices(page), ["Foco da BRSA0267 atualizado."]);
-  await rerender(page);
-  assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…", "o andamento da BRSA0268 continua");
-  assert.equal(await saveFocus(page).isDisabled(), true);
-  await release(page, b);
-  assert.equal(await text(focusStatus(page)), "Foco da BRSA0268 atualizado.");
-  assert.deepEqual(control.server.BRSA0268.focus.activityIds, ["a5"]);
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a3"]);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("C2-F5: rascunho — o sucesso do salvamento não apaga uma escolha feita enquanto ele esperava (na mesma tela, pela Visão por atividade, ou num relatório novo); o relatório novo não muda de versão por baixo do rascunho", async () => {
-  // Mesma tela: a Visão por atividade acrescentou a4 durante o salvamento; a resposta não apaga a escolha.
-  let { context, page, errors, control, holdNext } = await open({ view: "overview" });
-  await removeFocus(page, 2).click();
-  let h = holdNext("focus");
-  await saveFocus(page).click();
-  await h.arrived.promise;
-  await addFromOverview(page, "a4");
-  await release(page, h);
-  assert.deepEqual(await focusNames(page), [NAME(1), NAME(3), NAME(4)], "a escolha feita durante o salvamento continua");
-  assert.equal(await text(focusStatus(page)), "Alterações ainda não salvas: os alunos continuam vendo o foco anterior.");
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a3"]);
-  assert.deepEqual(errors, []);
-  await context.close();
-  // Relatório novo (Consultar atualização) com um rascunho: o sucesso de A não o apaga nem move a versão dele; salvar o
-  // rascunho leva a versão de onde ele partiu, e o servidor recusa (409) — nada de "última escrita vence" no navegador.
-  ({ context, page, errors, control, holdNext } = await open({ view: "overview" }));
-  await removeFocus(page, 2).click();
-  h = holdNext("focus");
-  await saveFocus(page).click();
-  await h.arrived.promise;
-  await consult(page, ".teacher-home");
-  await removeFocus(page, 3).click();
-  await release(page, h);
-  await rerender(page);
-  assert.deepEqual(await focusNames(page), [NAME(1), NAME(2)], "o rascunho do relatório novo continua");
-  assert.deepEqual(await notices(page), ["Foco da BRSA0267 atualizado."]);
-  const done = settled(page, "/focus-activities");
-  await saveFocus(page).click();
-  await done();
-  assert.equal(control.focusPosts.at(-1).expectedVersion, "v0", "a versão de onde o rascunho partiu");
-  assert.equal(await text(focusStatus(page)), `O foco não foi salvo. ${MESSAGES.focus[409]}`);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("C2-F6: sessão — A → B → A: a resposta da sessão anterior não desfaz o salvamento da sessão nova, nem avisa nada", async () => {
-  const { context, page, errors, control, holdNext } = await open({ role: "admin", view: "overview" });
-  await removeFocus(page, 2).click();
-  const a = holdNext("focus");
-  await saveFocus(page).click();
-  await a.arrived.promise;
-  await switchPerson(page, control, 1);
-  await switchPerson(page, control, 0);
-  await openPanel(page);
-  await removeFocus(page, 3).click();
-  const b = holdNext("focus");
-  await saveFocus(page).click();
-  await arrive(page, b);
-  const shown = await notices(page);
-  await release(page, a);
-  assert.deepEqual(await notices(page), shown, "nada da sessão anterior");
-  await rerender(page);
-  assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…");
-  await release(page, b);
-  assert.equal(await text(focusStatus(page)), `O foco não foi salvo. ${MESSAGES.focus[409]}`);
-  assert.equal(control.focusPosts.length, 2);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("C2-F7: sucesso só depois da resposta e nenhum pedido repetido sozinho — nem na dúvida (rede, 5xx), nem na recusa", async () => {
-  for (const mode of ["ok", "network", 500, 409]) {
-    const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-    control.focusMode = mode;
-    await removeFocus(page, 2).click();
-    const h = holdNext("focus");
-    await saveFocus(page).click();
-    await h.arrived.promise;
-    assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…", `${mode}: nada de sucesso antes da resposta`);
-    await release(page, h);
-    await page.waitForTimeout(500);
-    assert.equal(control.focusPosts.length, 1, `${mode}: nenhum pedido repetido`);
-    assert.deepEqual(errors, [], String(mode));
-    await context.close();
-  }
 });

@@ -2,7 +2,7 @@
 // fictícia (nunca AWS, Canvas, publicação ou envio real). Cobre o que a tela promete: composição (tabela com largura,
 // linhas empilhadas no tablet, no celular e com texto ampliado), sem rolagem lateral nem controle recortado em 320–1440 px,
 // texto e zoom a 200% e janela baixa; os dois botões que passavam da tela com texto a 200% em 320 px; atalhos de filtro
-// com o número da lista; Foco da turma com andamento, resultado e erro na própria seção; estados; situação por texto e
+// com o número da lista; ausência do Foco da turma mesmo com dados legados; estados; situação por texto e
 // forma; teclado na ordem visual com contorno inteiro (pixels); o mesmo painel para o admin.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
@@ -60,13 +60,13 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// control: report (objeto ou função), reportMode ("ok" | "error" | "hold"), focusMode ("ok" | "409" | "hold"), autoSync.
+// control: report (objeto ou função), reportMode ("ok" | "error" | "hold"), tentativas de foco proibidas, autoSync.
 // email: outra conta (o nome no menu é a parte antes do @).
 async function open({ width = 1440, height = 900, text = 1, role = "instructor", data = () => report(), autoSync = true, saved = null, email: account = null } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date("2026-10-11T15:00:00-03:00"));
-  const errors = [], control = { data, reportMode: "ok", focusMode: "ok", reports: 0, focusPosts: [], holds: {} };
+  const errors = [], control = { data, reportMode: "ok", reports: 0, focusPosts: [], holds: {} };
   page.on("pageerror", (error) => errors.push(error.message));
   if (text !== 1) { const cdp = await context.newCDPSession(page); await cdp.send("Page.enable"); await cdp.send("Page.setFontSizes", { fontSizes: { standard: Math.round(16 * text), fixed: Math.round(13 * text) } }); }
   const email = account || (role === "admin" ? "admin@example.test" : role === "student" ? "ana.1@example.test" : "instrutor@example.test");
@@ -92,9 +92,7 @@ async function open({ width = 1440, height = 900, text = 1, role = "instructor",
     }
     if (endpoint.endsWith("/focus-activities")) {
       control.focusPosts.push(request.postDataJSON());
-      await hold("focus");
-      if (control.focusMode === "409") return route.fulfill({ status: 409, json: { error: "O foco foi alterado por outro instrutor. Consulte a atualização antes de salvar." } });
-      return route.fulfill({ json: { focus: { activityIds: request.postDataJSON().activityIds, version: `v${control.focusPosts.length}` } } });
+      return route.fulfill({ status: 404, json: { error: "O frontend não deve mais alterar o foco." } });
     }
     if (endpoint.endsWith("/pending-preview")) return route.fulfill({ status: 404, json: { error: "não simulado" } });
     return route.fulfill({ status: 404, json: { error: "não simulado: " + endpoint } });
@@ -104,16 +102,11 @@ async function open({ width = 1440, height = 900, text = 1, role = "instructor",
   return { context, page, errors, control, holdNext: (name) => (control.holds[name] = { arrived: deferred(), gate: deferred() }) };
 }
 const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-const notices = (page) => page.locator("#notices .notice span").allTextContents();
-// Resposta do salvamento do foco processada pela tela: espera a rota responder e o render seguinte, sem esperar um
-// resultado específico aparecer (assim, um resultado errado ou ausente falha por asserção, não por tempo esgotado).
-const focusResponse = (page) => { const response = page.waitForResponse((r) => r.url().endsWith("/focus-activities"));
-  return async () => { await response; await page.waitForTimeout(50); await settle(page); }; };
 const shortcutCount = (page, filter) => page.locator(`[data-filter="${filter}"] > strong`).textContent({ timeout: 2000 }).then(Number);
 // Controles (e células da tabela) recortados pela janela ou por um ancestral com overflow, e texto cortado dentro do controle.
 const clipped = (page) => page.evaluate(() => {
   const bad = [];
-  for (const el of document.querySelectorAll(".teacher-home :is(a, button, select, input, h1, h2, .tp-student, .tp-email, .tp-value, .tp-state, .tp-tag, .tp-focus-name)")) {
+  for (const el of document.querySelectorAll(".teacher-home :is(a, button, select, input, h1, h2, .tp-student, .tp-email, .tp-value, .tp-state, .tp-tag)")) {
     const r = el.getBoundingClientRect(); if (!r.width || !r.height || el.closest("thead")) continue;
     let clip = { left: 0, right: innerWidth };
     for (let p = el.parentElement; p; p = p.parentElement) if (getComputedStyle(p).overflowX !== "visible") { const c = p.getBoundingClientRect(); clip = { left: Math.max(clip.left, c.left), right: Math.min(clip.right, c.right) }; }
@@ -139,17 +132,17 @@ async function ringOnScreen(page) {
   return Object.entries(colors).filter(([, c]) => !isRing(c)).map(([k, c]) => `${k}: ${c ? `rgb(${c})` : "fora da tela"}`);
 }
 
-test("P1: composição — tabela com largura (52rem de painel), linhas empilhadas no tablet, no celular e com texto ampliado; situação e foco lado a lado só com largura", async () => {
-  for (const [width, height, text, table, side] of [[1440, 900, 1, true, true], [1280, 800, 1, true, true], [1024, 768, 1, false, false], [768, 1024, 1, false, false], [390, 844, 1, false, false],
-    [320, 640, 1, false, false], [1440, 900, 2, false, false]]) {
+test("P1: composição — tabela com largura (52rem de painel), linhas empilhadas no tablet, no celular e com texto ampliado; situação em uma seção única, sem o antigo editor", async () => {
+  for (const [width, height, text, table] of [[1440, 900, 1, true], [1280, 800, 1, true], [1024, 768, 1, false], [768, 1024, 1, false], [390, 844, 1, false],
+    [320, 640, 1, false], [1440, 900, 2, false]]) {
     const { context, page, errors } = await open({ width, height, text });
     const m = await page.evaluate(() => {
       const tr = document.querySelector(".tp-row"), thead = document.querySelector(".tp-table thead"), head = thead?.getBoundingClientRect();
-      const o = document.querySelector(".tp-overview")?.getBoundingClientRect(), f = document.querySelector(".tp-focus")?.getBoundingClientRect();
-      if (!tr || !head || !o || !f) return { row: null, theadVisible: null, labels: null, side: null };
+      const o = document.querySelector(".tp-overview")?.getBoundingClientRect();
+      if (!tr || !head || !o) return { row: null, theadVisible: null, labels: null };
       const values = [...document.querySelectorAll(".tp-statuses .tp-filter > strong")].map((s) => Math.round(s.getBoundingClientRect().top));
       return { row: getComputedStyle(tr).display, theadVisible: head.width > 1 && head.height > 1, labels: getComputedStyle(tr.querySelector(".tp-cell-label")).display !== "none",
-        sticky: getComputedStyle(thead.querySelector("th")).position, kcAlign: getComputedStyle(tr.querySelector(".tp-avg")).textAlign, side: f.left >= o.right - 1 && Math.abs(f.top - o.top) < 40,
+        sticky: getComputedStyle(thead.querySelector("th")).position, kcAlign: getComputedStyle(tr.querySelector(".tp-avg")).textAlign,
         frame: getComputedStyle(document.querySelector(".tp-overview")).borderTopWidth, sameRow: new Set(values).size === 1, statusesSide: values.length === 3 && new Set([...document.querySelectorAll(".tp-statuses .tp-filter")].map((b) => Math.round(b.getBoundingClientRect().top))).size === 1 };
     });
     const id = `${width}×${height}${text > 1 ? ` a ${text * 100}%` : ""}`;
@@ -157,7 +150,7 @@ test("P1: composição — tabela com largura (52rem de painel), linhas empilhad
     assert.equal(m.theadVisible, table, `${id}: cabeçalho visível só na tabela`);
     assert.equal(m.labels, !table, `${id}: rótulo em cada valor só nas linhas empilhadas`);
     if (table) assert.deepEqual([m.sticky, m.kcAlign], ["sticky", "right"], `${id}: cabeçalho fixo e números à direita`);
-    assert.equal(m.side, side, `${id}: situação e foco lado a lado`);
+    assert.equal(await page.locator(".tp-focus, #focus-form, [data-add-focus], [data-remove-focus]").count(), 0, `${id}: editor removido`);
     // Com as três situações lado a lado, os números ficam na mesma linha mesmo quando um rótulo quebra (subgrid); em coluna
     // estreita (celular, texto ampliado) a Situação da turma não tem moldura.
     if (m.statusesSide) assert.ok(m.sameRow, `${id}: números das situações alinhados`);
@@ -182,37 +175,25 @@ test("P2: sem rolagem lateral nem controle ou texto recortado em 320–1440 px, 
   }
 });
 
-test("P3: \"Enviar CSV manualmente\" e \"Salvar foco da turma\" cabem em 320 px com texto a 200%: texto inteiro, alvo de 44 px, estado desabilitado, foco e ação preservados", async () => {
+test("P3: Enviar CSV manualmente cabe em 320 px com texto ampliado: texto inteiro, alvo de 44 px, foco e ação preservados", async () => {
   for (const [height, text] of [[640, 2], [568, 2], [640, 2.5]]) {
-    const { context, page, errors, control } = await open({ width: 320, height, text, data: () => report(ROSTER, { focus: { activityIds: ["a1"], version: "v0" } }) });
+    const { context, page, errors } = await open({ width: 320, height, text });
     const id = `320×${height} a ${text * 100}%`;
-    const measure = (name) => page.getByRole("button", { name, exact: true }).evaluate((el) => {
-      const r = el.getBoundingClientRect(), box = (el.closest(".teacher-home") || el.closest("main")).getBoundingClientRect();
-      return { inside: r.left >= box.left - 0.5 && r.right <= Math.min(box.right, innerWidth) + 0.5, height: r.height, text: el.innerText.replace(/\s+/g, " ").trim(), cut: el.scrollWidth > el.clientWidth + 1, disabled: el.disabled };
+    const button = page.getByRole("button", { name: "Enviar CSV manualmente", exact: true });
+    const m = await button.evaluate((el) => {
+      const r = el.getBoundingClientRect(), box = el.closest(".teacher-home").getBoundingClientRect();
+      return { inside: r.left >= box.left - 0.5 && r.right <= Math.min(box.right, innerWidth) + 0.5,
+        height: r.height, text: el.innerText.replace(/\s+/g, " ").trim(), cut: el.scrollWidth > el.clientWidth + 1, disabled: el.disabled };
     });
-    for (const name of ["Enviar CSV manualmente", "Salvar foco da turma"]) {
-      const m = await measure(name);
-      assert.ok(m.inside && !m.cut, `${id}: ${name} dentro da tela e sem corte (${JSON.stringify(m)})`);
-      assert.equal(m.text, name, `${id}: texto inteiro`);
-      assert.ok(m.height >= 44, `${id}: ${name} com ${m.height} px`);
-    }
-    // Estado: com foco salvo e sem mudança, Salvar fica habilitado (salvar de novo é permitido, como antes); vazio, parado.
-    assert.equal((await measure("Salvar foco da turma")).disabled, false);
-    // Foco pelo teclado: contorno inteiro nos dois.
-    for (const name of ["Enviar CSV manualmente", "Salvar foco da turma"]) {
-      await page.getByRole("button", { name, exact: true }).focus();
-      await page.evaluate(() => document.activeElement.scrollIntoView({ block: "center" }));
-      await settle(page);
-      assert.deepEqual(await ringOnScreen(page), [], `${id}: contorno de ${name}`);
-    }
-    // As ações continuam as mesmas: salvar envia o foco; o CSV leva a Atualizar notas.
-    await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-    await page.locator("#tp-focus-status.is-saved").waitFor();
-    assert.deepEqual(control.focusPosts, [{ activityIds: ["a1"], expectedCurrent: publication.id, expectedVersion: "v0" }]);
-    await page.getByRole("button", { name: "Remover 254-NF- KC Introdução à rede do foco", exact: true }).click();
-    assert.equal((await measure("Salvar foco da turma")).disabled, true, `${id}: sem atividades, Salvar parado`);
-    assert.equal(await page.evaluate(() => document.activeElement.textContent), "Escolher na visão por atividade", `${id}: sem Remover nem Salvar, o foco vai a escolher`);
-    await page.getByRole("button", { name: "Enviar CSV manualmente", exact: true }).click();
+    assert.ok(m.inside && !m.cut, `${id}: ação dentro da tela e sem corte (${JSON.stringify(m)})`);
+    assert.equal(m.text, "Enviar CSV manualmente");
+    assert.ok(m.height >= 44, `${id}: alvo com ${m.height} px`);
+    assert.equal(m.disabled, false);
+    await button.focus();
+    await page.evaluate(() => document.activeElement.scrollIntoView({ block: "center" }));
+    await settle(page);
+    assert.deepEqual(await ringOnScreen(page), [], `${id}: contorno da ação`);
+    await button.click();
     await page.getByRole("heading", { name: "Atualizar notas da BRSA0267", exact: true }).waitFor();
     assert.deepEqual(errors, []);
     await context.close();
@@ -280,117 +261,33 @@ test("P4: atalhos da Situação da turma filtram a lista com o mesmo número, pr
   await context.close();
 });
 
-test("P5: Foco da turma — alteração pendente, salvando (Salvar e Remover parados mesmo com renders), salvo e erro na própria seção, com o foco no resultado e sem aviso temporário", async () => {
-  const { context, page, errors, control, holdNext } = await open({ data: () => report(ROSTER, { focus: { activityIds: ["a1", "a2"], version: "v0" } }) });
-  const status = () => page.locator("#tp-focus-status");
-  assert.equal(await page.locator(".tp-focus .focus-list li").count(), 2, "Foco da turma aberto no painel, com as duas atividades");
-  assert.equal(await status().count(), 0);
-  // Antes, um controle com memória no render (a busca): remover não pode devolver o foco para lá.
-  await page.locator("#search").focus();
-  await page.locator("#search").fill("");
-  await page.getByRole("button", { name: "Remover 255--Lab - Sub-redes e tabelas de rotas na Amazon VPC do foco", exact: true }).click();
-  assert.equal(await status().textContent(), "Alterações ainda não salvas: os alunos continuam vendo o foco anterior.");
-  assert.equal(control.focusPosts.length, 0, "remover não salva");
-  // O foco fica no Remover que sobrou (a última posição), não volta à busca.
-  assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")), "Remover 254-NF- KC Introdução à rede do foco");
-  // Salvando: o andamento recebe o foco (o botão é recriado parado); salvo, o foco vai à confirmação.
-  const hold = holdNext("focus");
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await hold.arrived.promise;
-  assert.equal(await status().textContent(), "Salvando o foco da turma…");
-  assert.equal(await status().getAttribute("role"), "status");
-  assert.equal(await page.evaluate(() => document.activeElement.id), "tp-focus-status", "foco no andamento");
-  let answered = focusResponse(page);
-  hold.gate.resolve();
-  await answered();
-  assert.equal(await status().count() && await status().textContent(), "Foco da BRSA0267 atualizado.");
-  assert.equal(await page.evaluate(() => document.activeElement.id), "tp-focus-status", "foco no resultado");
-  assert.deepEqual(control.focusPosts, [{ activityIds: ["a1"], expectedCurrent: publication.id, expectedVersion: "v0" }]);
-  assert.deepEqual(await notices(page), []);
-  assert.equal(await page.locator('#focus-form [type="submit"]').getAttribute("class"), "button secondary");
-  // Um render no meio do salvamento (a busca redesenha a tela) não reabilita Salvar nem Remover: um envio por clique.
-  const busy = holdNext("focus");
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await busy.arrived.promise;
-  await page.locator("#search").fill("ana");
-  await page.locator("#search").fill("");
-  assert.equal(await status().textContent(), "Salvando o foco da turma…");
-  assert.deepEqual(await page.locator(".tp-focus button").evaluateAll((els) => els.filter((b) => b.matches('[type="submit"], .tp-remove')).map((b) => b.disabled)), [true, true]);
-  await page.locator('#focus-form [type="submit"]').click({ force: true, timeout: 1000 }).catch(() => {});
-  answered = focusResponse(page);
-  busy.gate.resolve();
-  await answered();
-  assert.equal(await status().count() && await status().textContent(), "Foco da BRSA0267 atualizado.");
-  assert.equal(control.focusPosts.length, 2, "nenhum envio a mais");
-  // Erro (409): o motivo do servidor fica na seção, como alerta, com o foco; o rascunho continua; nenhum aviso.
-  control.focusMode = "409";
-  await page.getByRole("button", { name: "Remover 254-NF- KC Introdução à rede do foco", exact: true }).click();
-  await page.locator('.tp-actions [data-view="activity-overview"]').click();
-  await page.locator('[data-add-focus="a3"]').click();
-  await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
-  answered = focusResponse(page);
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await answered();
-  assert.equal(await status().count() && await status().textContent(), "O foco não foi salvo. O foco foi alterado por outro instrutor. Consulte a atualização antes de salvar.");
-  assert.equal(await status().getAttribute("role"), "alert");
-  assert.equal(await page.evaluate(() => document.activeElement.id), "tp-focus-status");
-  assert.deepEqual(await page.locator(".focus-list .tp-focus-name").allTextContents(), ["226-LX-KC - Uma introdução ao Linux"]);
-  assert.deepEqual(await notices(page), []);
-  // Nova tentativa: o motivo antigo some enquanto salva.
-  control.focusMode = "ok";
-  const again = holdNext("focus");
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await again.arrived.promise;
-  assert.equal(await status().textContent(), "Salvando o foco da turma…");
-  answered = focusResponse(page);
-  again.gate.resolve();
-  await answered();
-  assert.equal(await status().count() && await status().textContent(), "Foco da BRSA0267 atualizado.");
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("P5b: resposta do salvamento com outro relatório na tela (Consultar atualização ou outra turma) não aparece no relatório novo; vai para o aviso, como antes", async () => {
-  const { context, page, errors, control, holdNext } = await open({ data: () => report(ROSTER, { focus: { activityIds: ["a1"], version: "v0" } }) });
-  assert.ok(await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).isVisible(), "Salvar à vista no painel");
-  let hold = holdNext("focus");
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await hold.arrived.promise;
-  await page.getByRole("button", { name: "Consultar atualização", exact: true }).click();
-  await page.locator(".teacher-home .tp-row").first().waitFor();
-  // O andamento é do relatório em que o salvamento começou: o relatório novo não o herda.
-  assert.equal(await page.locator("#tp-focus-status").count(), 0, "relatório novo sem o andamento do anterior");
-  let answered = focusResponse(page);
-  hold.gate.resolve();
-  await answered();
-  assert.deepEqual(await notices(page), ["Foco da BRSA0267 atualizado."]);
-  assert.equal(await page.locator("#tp-focus-status").count(), 0, "nenhum resultado no relatório novo");
-  assert.equal(await page.locator('#focus-form [type="submit"]').isDisabled(), false);
-  // Erro com outra turma na tela: o aviso de erro, com a turma de origem (C1, D05: sem ela, o motivo parecia ser da BRSA0268).
-  control.focusMode = "409";
-  hold = holdNext("focus");
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
-  await hold.arrived.promise;
-  await page.locator("#cohort").selectOption("BRSA0268");
-  await page.getByRole("heading", { name: "Painel da BRSA0268", exact: true }).waitFor();
-  answered = focusResponse(page);
-  hold.gate.resolve();
-  await answered();
-  assert.deepEqual(await notices(page), ["O foco da BRSA0267 não foi salvo. O foco foi alterado por outro instrutor. Consulte a atualização antes de salvar."]);
-  assert.equal(await page.locator("#notices .notice.error").count(), 1);
-  assert.equal(await page.locator("#tp-focus-status").count(), 0);
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-test("P5c: remover uma atividade do meio do foco deixa o foco no Remover que ocupou o lugar, não no primeiro", async () => {
-  const { context, page, errors } = await open({ data: () => report(ROSTER, { focus: { activityIds: ["a1", "a2", "a3"], version: "v0" } }) });
-  assert.equal(await page.locator(".tp-focus .focus-list li").count(), 3, "Foco da turma aberto no painel, com as três atividades");
-  await page.getByRole("button", { name: "Remover 255--Lab - Sub-redes e tabelas de rotas na Amazon VPC do foco", exact: true }).click();
-  assert.equal(await page.evaluate(() => document.activeElement.getAttribute("aria-label")), "Remover 226-LX-KC - Uma introdução ao Linux do foco");
-  assert.deepEqual(await page.locator(".focus-list .tp-focus-name").allTextContents(), ["254-NF- KC Introdução à rede", "226-LX-KC - Uma introdução ao Linux"]);
-  assert.deepEqual(errors, []);
-  await context.close();
+test("P5: Foco da turma removido do painel e da visão por atividade, sem POST mesmo com foco legado no relatório", async () => {
+  for (const role of ["instructor", "admin"]) {
+    const { context, page, errors, control } = await open({ role, data: () => report(ROSTER, { focus: { activityIds: ["a1", "a2", "a3"], version: "legacy" } }) });
+    const absent = async () => {
+      assert.equal(await page.locator(".tp-focus, #focus-form, [data-add-focus], [data-remove-focus]").count(), 0);
+      assert.equal(await page.getByRole("button", { name: /Salvar foco|Escolher na visão por atividade|do foco/ }).count(), 0);
+      assert.deepEqual(control.focusPosts, []);
+    };
+    await page.locator(".tp-row").first().waitFor();
+    await absent();
+    await page.locator("#search").fill("Carla");
+    assert.deepEqual(await page.locator(".tp-student").allTextContents(), ["Carla Cavalcanti"]);
+    await page.getByRole("button", { name: "Ver por atividade", exact: true }).click();
+    await page.getByRole("heading", { name: "Visão por atividade", exact: true }).waitFor();
+    await absent();
+    assert.equal(await page.getByRole("columnheader", { name: /foco/i }).count(), 0);
+    assert.equal(await page.locator("tbody tr").count(), ACTIVITIES.length);
+    await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
+    await page.locator(".tp-row").first().waitFor();
+    await absent();
+    assert.equal(await page.locator("#search").inputValue(), "Carla", "navegação mantém os filtros legítimos");
+    await page.getByRole("button", { name: "Consultar atualização", exact: true }).click();
+    await page.locator(".tp-row").first().waitFor();
+    await absent();
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 test("P6: estados — atualizando, erro recuperável com o título, sem publicação, falha da sincronização, versão restaurada e turma sem atualização automática", async () => {
@@ -478,20 +375,20 @@ test("P8: teclado na ordem visual, com contorno inteiro (pixels); no celular o f
         return { name: (a.getAttribute("aria-label") || a.innerText || a.id).trim().split("\n")[0], top: r.top + scrollY, left: r.left, visible: r.top >= 0 && r.bottom <= bar }; });
       if (!info) break;
       order.push(info);
-      if (/Ver pendências|Remover|Salvar foco|Ver todos|Atenção|search/.test(info.name)) assert.deepEqual(await ringOnScreen(page), [], `${width}: contorno em ${info.name}`);
+      if (/Ver pendências|Ver todos|Atenção|search/.test(info.name)) assert.deepEqual(await ringOnScreen(page), [], `${width}: contorno em ${info.name}`);
       assert.ok(info.visible, `${width}: ${info.name} à vista`);
     }
     // A ordem do teclado segue a leitura: de cima para baixo e, numa mesma faixa, da esquerda para a direita.
     const names = order.map((o) => o.name);
     assert.deepEqual(names.slice(0, 3), ["Ver por atividade", "Enviar CSV manualmente", "Consultar atualização"]);
     assert.ok(names.indexOf("Alunos na publicação") < names.indexOf("Médias na referência") && names.indexOf("Crítico") < names.indexOf("Com atividades sem nota"), names.join(" | "));
-    assert.ok(names.indexOf("Ainda não entraram") < names.indexOf("Remover 254-NF- KC Introdução à rede do foco"), names.join(" | "));
-    assert.ok(names.indexOf("Escolher na visão por atividade") < names.indexOf("search"), names.join(" | "));
+    assert.ok(names.indexOf("Ainda não entraram") < names.indexOf("search"), names.join(" | "));
+    assert.ok(names.every((name) => !/Salvar foco|do foco|Escolher na visão por atividade/.test(name)), names.join(" | "));
     const rows = names.filter((n) => n.startsWith("Ver pendências de "));
     assert.deepEqual(rows, ROSTER.map((r) => `Ver pendências de ${r.name}`).sort((a, b) => a.localeCompare(b, "pt-BR")).slice(0, rows.length));
     for (let i = 1; i < order.length; i++) {
       const a = order[i - 1], b = order[i], sameBand = Math.abs(a.top - b.top) < 24;
-      if (width > 1000 && a.name.startsWith("Ver pendências") === false) assert.ok(b.top > a.top - 24 && (!sameBand || b.left > a.left - 1) || /Remover|Salvar|Escolher|search/.test(b.name), `${a.name} → ${b.name}`);
+      if (width > 1000 && a.name.startsWith("Ver pendências") === false) assert.ok(b.top > a.top - 24 && (!sameBand || b.left > a.left - 1) || /search/.test(b.name), `${a.name} → ${b.name}`);
     }
     assert.deepEqual(errors, []);
     await context.close();
@@ -675,7 +572,7 @@ test("AS-03: cobertura/qualidade independentes, zero e legado visíveis sem cole
 test("AS-07: busca/filtros/ordenação não recriam casca, foco ou agregados; seleção e CSV completo preservados", async () => {
   for (const role of ["instructor", "admin"]) {
     const { page, context, errors } = await open({ role, data: () => report(MANY) });
-    await page.evaluate(() => { window.teacherNodes = Object.fromEntries([".sidebar", ".tp-overview", ".tp-engagement", ".tp-focus", "#search", "#student-sort", "#status-filter"].map((s) => [s, document.querySelector(s)])); });
+    await page.evaluate(() => { window.teacherNodes = Object.fromEntries([".sidebar", ".tp-overview", ".tp-engagement", "#search", "#student-sort", "#status-filter"].map((s) => [s, document.querySelector(s)])); });
     const unchanged = async () => assert.equal(await page.evaluate(() => Object.entries(window.teacherNodes).every(([selector, node]) => node === document.querySelector(selector))), true);
     await page.locator("#search").fill("carl"); await unchanged();
     await page.locator("#search").evaluate((el) => el.setSelectionRange(1, 2));
@@ -707,4 +604,43 @@ test("AS-07: busca/filtros/ordenação não recriam casca, foco ou agregados; se
     assert.equal(await page.evaluate(() => window.teacherNodes["#search"] !== document.querySelector("#search")), true, "troca de contexto mantém render completo");
     assert.deepEqual(errors, []); await context.close();
   }
+});
+
+test("TODO27: cartão Crítico abre o universo contado, limpa busca/Canvas e mantém filtros manuais combináveis e CSV", async () => {
+  const students = ROSTER.map((student) => ({ ...student,
+    canvasActivity: { totalActivityTime: 3600, lastActivityAt: student.id === "6" ? "2026-10-01T12:00:00Z" : "2026-10-10T12:00:00Z" } }));
+  const { page, context, errors } = await open({ data: () => report(students) });
+  try {
+    const names = () => page.locator(".tp-student").allTextContents();
+    const critical = page.locator('.tp-filter[data-filter="critical"]');
+    assert.equal(await shortcutCount(page, "critical"), 2);
+    await page.locator("#search").fill("Carla");
+    await page.locator("#canvas-activity-filter").selectOption("recent");
+    assert.deepEqual(await names(), ["Carla Cavalcanti"]);
+
+    await critical.click();
+    assert.equal(await page.locator("#search").inputValue(), "", "o atalho limpa a busca incompatível com seu número");
+    assert.equal(await page.locator("#canvas-activity-filter").inputValue(), "all", "o atalho limpa o filtro auxiliar");
+    assert.equal(await page.locator("#status-filter").inputValue(), "critical");
+    assert.equal(await critical.getAttribute("aria-pressed"), "true");
+    assert.deepEqual(await names(), ["Carla Cavalcanti", "Felipe Figueiredo"]);
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Exportar CSV (2)", exact: true }).click();
+    const csv = await readFile(await (await download).path(), "utf8");
+    assert.equal(csv.split("\r\n").length, 3, "cabeçalho e os dois resultados do cartão");
+    assert.ok(csv.includes("Carla Cavalcanti") && csv.includes("Felipe Figueiredo"));
+    assert.ok(!csv.includes("Ana Albuquerque"));
+
+    // Seletores e busca continuam combináveis: apenas o cartão é um atalho de universo.
+    await page.locator("#canvas-activity-filter").selectOption("inactive");
+    await page.locator("#search").fill("Felipe");
+    assert.deepEqual(await names(), ["Felipe Figueiredo"]);
+    await page.locator("#status-filter").selectOption("attention");
+    assert.equal(await page.locator(".tp-row").count(), 0);
+    assert.equal(await page.locator("#search").inputValue(), "Felipe");
+    assert.equal(await page.locator("#canvas-activity-filter").inputValue(), "inactive");
+    await page.locator("#status-filter").selectOption("critical");
+    assert.deepEqual(await names(), ["Felipe Figueiredo"]);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
 });

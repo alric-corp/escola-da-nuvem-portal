@@ -468,70 +468,18 @@ function content(name) {
   if (!state.report)
     return studentHome ? studentLoading() : studentState('<section class="panel empty" role="status">Carregando sua turma…</section>');
   if (state.view === "history") return historyPage(publicationsView());
-  if (teacher()) return teacherPage(teacherView());
+  if (teacher()) return teacherPage();
   if (!state.report.student) return studentState('<section class="panel empty">Ainda não há notas publicadas para sua conta.</section>');
   return state.view === "activities" ? activitiesPage() : studentPage(name);
 }
 
 // Sessão do portal (C1): a geração muda quando quem está na aba muda (outro userId no /me) ou quando a sessão expira (401).
-// A restauração e o foco guardam a geração em que começaram; a resposta que chega em outra — outra pessoa, ou a mesma pessoa
+// A restauração guarda a geração em que começou; a resposta que chega em outra — outra pessoa, ou a mesma pessoa
 // numa sessão nova (A → B → A: o e-mail sozinho não distinguiria) — não aparece, não avisa, não dispara pedido e não desfaz
 // o andamento de quem está na aba. O pedido pode ter sido concluído no servidor; quem está na aba vê a versão em vigor ao
 // consultar. Sair navega para o logout: a página, com as respostas pendentes, acaba ali.
 let sessionGeneration = 0;
 const personOf = (me) => (me ? String(me.userId || me.email || "") : "");
-
-// Foco da turma (Expansão 4): o andamento e o resultado do salvamento ficam na própria seção, presos ao relatório em que
-// ele começou (outro relatório — Consultar atualização, outra turma — começa sem nada). Durante o envio, Salvar e Remover
-// ficam parados mesmo que a tela seja redesenhada. O pedido, a regra e a atualização do foco são os de antes; se a resposta
-// chega com outro relatório na tela, o resultado vai para o aviso do portal, com a turma (C1). Recusa (4xx: o servidor
-// recusa antes de gravar) e dúvida (rede, 5xx: pode ter gravado) são ditas de jeitos diferentes; salvar de novo não grava
-// duas vezes, porque o servidor confere a versão.
-// C2: dois salvamentos da turma podem se sobrepor na mesma sessão (Consultar atualização ou a ida e volta de turma durante o
-// envio dão um relatório novo, com Salvar livre; a Visão por atividade muda o rascunho enquanto ele espera). Cada salvamento é
-// uma operação (op), e a resposta só mexe no que é dela: o andamento, só se ainda for o dela; o rascunho, só se ainda for o que
-// ela enviou; o relatório na tela recebe o foco salvo se for o dela, ou um relatório novo que ainda mostra a versão de onde ela
-// partiu e não tem rascunho (com rascunho, a versão mudaria por baixo do que a pessoa está fazendo e o próximo envio passaria por
-// cima, sem a recusa do servidor; com outro salvamento pendente, o servidor recusa esse outro pela versão). Se outro salvamento
-// da turma começou depois, o aviso diz que é o anterior. Ignorar a resposta na tela não desfaz nada no servidor.
-let focusOutcome = null, focusLatest = null;
-function teacherView() {
-  return { focus: focusOutcome?.report === state.report ? focusOutcome : null };
-}
-async function saveFocus() {
-  const code = state.code, report = state.report, session = sessionGeneration, draft = state.focusDraft;
-  const ids = draft || report.focus?.activityIds || [], base = report.focus?.version || null;
-  const op = { report, kind: "saving", code };
-  focusOutcome = focusLatest = op;
-  const prior = () => focusLatest !== op && focusLatest.code === code;
-  ownFocus();
-  render();
-  restoreFocus("#tp-focus-status");
-  try {
-    const result = await api.cohorts.saveFocus(code, {
-      activityIds: ids, expectedCurrent: report.publication.id, expectedVersion: base,
-    });
-    if (session !== sessionGeneration) return;
-    const shown = state.code === code ? state.report : null;
-    if (shown && (shown === report || ((shown.focus?.version || null) === base && !state.focusDraft))) shown.focus = result.focus;
-    if (state.focusDraft === draft) state.focusDraft = null;
-    if (state.report === report && focusOutcome === op) focusOutcome = { report, kind: "saved", message: `Foco da ${code} atualizado.` };
-    else notice(prior() ? priorFocus.saved(code) : `Foco da ${code} atualizado.`);
-  } catch (err) {
-    if (session !== sessionGeneration) return;
-    const failure = restoreError(err);
-    if (state.report !== report || focusOutcome !== op) {
-      throw new Error(failure.unsure ? (prior() ? priorFocus.unsure(code) : unsureFocus(code))
-        : prior() ? priorFocus.refused(code, failure.message) : `O foco da ${code} não foi salvo. ${failure.message}`);
-    }
-    focusOutcome = { report, kind: "error", ...failure };
-  } finally {
-    // Só o próprio salvamento limpa o andamento dele: o de outro salvamento (outro relatório, outra turma, outra sessão) fica.
-    if (focusOutcome === op) focusOutcome = null;
-    // O resultado tem o mesmo id do andamento: o render devolve o foco a ele (foco que a pessoa levou a outro lugar fica).
-    if (state.me && state.report === report) render();
-  }
-}
 
 // Publicações da turma (Expansão 5): a restauração é a de antes — confirm(), o pedido com expectedCurrent (409 se a turma
 // mudou) e boot() depois da resposta —, com a pergunta dizendo qual publicação e a consequência. O andamento fica preso à
@@ -618,13 +566,6 @@ const restoreError = (err) => err.network || err.status >= 500
   ? { unsure: true, message: err.network ? "A conexão com o portal falhou." : err.message || "Não foi possível concluir a operação." }
   : { message: err.message || "Não foi possível concluir a operação.", conflict: err.status === 409 };
 const unsureRestore = (code) => `Não foi possível confirmar a restauração da turma ${code}. Ela pode ter sido concluída: veja Publicações.`;
-const unsureFocus = (code) => `Não foi possível confirmar a atualização do foco da ${code}. A alteração pode ter sido salva: consulte a atualização no Painel do instrutor da ${code} antes de salvar de novo.`;
-const priorFocus = {
-  saved: (code) => `O salvamento anterior do foco da ${code} foi concluído.`,
-  refused: (code, reason) => `O salvamento anterior do foco da ${code} foi recusado. ${reason}`,
-  unsure: (code) => `Não foi possível confirmar o salvamento anterior do foco da ${code}: ele pode ter sido concluído.`,
-};
-
 // Atualizar notas (Expansão 6): conferir, trocar o arquivo e publicar são as operações do handler, com as mesmas chamadas e
 // a mesma confirmação; a publicação leva ao painel e avisa, como antes. Durante a publicação, tudo da turma fica parado
 // (arquivo, seleção, conferência, confirmação dos removidos e Publicar), mesmo que a tela seja redesenhada: antes, um arquivo
@@ -815,7 +756,6 @@ async function loadReport() {
       if (state.code !== code || request !== reportRequest || state.me !== owner || state.studentView !== viewing) return;
       if (viewing) viewing.name = report.viewAs?.name || "";
       state.report = report;
-      state.focusDraft = null;
     }
   } catch (err) {
     if (state.code !== code || request !== reportRequest || state.me !== owner || state.studentView !== viewing) return;
@@ -1296,25 +1236,6 @@ document.addEventListener("click", (event) => {
   if (button.dataset.fbViewAs) return busy(button, () => viewAsFromFeedback(button.dataset.fbViewAs));
   if (button.dataset.studentPending)
     return busy(button, () => remindersHandlers.loadPending(button.dataset.studentPending));
-  if (button.dataset.addFocus) {
-    const current = state.focusDraft || state.report.focus?.activityIds || [];
-    if (current.length < 3 && !current.includes(button.dataset.addFocus)) {
-      state.focusDraft = [...current, button.dataset.addFocus];
-      render();
-    }
-    return;
-  }
-  // Foco da turma (Expansão 4): o botão some com a atividade; o foco fica na lista (o Remover que ocupou o lugar, ou o
-  // último), senão em Salvar, senão em escolher atividades, em vez de voltar a um controle antigo da página.
-  if (button.dataset.removeFocus) {
-    const current = state.focusDraft || state.report.focus?.activityIds || [];
-    const index = [...document.querySelectorAll(".tp-remove")].indexOf(button);
-    state.focusDraft = current.filter((id) => id !== button.dataset.removeFocus);
-    render();
-    const removes = document.querySelectorAll(".tp-remove");
-    (removes[Math.min(index, removes.length - 1)] || $('#focus-form [type="submit"]:not(:disabled)') || $('#focus-form [data-view="activity-overview"]'))?.focus();
-    return;
-  }
   if (button.dataset.view) {
     const previousView = state.view;
     const returning = ["student-pending", "reminders-batch", "activity-overview"].includes(state.view) && button.dataset.view === "overview";
@@ -1348,6 +1269,10 @@ document.addEventListener("click", (event) => {
   }
   if (button.dataset.filter) {
     state.filter = button.dataset.filter;
+    if (button.hasAttribute("data-teacher-shortcut")) {
+      state.search = "";
+      state.canvasActivityFilter = "all";
+    }
     renderTeacherStudents();
     // Cartões do painel filtram a lista abaixo: leva a vista e o foco até ela (no celular a
     // lista fica fora da tela).
@@ -1409,7 +1334,6 @@ document.addEventListener("change", (event) => {
       state.activityOverviewModule = "all";
       state.activityOverviewKind = "all";
       state.activityOverviewSort = "name";
-      state.focusDraft = null;
       state.filter = "all";
       state.sort = "name";
       state.canvasActivityFilter = "all";
@@ -1511,8 +1435,6 @@ document.addEventListener("submit", (event) => {
     async () => {
       if (form.id === "feedback-form") {
         await submitFeedback();
-      } else if (form.id === "focus-form") {
-        await saveFocus();
       } else if (form.id === "import-form") {
         await checkImport();
       } else if (form.id === "cohort-form") {

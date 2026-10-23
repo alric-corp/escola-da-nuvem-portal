@@ -15,9 +15,7 @@ export function needsReview(activity) {
   return typeof percent === "number" && Number.isFinite(percent) && percent < (activity.kind === "kc" ? 70 : 95);
 }
 
-export function nextActivities(activities, focusIds = []) {
-  const actionable = (a) => a.state === "pending" || needsReview(a);
-  if (focusIds.length) return focusIds.map((id) => activities.find((a) => a.id === id)).filter((a) => a && actionable(a)).slice(0, 3);
+export function nextActivities(activities) {
   // Liberadas mais recentemente primeiro; sem data (publicação antiga), mantém a ordem da publicação.
   const recentFirst = (list) => list.map((a, i) => [a, i])
     .sort(([a, i], [b, j]) => (b.releasedAt || "").localeCompare(a.releasedAt || "") || i - j)

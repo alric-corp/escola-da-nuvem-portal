@@ -23,7 +23,6 @@ export let state = {
   activityOverviewKind: "all",
   activityOverviewModule: "all",
   activityOverviewSort: "name",
-  focusDraft: null,
   filter: "all",
   search: "",
   requests: [],
