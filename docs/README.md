@@ -34,6 +34,8 @@ Ficam nos diretórios de cada componente:
 Tarefas parciais e pendentes ficam em [todo/](todo/README.md).
 Os históricos concluídos e o mapa de implementação estão em
 [todo/concluido/](todo/concluido/README.md).
+Propostas fora do planejamento atual ficam em
+[todo/despriorizado/](todo/despriorizado/README.md).
 
 ## Histórico
 

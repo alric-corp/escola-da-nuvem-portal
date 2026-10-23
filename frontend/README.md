@@ -185,9 +185,9 @@ Para rodar uma suíte isolada, use `node --test tests/<arquivo>.mjs`. No caso da
 ## Limites conhecidos
 
 - O importador foi validado com o CSV real de uma turma em 14/09/2026 ([registro](../infra/DEPLOYMENT.md#compatibilidade-com-o-csv-real-do-canvas)). Cabeçalhos ou regras específicas de outros cursos do Canvas podem exigir ajustes.
-- A descoberta de turmas usa os vínculos do aluno e do instrutor, mas `GET /cohorts` ainda faz scan da tabela ([TODO 05](../docs/todo/05-descoberta-de-turmas-por-vinculo.md)).
+- A descoberta sem Scan está implementada e integrada; até a implantação backend e o cutover, `GET /cohorts` pode usar o fallback legado com Scan ([TODO 05 concluído](../docs/todo/concluido/05-descoberta-de-turmas-por-vinculo.md), com operação em acompanhamento).
 - Rascunhos e arquivos novos recebem tags e expiração; os dados anteriores, sem tags/TTL, não foram limpos ([TODO 13](../docs/todo/concluido/13-retencao-de-dados.md)).
 - Vínculos persistidos são corrigidos em **Turmas e acessos**, que permite buscar, desvincular e editar o nome ([TODO 11](../docs/todo/concluido/11-admin-vinculos-e-nomes.md)). E-mails diferentes antes do primeiro vínculo precisam ser corrigidos no Canvas e refletidos em nova sincronização ou publicação manual.
 - Cadastro e recuperação usam o Cognito com SES e remetente noreply; lembretes usam o endereço institucional confirmado do instrutor.
 - Além da importação manual do CSV, a integração com a API do Canvas atualiza as notas por agendamento (`canvas-sync`, [TODO 17](../docs/todo/concluido/17-integracao-api-canvas.md)). A data da publicação fica visível aos alunos.
-- O aluno não recebe aviso quando novas notas são publicadas ([TODO 15](../docs/todo/15-aviso-de-nova-publicacao.md), pendente de decisão).
+- Publicar notas não envia e-mail. A [proposta de aviso de nova publicação](../docs/todo/despriorizado/15-aviso-de-nova-publicacao.md) está despriorizada e sem implementação; os lembretes existentes permanecem como estão.

@@ -2,29 +2,70 @@
 
 Backlog atual do portal da Escola da Nuvem.
 
-Arquivos na raiz representam trabalho pendente, incluindo evoluções guardadas
-para o futuro. Itens entregues ficam em [`concluido/`](concluido/README.md),
-com seu histórico e evidências de implementação.
+Arquivos na raiz representam o backlog ativo. Itens entregues ficam em
+[`concluido/`](concluido/README.md), com seu histórico e evidências de
+implementação. Propostas fora do planejamento atual ficam em
+[`despriorizado/`](despriorizado/README.md), sem compromisso de entrega.
 
 ## Pendentes
 
 | ID | Item | Estado |
 | --- | --- | --- |
-| 05 | [Descoberta de turmas por vínculo](05-descoberta-de-turmas-por-vinculo.md) | Implementado/testado — migração e cutover produtivos pendentes; fallback legado com Scan até lá |
-| 15 | [Aviso de nova publicação](15-aviso-de-nova-publicacao.md) | Pendente — decisão da coordenação |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
+| 26 | [Limpar o Foco da turma](26-limpar-foco-da-turma.md) | Defeito reproduzido: remover o último item impede salvar o foco vazio |
+| 27 | [Atalhos e filtros do painel](27-atalhos-e-filtros-do-painel.md) | Inconsistência reproduzida entre o número do cartão e a lista filtrada |
+| 28 | [Vínculos adicionais de instrutores](28-vinculos-adicionais-de-instrutores.md) | Lacuna de jornada: aprovado sem ação para outra turma ou devolução de acesso |
+| 29 | [Diagnóstico da sincronização por etapa](29-diagnostico-da-sincronizacao-por-etapa.md) | Notas sem mudanças podem ocultar a falha auxiliar na apresentação do relatório |
+| 30 | [QA manual e limpeza](30-atualizar-qa-manual-e-limpeza.md) | Roteiros antigos precisam acompanhar os perfis, releases e projeções atuais |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
 seu número e nome. Prioridades e esforços dos documentos existentes são
 os registros históricos de abertura.
 
+## Levantamento de fluxo — 23/10/2026
+
+Base de código: main `bbd7e6972d736e4a68b610f68b035aad594e9aaa`, após PR #17,
+consultada diretamente no GitHub. As mudanças locais de organização do backlog
+foram preservadas. A revisão examinou Foco da turma, atalhos/filtros/CSV,
+vínculos administrativos, resumo de sincronização e o kit de QA manual.
+
+Os itens 26–28 foram demonstrados com renderização e funções reais em Node,
+dados fictícios e sem rede. O item 29 foi reproduzido com repositório/Canvas
+controlados, dispatcher e renderização reais. O item 30 decorre da comparação
+dos scripts com os contratos atuais; nenhum script produtivo foi executado.
+Essas evidências não comprovam frequência ou incidente em produção.
+
+Ordem sugerida: corrigir 26/27 juntos, completar a jornada 28 e melhorar o
+diagnóstico 29. A atualização local do kit 30 pode avançar em paralelo; o QA
+autenticado continua dependendo de identidades e execução autorizadas.
+
+Não foram criados itens duplicados para implantação/cutover do 05, limpeza do
+legado do 13, rotação Canvas do 17 ou destino institucional de solicitações,
+já acompanhado no [Guia do curso](../course-guide.md). A leitura integral do
+histórico do instrutor e a correlação de erros com logs podem ser reavaliadas
+após medir volume/necessidade; não justificam ampliar esta entrega.
+
 ## Acompanhamentos de itens já implementados
 
+- [05 — Descoberta sem Scan](concluido/05-descoberta-de-turmas-por-vinculo.md):
+  implementação testada e integrada no PR #17, encerrada documentalmente em
+  23/10/2026. Implantação backend, reconciliação e cutover produtivos ainda
+  precisam ser comprovados conforme o [roteiro](../derived-access.md#implantação-futura-não-executada).
+  Até lá, o fallback legado com Scan pode permanecer em produção.
 - [13 — Retenção](concluido/13-retencao-de-dados.md): regras para novos
   rascunhos implementadas; limpeza de dados anteriores sem tags/TTL não realizada.
 - [17 — Canvas](concluido/17-integracao-api-canvas.md): integração
   implementada; rotação da credencial pessoal continua manutenção operacional.
+
+## Despriorizados
+
+| ID | Item | Estado |
+| --- | --- | --- |
+| 15 | [Aviso de nova publicação](despriorizado/15-aviso-de-nova-publicacao.md) | Proposta preservada, fora do planejamento atual; sem implementação ou prazo de retomada |
+
+Publicar notas continua não enviando e-mail; os lembretes existentes não foram
+alterados. O número 15 não será reutilizado.
 
 ## Operações concluídas
 

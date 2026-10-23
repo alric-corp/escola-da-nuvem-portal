@@ -7,6 +7,10 @@ originais contra código, testes, histórico Git e relatórios existentes:
 
 Os 18 documentos dessa revisão estão em `docs/todo/concluido/`. Em 21/10/2026, os TODOs 23, 24 e 25 também foram encerrados, totalizando 21 documentos numerados concluídos; os demais ficam em `docs/todo/`.
 Em **22/10/2026 (Brasília)**, o TODO 22 teve a integração/publicação confirmada e foi arquivado, totalizando **22 documentos numerados concluídos**.
+Em **23/10/2026 (Brasília)**, o escopo de desenvolvimento do TODO 05 foi encerrado
+e arquivado, totalizando **23 documentos numerados concluídos**. O TODO 15 foi
+preservado em [despriorizado/](../despriorizado/15-aviso-de-nova-publicacao.md)
+por decisão do titular, sem ser contado como implementado.
 Os IDs foram preservados. O [backlog ativo](../README.md) mantém
 os itens que ainda precisam de decisão ou trabalho.
 
@@ -15,6 +19,12 @@ no repositório. Não significa uma certificação funcional universal de produ�
 A revisão original não consultou AWS, Canvas nem contas de alunos; as conferências
 posteriores de publicação estão identificadas nos documentos individuais, com
 suas fontes e limitações. Não houve novo deploy nesta atualização documental.
+
+## Encerramento documental adicional — 23/10/2026 (Brasília)
+
+| ID | Escopo integrado | Evidência e limite |
+| --- | --- | --- |
+| [05 — Descoberta sem Scan](05-descoberta-de-turmas-por-vinculo.md) | Projeções consultáveis na tabela existente, manutenção pelos writers e migração/reconciliação explícitas; zero Scan após cutover simulado | [PR #17](https://github.com/alric-corp/escola-da-nuvem-portal/pull/17) integrado em `bbd7e69`, [CI 4/4](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39895519895) aprovado. Implantação backend, backfill e cutover produtivos permanecem em [acompanhamento](../README.md#acompanhamentos-de-itens-já-implementados); não declarados executados. |
 
 ## Encerramento documental adicional — 22/10/2026 (Brasília)
 
@@ -59,14 +69,15 @@ A pendência de publicação dos TODOs [23](23-corridas-e-respostas-stale.md) e 
 
 | ID | Status verificado | Implementado | Falta / decisão |
 | --- | --- | --- | --- |
-| [05 — Descoberta sem scan](../05-descoberta-de-turmas-por-vinculo.md) | Parcial em relação ao objetivo “sem scan” | Queries STUDY#/TEACH# evitam snapshots para turmas já vinculadas; integração cobre o caso | `GET /cohorts` ainda chama `Repository.cohorts`, que faz `table.scan`. Eliminar o scan global ou aceitar explicitamente esse escopo reduzido |
-| [15 — Aviso de publicação](../15-aviso-de-nova-publicacao.md) | Pendente de decisão | Publicação de notas preserva a garantia de não enviar e-mail | Coordenação decidir se deseja o recurso; opção, preferências e envio de aviso não estão implementados |
 | [20 — Domínio próprio](../20-dominio-proprio.md) | Código parcial; operação pendente | Flags e referências de certificado/CORS/callbacks existem no HCL | Relatório API-2 registrou ACM ausente no refresh e create no plano; emissão/validação, DNS institucional e ativação continuam pendentes |
 
-No item 05, a otimização que foi entregue continua válida. Esta classificação
-apenas impede que o título “sem scan” seja interpretado como eliminação do
-scan ainda presente em [Repository.cohorts](../../../backend/repository.py).
-Não foi proposta nem executada uma mudança de autorização ou de descoberta.
+Na revisão original de 04/10/2026, o item 05 era parcial: os vínculos reduziam
+leituras de snapshots, mas não eliminavam o Scan. A implementação posterior do
+PR #17 e o encerramento de seu escopo de desenvolvimento estão registrados
+[no documento arquivado](05-descoberta-de-turmas-por-vinculo.md), preservando a
+pendência operacional. O item 15 foi despriorizado em 23/10/2026; sua
+[proposta foi preservada](../despriorizado/15-aviso-de-nova-publicacao.md), sem
+implementação, e publicar notas continua sem enviar e-mail.
 
 ## Ressalvas e correções do histórico
 

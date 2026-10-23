@@ -1,7 +1,20 @@
 # 05 · Descobrir as turmas do aluno pelo vínculo, sem scan
 
-**Status:** 🟨 implementado e testado; migração/cutover produtivo pendentes · **Prioridade:** média · **Esforço:** médio · **Área:** backend
+**Status:** ✅ concluído — implementação, testes e integração; operação em acompanhamento · **Prioridade original:** média · **Esforço original:** médio · **Área:** backend
 
+## Encerramento documental — 23/10/2026
+
+O escopo de desenvolvimento foi encerrado por decisão do titular após a
+integração do [PR #17](https://github.com/alric-corp/escola-da-nuvem-portal/pull/17)
+na main `bbd7e6972d736e4a68b610f68b035aad594e9aaa`. O
+[CI do PR](https://github.com/alric-corp/escola-da-nuvem-portal/actions/runs/39895519895)
+aprovou os quatro checks, incluindo os testes de descoberta, autorização,
+paginação, falhas e reconciliação com Moto.
+
+Este encerramento registra código, testes e integração. A implantação do
+backend, o preenchimento das projeções e o cutover produtivo continuam como
+[acompanhamento operacional](../README.md#acompanhamentos-de-itens-já-implementados),
+sem afirmar que já foram executados ou que produção já opera sem Scan.
 
 ## Implementação desta entrega
 
@@ -9,13 +22,13 @@ O caminho novo está implementado em `backend/derived_access.py`, integrado aos
 writers reais de criação/publicação/restore e a `Repository`/`Portal`. Após
 cutover simulado, `/cohorts` usa Query por e-mail/vínculos para pessoas e diretório
 paginado para administradores, sem Scan; autorização permanece canônica. O
-[modelo, roteiro e recuperação](../derived-access.md) documentam os acessos.
+[modelo, roteiro e recuperação](../../derived-access.md) documentam os acessos.
 
 O backfill administrativo é dry-run por padrão, idempotente e retomável, e o
 cutover é explícito e condicionado às revisões. Não foi executado na AWS.
 Até a implantação compatível e reconciliação/cutover reais, produção pode
-continuar usando o fallback legado com Scan. Portanto este TODO permanece
-aberto operacionalmente; código/teste não são prova de implantação.
+continuar usando o fallback legado com Scan. A pendência operacional fica
+preservada no acompanhamento; código/teste não são prova de implantação.
 
 Os testes Moto e o benchmark de operações desta entrega ficam em
 `tests/integration/test_derived_access.py` e `scripts/benchmark_derived_access.py`.
@@ -23,7 +36,7 @@ As medições históricas abaixo permanecem como registro das fases anteriores.
 
 ## Medição AS-06 em 22/10/2026
 
-O [ensaio reproduzível](../canvas-reliability-performance.md#as-06--descoberta-de-turmas) usa Repository real com Moto e compara a base `9097f5c` com a correção deste PR. Reaproveitar os vínculos da mesma requisição elimina um GetItem redundante por turma no fallback; administradores dispensam as duas queries de vínculos. A descoberta por e-mail de turmas adicionais continua funcionando para quem já possui vínculos, assim como OWNER, autorização e paginação consistente.
+O [ensaio reproduzível](../../canvas-reliability-performance.md#as-06--descoberta-de-turmas) usa Repository real com Moto e compara a base `9097f5c` com a correção deste PR. Reaproveitar os vínculos da mesma requisição elimina um GetItem redundante por turma no fallback; administradores dispensam as duas queries de vínculos. A descoberta por e-mail de turmas adicionais continua funcionando para quem já possui vínculos, assim como OWNER, autorização e paginação consistente.
 
 O Scan **permanece**, com o mesmo universo examinado e os mesmos snapshots S3 do fluxo anterior. Mais registros de outras funcionalidades aumentam esse trabalho mesmo quando o filtro só devolve turmas. Não foi criado índice, cache entre usuários ou migração, nem medida capacidade/latência AWS. A otimização deste PR está testada, mas sua implantação backend está pendente; o objetivo literal “sem scan” continua aberto.
 
@@ -31,7 +44,7 @@ O Scan **permanece**, com o mesmo universo examinado e os mesmos snapshots S3 do
 
 `Portal.dispatch` em `GET /cohorts` já consulta STUDY#/TEACH# e evita
 snapshots das turmas vinculadas. Porém ainda percorre `self.repo.cohorts()`;
-`Repository.cohorts` em [backend/repository.py](../../backend/repository.py)
+`Repository.cohorts` em [backend/repository.py](../../../backend/repository.py)
 usa `self.table.scan`, paginado, para listar as turmas.
 
 Por isso o objetivo literal “sem scan” não foi considerado integralmente
