@@ -378,7 +378,7 @@ test("Faltas e solicitações: cards uniformes, ações no rodapé, aviso antes 
   for (const { width, textPercent, overflow, cards } of measurements) {
     const id = `${width}px/${textPercent}%`;
     assert.equal(cards.length, 3);
-    assert.ok(overflow <= 1, `${id}: sem rolagem horizontal da página`);
+    assert.ok(overflow <= 1, `${id}: sem rolagem horizontal da página (excesso: ${overflow}px)`);
     assert.equal(new Set(cards.map((c) => c.padding)).size, 1, `${id}: preenchimento uniforme`);
     for (const card of cards) {
       assert.equal(card.mainLinks, 1, `${id}: somente a ação principal, sem PDF`);

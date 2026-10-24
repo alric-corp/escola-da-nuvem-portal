@@ -16,8 +16,10 @@ Na aba **Faltas e solicitações**, a mesma revisão retira os dois links de ace
 ao PDF descontinuado: no card de solicitação e após o resumo das orientações.
 O conteúdo em HTML e os destinos externos continuam preservados. O aviso de
 indisponibilidade fica antes do botão de acompanhamento e é associado a ele
-por `aria-describedby`. O refinamento de layout é restrito aos três cards dessa
-aba; não altera Plantões, Regras, APIs ou fluxos de solicitação.
+por `aria-describedby`. O refinamento de layout é restrito a essa aba;
+não altera Plantões, Regras, APIs ou fluxos de solicitação.
+Com essa aba ativa, o rodapé também pode quebrar a linha em larguras pequenas
+com texto ampliado, evitando o transbordamento observado com a fonte do Linux.
 
 O layout foi conferido localmente em 320–1440px, com texto a 100%, 150% e
 200% por `Page.setFontSizes` do Chromium. Cards lado a lado compartilham

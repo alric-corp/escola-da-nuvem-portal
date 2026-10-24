@@ -4295,6 +4295,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .course-guide .cg-steps .cg-request-copy p { margin: 0; font-size: 0.9375rem; }
 .course-guide .cg-steps .cg-request-copy .small { font-size: 0.875rem; }
 .course-guide .cg-steps .cg-card-action { align-self: stretch; margin-top: 0; padding-top: 0; }
+.layout:has(.course-guide):has(#guide-panel-requests:not([hidden])) .main-footer { flex-wrap: wrap; }
 .course-guide .cg-card { display: flex; flex-direction: column; align-items: start; height: 100%; min-width: 0; padding: var(--space-4); border: 1px solid var(--color-line-soft); border-radius: var(--radius-md); background: var(--color-surface); }
 .course-guide .cg-card > p { font-size: 0.9375rem; }
 .course-guide .cg-card > .small { font-size: 0.875rem; }
