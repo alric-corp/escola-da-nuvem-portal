@@ -9,7 +9,7 @@ FILES = ["index.html", "styles.css", "app.js", "api.js", "ui.js", "state.js", "h
           "pages/landing.js", "pages/class-report.js", "pages/student.js", "pages/teacher.js", "pages/reminders.js",
           "pages/history.js", "pages/import.js", "pages/access.js", "pages/activities-overview.js",
           "pages/feedback.js", "pages/admin-feedback.js", "pages/signup-confirmation.js", "pages/course-guide.js",
-          "documents/normativa-abono-faltas.pdf", "documents/aula-inaugural-regras-curso.pptx"]
+          "documents/normativa-abono-faltas.pdf"]
 
 
 def main():
@@ -25,6 +25,9 @@ def main():
             parser.error("Os endpoints publicados devem usar HTTPS.")
     dest = ROOT / "frontend" / "dist"
     dest.mkdir(exist_ok=True)
+    # Retirar também a cópia de um build anterior: o pacote atual não oferece
+    # mais a apresentação, sem tocar em releases históricas já publicadas.
+    (dest / "documents" / "aula-inaugural-regras-curso.pptx").unlink(missing_ok=True)
     for name in FILES:
         (dest / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / "frontend" / name, dest / name)

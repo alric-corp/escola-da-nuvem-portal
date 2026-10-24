@@ -18,7 +18,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
-from release_fixtures import (BASELINE, BASELINE_SHA, MAIN_1, ORIGIN, ROOT, SCRIPTS, api_routes, archive_baseline, block_network,
+from release_fixtures import (BASELINE, BASELINE_SHA, MAIN_1, ORIGIN, ROOT, SCRIPTS, Git, api_routes, archive_baseline, block_network,
                               build, child_env, config, copy_app, fr, package)
 
 _restore = None
@@ -108,19 +108,33 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(files["styles.css"]["content_type"], "text/css; charset=utf-8")
         self.assertEqual(files["logo.png"]["content_type"], "image/png")
         self.assertEqual(files["config.json"]["content_type"], "application/json")
-        for name, mime, signature in (
-                ("normativa-abono-faltas.pdf", "application/pdf", b"%PDF-"),
-                ("aula-inaugural-regras-curso.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation", b"PK\x03\x04")):
-            document = "documents/" + name
-            self.assertEqual(files[document]["content_type"], mime)
-            self.assertGreater(files[document]["size"], 100)
-            self.assertTrue((release / document).read_bytes().startswith(signature))
+        document = "documents/normativa-abono-faltas.pdf"
+        self.assertEqual(files[document]["content_type"], "application/pdf")
+        self.assertGreater(files[document]["size"], 100)
+        self.assertTrue((release / document).read_bytes().startswith(b"%PDF-"))
+        self.assertFalse(any(path.endswith(".pptx") for path in files), "a release atual não inclui apresentações")
+        self.assertFalse((release / "documents/aula-inaugural-regras-curso.pptx").exists())
         self.assertIn("course-guide-content.js", files)
         self.assertIn("pages/course-guide.js", files)
         self.assertEqual(m["config"]["keys"], sorted(config()))
         self.assertEqual(m["document_relative"], ["logo.png"])
         self.assertGreaterEqual(len(m["api"]["routes"]), 30)
         self.assertEqual(fr.validate_release(release, ORIGIN)["release_id"], release.name)
+
+    def test_historical_modern_release_can_still_validate_its_original_pptx(self):
+        # Revisão anterior à remoção: compatibilidade do formato, sem reeditar
+        # manifestos históricos ou banir genericamente assets PPTX aprovados.
+        previous_sha = "342f86a5c5beb3444bc1d8fcba28e97ee9ca3904"
+        previous = WORK / "historical-guide"
+        Git(ROOT).archive(previous_sha, previous)
+        build(previous, config())
+        release = self.make(app=previous, sha=previous_sha, api=routes(previous))
+        manifest = fr.validate_release(release, ORIGIN)
+        document = "documents/aula-inaugural-regras-curso.pptx"
+        meta = next(f for f in manifest["files"] if f["path"] == document)
+        self.assertEqual(meta["content_type"], "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        self.assertTrue((release / document).read_bytes().startswith(b"PK\x03\x04"))
+        self.assertEqual(meta["sha256"], hashlib.sha256((release / document).read_bytes()).hexdigest())
 
     def test_pointer_keeps_the_document_at_root_and_points_only_into_the_release(self):
         release = self.make()
@@ -201,7 +215,12 @@ class PackageTests(unittest.TestCase):
         app = copy_app(WORK / "documents")
         extra = app / "frontend/documents/anexo-nao-publicavel.pdf"
         extra.write_bytes(b"%PDF-1.4\nnao publicar\n%%EOF\n")
+        retired = app / "frontend/dist/documents/aula-inaugural-regras-curso.pptx"
+        retired.parent.mkdir(parents=True)
+        retired.write_bytes(b"PK\x03\x04copiado por um build anterior")
         dist = build(app, config())
+        self.assertFalse(retired.exists(), "um rebuild também remove a apresentação aposentada do dist")
+        self.assertFalse(any(p.suffix == ".pptx" for p in dist.rglob("*")))
         self.assertFalse((dist / "documents/anexo-nao-publicavel.pdf").exists(), "o build não copia a pasta inteira")
         files = fr.builder_files(app / "scripts/build_frontend.py")
         for invalid in (b"", b"<html>AccessDenied</html>", b"%PDF-1.4\nsem final"):

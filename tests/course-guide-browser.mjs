@@ -8,7 +8,7 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist"), prefix = "/releases/guide-test-release/";
-const mime = { ".js": "text/javascript", ".json": "application/json", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".pdf": "application/pdf", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+const mime = { ".js": "text/javascript", ".json": "application/json", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".pdf": "application/pdf" };
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   const relative = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname.slice(1);
@@ -244,29 +244,40 @@ test("resize conserva seleção e foco; orientação e setas acompanham a dispos
   } finally { await c.close(); }
 });
 
-test("links têm nomes e abertura externa segura; documentos reais resolvem no prefixo versionado", async () => {
-  const c = await open(); await guide(c.page); const documents = new Set();
+test("regras mantêm LAB 100% e graduação no Canvas sem material inaugural ou comparação com o painel", async () => {
+  const c = await open();
+  try {
+    await guide(c.page);
+    const panel = c.page.locator('#guide-panel-rules');
+    const text = await panel.innerText();
+    assert.match(text, /Laboratórios[\s\S]*100%/);
+    assert.match(text, /KCs[\s\S]*70%/);
+    assert.match(text, /Graduado.*acompanha a graduação registrada no Canvas/);
+    assert.doesNotMatch(text, /95%|Acompanhamento do painel|Abrir material da aula inaugural|PPTX/);
+    assert.equal(await c.page.locator('.cg-note, #cg-panel-note, a[href$=".pptx"]').count(), 0);
+    assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
+  } finally { await c.close(); }
+});
+
+test("links têm nomes e abertura externa segura, sem PDF normativo descontinuado ou PPTX", async () => {
+  const c = await open(); await guide(c.page);
   for (const tab of ["rules", "support", "requests"]) {
     await c.page.locator(`[data-guide-tab="${tab}"]`).click();
     const links = await c.page.locator('[role="tabpanel"]:visible a').evaluateAll((els) => els.map((el) => ({ href: el.href, target: el.target, rel: el.rel, name: el.getAttribute("aria-label") || el.textContent, type: el.type })));
     for (const link of links) {
       assert.ok(link.name.trim(), "nome acessível");
+      assert.doesNotMatch(link.href, /\.(?:pdf|pptx)(?:[?#]|$)/i);
       if (link.target === "_blank") { assert.ok(link.rel.includes("noopener") && link.rel.includes("noreferrer")); assert.match(link.name, /nova aba/i); }
-      if (new URL(link.href).origin === origin && /\.(?:pdf|pptx)$/.test(link.href)) {
-        assert.ok(new URL(link.href).pathname.startsWith(prefix + "documents/"), link.href);
-        const response = await c.context.request.get(link.href);
-        assert.equal(response.status(), 200); assert.equal(response.headers()["content-type"], mime[path.extname(new URL(link.href).pathname)]);
-        const bytes = await response.body(), signature = link.href.endsWith(".pdf") ? "%PDF-" : "PK\x03\x04"; assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature); assert.ok(bytes.length > 1000); documents.add(link.href);
-      }
     }
   }
-  assert.equal(documents.size, 2);
+  assert.equal(await c.page.locator('a[href$=".pdf"], a[href$=".pptx"]').count(), 0);
+  assert.equal(c.calls.some((call) => /\.(pdf|pptx)(?:[?#]|$)/.test(call)), false);
   assert.equal(await c.page.locator("iframe, video, form, input[type=checkbox]").count(), 0);
   assert.deepEqual(c.external, [], "não abre reuniões, vídeos nem formulários durante renderização");
   await c.close();
 });
 
-test("desktop/mobile e texto ampliado: conteúdo e menu sem sobreposição, foco e documentos acessíveis", async () => {
+test("desktop/mobile e texto ampliado: conteúdo e menu sem sobreposição, foco e links acessíveis", async () => {
   for (const options of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 640 }, { width: 320, height: 640, text: 2 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 320, height: 640, text: 2 }]) {
     const c = await open(options); await guide(c.page);
     for (const tab of ["rules", "support", "requests"]) {
@@ -280,7 +291,8 @@ test("desktop/mobile e texto ampliado: conteúdo e menu sem sobreposição, foco
         const r = el.getBoundingClientRect(); return r.width && (r.left < -0.5 || r.right > innerWidth + 0.5 || el.scrollWidth > el.clientWidth + 1);
       }).map((el) => el.textContent.trim()));
       assert.deepEqual(clipped, [], `${JSON.stringify(options)} ${tab}: controles inteiros`);
-      const last = c.page.locator('[role="tabpanel"]:visible a').last();
+      const links = c.page.locator('[role="tabpanel"]:visible a');
+      const last = await links.count() ? links.last() : c.page.locator('[role="tabpanel"]:visible summary').last();
       await last.focus();
       assert.equal(await last.evaluate((el) => { const r = el.getBoundingClientRect(), nav = document.querySelector(".sidebar nav"), nr = nav.getBoundingClientRect(); return r.top >= -1 && r.bottom <= (getComputedStyle(nav).position === "fixed" ? nr.top : innerHeight) + 1; }), true, `${JSON.stringify(options)} ${tab}: link não escondido pela barra`);
       if (process.env.COURSE_GUIDE_SCREENSHOTS && !options.text && (options.width === 1440 && tab === "rules" || options.width === 390 && tab === "requests") && !options.role) {
@@ -316,5 +328,90 @@ test("feedback a partir do guia conserva o contrato existente do backend sem ori
     assert.deepEqual(c.feedbackPosts[0], { type: "BUG", title: "Relato fictício do guia", description: "Descrição de teste sem qualquer dado pessoal real.", cohort: code });
     assert.equal("page" in c.feedbackPosts[0], false, "course-guide não é enviado como enum novo ao backend antigo");
     assert.deepEqual(c.errors, []); await c.close();
+  }
+});
+
+test("Faltas e solicitações: cards uniformes, ações no rodapé, aviso antes da ação e teclado sem PDF", async () => {
+  const measurements = [];
+  // Texto ampliado por Page.setFontSizes, não por deviceScaleFactor ou CSS scale.
+  for (const width of [1440, 1280, 1101, 1024, 768, 390, 320]) for (const text of [1, 1.5, 2]) {
+    const c = await open({ width, height: width > 1100 ? 900 : 844, text, cohorts: false });
+    try {
+      await guide(c.page);
+      const unchangedPanels = {};
+      for (const tab of ["rules", "support"]) {
+        await c.page.locator(`[data-guide-tab="${tab}"]`).click();
+        unchangedPanels[tab] = await c.page.locator(`#guide-panel-${tab}`).evaluate((panel) => [...panel.querySelectorAll(".cg-section > h2, .cg-requirements, .cg-card, .cg-card-action, .button")].map((el) => {
+          const s = getComputedStyle(el), r = el.getBoundingClientRect();
+          return { text: el.textContent, width: r.width, height: r.height,
+            display: s.display, gap: s.gap, padding: s.padding, font: s.font, border: s.border, background: s.backgroundColor };
+        }));
+      }
+      await c.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
+      const cards = await c.page.locator(".cg-steps .cg-card").evaluateAll((els) => els.map((card) => {
+        const r = card.getBoundingClientRect(), s = getComputedStyle(card), button = card.querySelector(".button"), b = button.getBoundingClientRect();
+        const paragraphs = [...card.querySelectorAll("p")], warning = paragraphs.find((p) => p.textContent.includes("endereço de acompanhamento"));
+        return { height: r.height, top: r.top, left: r.left, padding: s.padding,
+          button: { top: b.top, bottom: b.bottom, height: b.height, bottomInset: r.bottom - b.bottom,
+            clipped: button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1 },
+          paddingBottom: parseFloat(s.paddingBottom), borderBottom: parseFloat(s.borderBottomWidth),
+          mainLinks: card.querySelectorAll("a").length,
+          footerLast: card.lastElementChild?.classList.contains("cg-card-action"),
+          warningBeforeButton: !warning || !!(warning.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING) };
+      }));
+      measurements.push({ width, textPercent: text * 100, overflow: await c.page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+        cards, unchangedPanels });
+      if (process.env.COURSE_GUIDE_REQUESTS_EVIDENCE) {
+        const destination = process.env.COURSE_GUIDE_REQUESTS_EVIDENCE, phase = process.env.COURSE_GUIDE_REQUESTS_PHASE || "after";
+        await mkdir(destination, { recursive: true });
+        if ([1440, 390].includes(width) && text === 1 || width === 320 && text === 2)
+          await c.page.locator(".cg-steps").screenshot({ path: path.join(destination, `${phase}-${width}-text${text * 100}.png`) });
+      }
+      assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
+    } finally { await c.close(); }
+  }
+  if (process.env.COURSE_GUIDE_REQUESTS_EVIDENCE) {
+    const phase = process.env.COURSE_GUIDE_REQUESTS_PHASE || "after";
+    await writeFile(path.join(process.env.COURSE_GUIDE_REQUESTS_EVIDENCE, `${phase}.json`), JSON.stringify({ chromium: browser.version(),
+      technique: "CDP Page.setFontSizes standard16/24/32px, fixed13/20/26px; sem scale ou deviceScaleFactor", measurements }, null, 2) + "\n");
+  }
+  for (const { width, textPercent, overflow, cards } of measurements) {
+    const id = `${width}px/${textPercent}%`;
+    assert.equal(cards.length, 3);
+    assert.ok(overflow <= 1, `${id}: sem rolagem horizontal da página (excesso: ${overflow}px)`);
+    assert.equal(new Set(cards.map((c) => c.padding)).size, 1, `${id}: preenchimento uniforme`);
+    for (const card of cards) {
+      assert.equal(card.mainLinks, 1, `${id}: somente a ação principal, sem PDF`);
+      assert.equal(card.footerLast, true, `${id}: nenhum aviso abaixo do botão`);
+      assert.equal(card.warningBeforeButton, true, `${id}: aviso de acompanhamento antes da ação`);
+      assert.equal(card.button.clipped, false, `${id}: botão inteiro`);
+      assert.ok(card.button.height >= 44, `${id}: alvo acessível`);
+      assert.ok(Math.abs(card.button.bottomInset - card.paddingBottom - card.borderBottom) <= 1, `${id}: ação no limite inferior do conteúdo`);
+    }
+    if (Math.max(...cards.map((c) => c.top)) - Math.min(...cards.map((c) => c.top)) <= 1) {
+      assert.ok(Math.max(...cards.map((c) => c.height)) - Math.min(...cards.map((c) => c.height)) <= 1, `${id}: alturas dos cards lado a lado iguais`);
+      assert.ok(Math.max(...cards.map((c) => c.button.top)) - Math.min(...cards.map((c) => c.button.top)) <= 1, `${id}: topo dos botões alinhado`);
+      assert.ok(Math.max(...cards.map((c) => c.button.bottom)) - Math.min(...cards.map((c) => c.button.bottom)) <= 1, `${id}: base dos botões alinhada`);
+    }
+  }
+  for (const width of [1440, 390, 320]) {
+    const c = await open({ width, height: 844, text: width === 1440 ? 1 : 2, cohorts: false });
+    try {
+      await guide(c.page);
+      await c.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
+      await c.page.locator("#guide-panel-requests").focus();
+      for (const label of ["Consultar minhas faltas", "Abrir formulário de solicitação", "Acompanhar minhas solicitações"]) {
+        await c.page.keyboard.press("Tab");
+        const focused = await c.page.evaluate(() => { const a = document.activeElement, s = getComputedStyle(a), r = a.getBoundingClientRect(), nav = document.querySelector(".sidebar nav"), n = nav.getBoundingClientRect();
+          return { name: a.getAttribute("aria-label"), target: a.target, rel: a.rel,
+            visible: r.top >= -1 && r.bottom <= (getComputedStyle(nav).position === "fixed" ? n.top : innerHeight) + 1,
+            outline: s.outlineStyle !== "none" && parseFloat(s.outlineWidth) >= 2 }; });
+        assert.equal(focused.name, `${label} (abre em nova aba)`);
+        assert.equal(focused.target, "_blank"); assert.ok(focused.rel.includes("noopener") && focused.rel.includes("noreferrer"));
+        assert.ok(focused.visible && focused.outline, `${width}: foco visível na ação ${label}`);
+      }
+      assert.equal(await c.page.locator('#guide-panel-requests a[href$=".pdf"]').count(), 0);
+      assert.deepEqual(c.external, [], "o teste navega por teclado, sem abrir serviços de terceiros");
+    } finally { await c.close(); }
   }
 });
