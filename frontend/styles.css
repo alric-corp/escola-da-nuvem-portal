@@ -3233,8 +3233,8 @@ details ul, .onboarding ol { padding-left: 24px; }
 /* =========================================================
    34. Expansão 4 — Painel do instrutor (docs/design-visual.md)
    Escopo: .teacher-home (conteúdo do painel, inclusive carregamento e erro) e .layout:has(.teacher-home). Um
-   instrumento de acompanhamento: a situação da turma numa régua com as contagens (que filtram a lista), o foco da turma
-   ao lado e a tabela de desempenho. Container query em rem (acompanha o texto): tabela a partir de 52rem de largura;
+   instrumento de acompanhamento: a situação da turma numa régua com as contagens (que filtram a lista)
+   e a tabela de desempenho. Container query em rem (acompanha o texto): tabela a partir de 52rem de largura;
    abaixo, cada aluno vira uma linha empilhada, sem moldura de cartão. As outras telas do instrutor e do admin não
    têm .teacher-home e continuam como estavam.
    ========================================================= */
@@ -3243,7 +3243,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home { container: teacher / inline-size; font-variant-numeric: tabular-nums; }
 .teacher-home h2 { margin: 0; font-size: 1.125rem; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; overflow-wrap: anywhere; }
 /* Os botões quebram o texto em vez de passar da largura (a regra global .button tem nowrap): com texto a 200% em
-   320 px, "Enviar CSV manualmente" e "Salvar foco da turma" saíam da tela. Texto inteiro, alvo de 44 px. */
+   320 px, "Enviar CSV manualmente" saía da tela. Texto inteiro, alvo de 44 px. */
 .teacher-home .button { max-width: 100%; min-height: 44px; padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm); font-size: 0.875rem; white-space: normal; text-align: center; }
 
 /* Cabeçalho: título da turma e as ações da tela; a atualização do Canvas logo abaixo, como legenda. */
@@ -3310,11 +3310,8 @@ details ul, .onboarding ol { padding-left: 24px; }
 }
 .teacher-home .update-line .button:hover { background: none; text-decoration-color: currentColor; }
 
-/* Situação da turma e Foco da turma: lado a lado com largura, empilhados no tablet e no celular. */
-.teacher-home .tp-summary { display: grid; gap: var(--space-6); margin: 0 0 var(--space-6); }
-@container teacher (min-width: 56rem) {
-  .teacher-home .tp-summary { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-6) var(--space-7); align-items: start; }
-}
+/* A situação da turma ocupa a largura disponível, sem uma coluna vazia ao lado. */
+.teacher-home .tp-summary { margin: 0 0 var(--space-6); }
 
 /* Situação da turma: a única superfície da tela (como o resumo do aluno). Régua proporcional dos alunos ativos e, abaixo,
    as três situações como atalhos de filtro: rótulo com a forma, número, regra. */
@@ -3419,49 +3416,6 @@ details ul, .onboarding ol { padding-left: 24px; }
 .teacher-home .tp-state:is(.is-insufficient, .is-graduated) { color: var(--color-text-muted); }
 .teacher-home .tp-filter.is-pending > span::before,
 .teacher-home .tp-filter.is-portal > span::before { content: none; }
-
-/* Foco da turma: registro sobre o fundo, com a ordem em que o aluno vê as atividades. */
-.teacher-home .tp-focus { display: grid; gap: var(--space-3); align-content: start; min-width: 0; }
-.teacher-home .tp-focus > p { margin: 0; color: var(--color-text-muted); font-size: 0.875rem; line-height: 1.5; }
-.teacher-home .tp-focus > .tp-focus-empty { color: var(--color-text); }
-.teacher-home .focus-list { display: grid; margin: 0; padding: 0; border-top: 1px solid var(--color-line-soft); list-style: none; counter-reset: focus; }
-.teacher-home .focus-list > li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0 var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-line-soft);
-  counter-increment: focus;
-}
-.teacher-home .tp-focus-item { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-2); flex: 1 1 14rem; min-width: 0; }
-.teacher-home .tp-focus-item::before { content: counter(focus); grid-row: span 2; color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.6; }
-.teacher-home .tp-focus-name { color: var(--color-text); font-size: 0.9375rem; line-height: 1.45; overflow-wrap: anywhere; }
-.teacher-home .tp-kind { justify-self: start; grid-column: 2; display: inline-flex; align-items: center; gap: 0.4em; color: var(--color-text-muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; }
-.teacher-home .tp-kind::before { content: ""; width: 0.5em; height: 0.5em; border-radius: 1px; background: var(--color-series-kc); }
-.teacher-home .tp-kind.is-lab::before { background: var(--color-series-lab); }
-.teacher-home .tp-focus-meta { grid-column: 2; color: var(--color-text-muted); font-size: 0.8125rem; line-height: 1.45; }
-.teacher-home .tp-remove { min-height: 44px; padding: 0 var(--space-1); font-size: 0.8125rem; }
-.teacher-home .tp-focus-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); margin: 0; }
-.teacher-home .tp-focus-actions .text-link { min-height: 44px; font-size: 0.875rem; }
-/* Estado do salvamento, na própria seção: alterações pendentes, salvando, salvo ou o motivo do erro. */
-.teacher-home .tp-focus-status { margin: 0; color: var(--color-text); font-size: 0.875rem; line-height: 1.5; }
-.teacher-home .tp-focus-status.is-pending { padding-left: var(--space-3); border-left: 3px solid var(--color-warning); }
-.teacher-home .tp-focus-status.is-saved { display: flex; align-items: baseline; gap: 0.5em; }
-.teacher-home .tp-focus-status.is-saved::before {
-  content: "";
-  flex: none;
-  width: 0.3em;
-  height: 0.6em;
-  border: solid var(--color-success);
-  border-width: 0 0.14em 0.14em 0;
-  transform: rotate(45deg) translateY(-0.1em);
-}
-.teacher-home .tp-focus-status.is-error { padding: var(--space-2) var(--space-3); border-left: 3px solid var(--color-danger); background: color-mix(in srgb, var(--color-danger) 8%, transparent); }
-.teacher-home .tp-focus-status.is-error strong::before { content: "! "; color: var(--color-danger); }
-.teacher-home .tp-focus-status:focus { outline: none; }
-.teacher-home .tp-focus-status:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
 
 /* Desempenho dos alunos: ferramentas com rótulo visível acima do campo, contagem e, abaixo, a tabela. */
 .teacher-home .tp-students { min-width: 0; }

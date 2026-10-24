@@ -12,6 +12,7 @@ Portal de acompanhamento do programa AWS re/Start: alunos consultam seu desempen
 | [`docs/`](docs/README.md) | Índice da documentação: produto (jornadas e regras), engenharia (arquitetura e direção visual), guias, backlog e histórico. |
 | [`docs/todo/`](docs/todo/README.md) | Backlog ativo: itens parciais, pendentes e dependências externas. |
 | [`docs/todo/concluido/`](docs/todo/concluido/README.md) | Tarefas implementadas, histórico e mapa de evidências de código/testes. |
+| [`docs/todo/despriorizado/`](docs/todo/despriorizado/README.md) | Propostas preservadas para reavaliação, fora do planejamento atual. |
 | [`docs/historico/`](docs/historico/README.md) | Registros de entregas e operações concluídas (API e automação de lembretes). |
 | [`tests/`](tests/README.md) | Testes de navegador (Playwright), de Node, de integração (Moto), contratos e mutações. |
 

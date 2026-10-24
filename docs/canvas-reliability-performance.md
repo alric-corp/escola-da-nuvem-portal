@@ -2,6 +2,12 @@
 
 Revisão em **22/10/2026**, a partir da main `9097f5c7208be279aa85e007fe84d2f3e9c047e7` (PR #14/AS-01 integrado). O pacote AS-IS fornecido, `edn-as-is-2026-10-21.zip`, foi conferido pelo SHA-256 `50971f952bf0a8705dbb61c6ea99e3cd4a40aafb933950cbdd56189308673ac0`. Scripts da auditoria foram inspecionados; as reproduções usam dados fictícios e clientes controlados. Nenhuma consulta real Canvas/AWS, sincronização produtiva, envio de mensagem ou alteração de configuração foi executada.
 
+**Atualização documental de 23/10/2026:** o retrato AS-06 abaixo é histórico.
+A implementação posterior de descoberta sem Scan foi integrada pelo PR #17 e
+seu escopo de desenvolvimento foi encerrado no
+[TODO 05](todo/concluido/05-descoberta-de-turmas-por-vinculo.md). Implantação e
+cutover produtivos continuam em acompanhamento, sem comprovação nesta revisão.
+
 | Achado | Entrega neste PR | Limite |
 | --- | --- | --- |
 | AS-02 | Corrigido e testado: catálogo completo ou último válido do mesmo curso | Implantação backend pendente; não comprova permissões da instância Canvas |
@@ -65,7 +71,7 @@ Exemplo com **50 turmas e 500 registros alheios** (além dos itens do fluxo):
 
 Para o aluno sem vínculo, medianas locais foram 114,916 → 99,536ms, com intervalos 114,014–116,809 → 99,123–101,756ms. O ganho confiável é a redução de operações; estes tempos incluem emulação Moto e não estimam latência, capacidade consumida ou economia AWS.
 
-Com **25 turmas fixas**, acrescentar 0/200/800 registros alheios aumenta itens examinados pelo Scan de 47/247/847 e páginas de 2/10/34, embora ele continue retornando 25 turmas. O filtro não elimina esse custo. O JSON dos itens de Scan retornados varia apenas de 3.502 para 3.566 B por causa das páginas vazias; são bytes serializados da fixture, não tráfego de rede ou capacidade faturada. O [TODO 05](todo/05-descoberta-de-turmas-por-vinculo.md) permanece parcial: eliminar o Scan exige uma decisão estrutural fora deste PR.
+Com **25 turmas fixas**, acrescentar 0/200/800 registros alheios aumenta itens examinados pelo Scan de 47/247/847 e páginas de 2/10/34, embora ele continue retornando 25 turmas. O filtro não elimina esse custo. O JSON dos itens de Scan retornados varia apenas de 3.502 para 3.566 B por causa das páginas vazias; são bytes serializados da fixture, não tráfego de rede ou capacidade faturada. Naquela revisão, o [TODO 05](todo/concluido/05-descoberta-de-turmas-por-vinculo.md) permanecia parcial: eliminar o Scan exigia uma decisão estrutural fora daquele PR.
 
 ## AS-07 — tabela do instrutor
 

@@ -9,7 +9,6 @@ function moduleOptions(activities) {
 
 export function activityOverviewPage() {
   const all = (state.report.activities || []).filter((a) => a.active);
-  const focusIds = state.focusDraft || state.report.focus?.activityIds || [];
   const filtered = all.filter(
     (a) =>
       (state.activityOverviewKind === "all" || a.kind === state.activityOverviewKind) &&
@@ -23,7 +22,7 @@ export function activityOverviewPage() {
   return `${heading(
     "",
     "Visão por atividade",
-    "Veja onde a turma concentra pendências e notas baixas, e monte o foco a partir daqui.",
+    "Veja onde a turma concentra pendências e notas baixas.",
     '<button class="button secondary" data-view="overview">Voltar ao painel</button>',
   )}<section class="panel"><div class="table-tools"><label for="activity-overview-kind">Tipo <select id="activity-overview-kind">${[
     ["all", "KCs e LABs"],
@@ -39,18 +38,13 @@ export function activityOverviewPage() {
     ["review", "Mais em revisão"],
   ]
     .map(([value, label]) => `<option value="${value}" ${state.activityOverviewSort === value ? "selected" : ""}>${label}</option>`)
-    .join("")}</select></div><p class="small">Só atividades já liberadas na publicação atual aparecem aqui. O foco aceita até três; remova uma para adicionar outra.</p><div class="table-scroll"><table><thead><tr><th>Atividade</th><th>Módulo</th><th>Tipo</th><th>Com nota</th><th>Sem nota</th><th>Em revisão</th><th>Média</th><th>Foco</th></tr></thead><tbody>${sorted
+    .join("")}</select></div><p class="small">Só atividades já liberadas na publicação atual aparecem aqui.</p><div class="table-scroll"><table><thead><tr><th>Atividade</th><th>Módulo</th><th>Tipo</th><th>Com nota</th><th>Sem nota</th><th>Em revisão</th><th>Média</th></tr></thead><tbody>${sorted
     .map((a) => {
       const total = a.completed + a.pending;
       const pctCompleted = total ? (a.completed / total) * 100 : null;
       const pctPending = total ? (a.pending / total) * 100 : null;
       const pctReview = a.completed ? (a.needsReview / a.completed) * 100 : null;
-      const inFocus = focusIds.includes(a.id);
-      return `<tr><td>${e(a.name)}</td><td>${e(activityModule(a))}</td><td>${a.kind === "kc" ? "KC" : "LAB"}</td><td>${percent(pctCompleted)}</td><td>${percent(pctPending)}</td><td>${percent(pctReview)}</td><td>${percent(a.average)}</td><td>${
-        inFocus
-          ? '<span class="badge ok">No foco</span>'
-          : `<button class="button secondary" data-add-focus="${e(a.id)}" ${focusIds.length >= 3 ? "disabled" : ""}>Adicionar ao foco</button>`
-      }</td></tr>`;
+      return `<tr><td>${e(a.name)}</td><td>${e(activityModule(a))}</td><td>${a.kind === "kc" ? "KC" : "LAB"}</td><td>${percent(pctCompleted)}</td><td>${percent(pctPending)}</td><td>${percent(pctReview)}</td><td>${percent(a.average)}</td></tr>`;
     })
     .join("")}</tbody></table>${!sorted.length ? '<p class="empty">Nenhuma atividade liberada encontrada neste filtro.</p>' : ""}</div></section>`;
 }

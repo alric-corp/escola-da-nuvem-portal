@@ -1,14 +1,12 @@
 // C1 — correções de confiabilidade pré-integração (docs/design-visual.md), com API fictícia (nunca AWS, Canvas,
-// restauração ou foco reais; tudo fora da origem local é abortado), relógio fixo e dados sintéticos:
+// restauração real; tudo fora da origem local é abortado), relógio fixo e dados sintéticos:
 // D03 — o resultado de uma restauração fica com a sessão que a começou: quem entra na aba (outra pessoa, ou a mesma
 //       pessoa numa sessão nova) não vê sucesso, erro nem andamento dela, e a resposta antiga não dispara pedido;
 // D04 — resultado desconhecido da restauração (rede, 5xx, resposta perdida) dito como dúvida, com a turma de origem e a
 //       consulta segura; a recusa (4xx) continua dizendo que não restaurou; nada se repete sozinho;
-// D05 — salvar o foco da turma: sem "Failed to fetch"; recusa × dúvida; a turma de origem quando o resultado chega com
-//       outro relatório na tela; o rascunho continua; quem entra na aba não vê o resultado de quem saiu.
-// Garantias do servidor (backend/portal.py): _restore e _focus_activities recusam tudo (4xx) antes da escrita, que é uma
-// transação condicional única; 5xx e falta de resposta deixam o resultado desconhecido; o 429 vem do API Gateway, antes da
-// Lambda. Repetir o foco depois de uma escrita que deu certo recebe 409 (versão), sem gravar de novo.
+// TODO 26 — o foco foi removido da interface; uma regressão preserva a leitura do payload legado sem controles ou escrita.
+// Garantia do servidor preservada para restauração: 4xx recusa antes da escrita condicional; 5xx e ausência de resposta
+// deixam o resultado desconhecido. Descartar resposta antiga na interface não desfaz uma operação já recebida.
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { createRequire } from "node:module";
@@ -49,8 +47,6 @@ const SYNC = { status: "unchanged", message: "Nenhuma mudança no Canvas desde a
 const MESSAGES = {
   restore: { 409: "A turma foi atualizada. Recarregue o histórico.", 403: "Você não tem acesso a esta operação.", 500: "Erro interno ao restaurar.",
     integrity: "Esta publicação não pode ser restaurada porque não atende às validações atuais de integridade. 1 aluno(s) não pertence(m) à turma no Canvas. (IDs do Canvas: 999999)" },
-  focus: { 409: "O foco foi alterado por outro instrutor. Consulte a atualização antes de salvar.", 400: "Escolha até três atividades.",
-    403: "Você não tem acesso a esta operação.", 500: "Erro interno ao salvar o foco." },
 };
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r; }); return { promise, resolve }; };
 
@@ -65,16 +61,14 @@ after(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-// control: people (e-mails; o /me responde people[who], com userId próprio), who, expireNext (a próxima leitura do relatório
-// responde 401), restoreMode e focusMode ("ok" | 409 | 403 |
-// 400 | "integrity" | 500 | 503 | "network" | "lost" = o servidor aplica e a resposta se perde), holds ("restore", "focus").
-// O estado do servidor (versão em vigor e foco por turma) muda como em Portal._restore e Portal._focus_activities.
+// control: people, sessão e modo da restauração, com respostas controladas antes/depois da escrita fictícia.
+// O campo focus nos relatórios é legado e permanece sem alteração. focusPosts detecta qualquer chamada indevida.
 async function open({ width = 1440, height = 900, text = 1, role = "instructor", people, view = "history" } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, locale: "pt-BR", timezoneId: "America/Sao_Paulo" });
   const page = await context.newPage();
   await page.clock.setFixedTime(new Date("2026-10-11T15:00:00-03:00"));
   people ||= role === "admin" ? ["admin.a@example.test", "admin.b@example.test"] : ["instrutor.a@example.test", "instrutor.b@example.test"];
-  const errors = [], control = { people, who: 0, restoreMode: "ok", focusMode: "ok", holds: {}, calls: [], restores: [], focusPosts: [], dialogs: [],
+  const errors = [], control = { people, who: 0, restoreMode: "ok", holds: {}, calls: [], restores: [], focusPosts: [], dialogs: [],
     server: { BRSA0267: { current: "p13", updateKind: "canvas", focus: { activityIds: ["a1", "a2", "a3"], version: "v0" } },
       BRSA0268: { current: "q2", updateKind: "canvas", focus: { activityIds: [], version: null } } } };
   page.on("pageerror", (error) => errors.push(error.message));
@@ -126,14 +120,8 @@ async function open({ width = 1440, height = 900, text = 1, role = "instructor",
       return mode === "lost" ? route.abort("failed") : route.fulfill({ json: { restored: true } });
     }
     if (endpoint.endsWith("/focus-activities")) {
-      const body = request.postDataJSON(), mode = control.focusMode, s = control.server[code];
-      control.focusPosts.push({ code, ...body });
-      await hold("focus");
-      if (mode === "network") return route.abort("failed");
-      if (mode !== "ok" && mode !== "lost") return fail(route, "focus", mode);
-      if (body.expectedVersion !== s.focus.version) return fail(route, "focus", 409);
-      s.focus = { activityIds: body.activityIds, version: `v${control.focusPosts.length}` };
-      return mode === "lost" ? route.abort("failed") : route.fulfill({ json: { focus: s.focus } });
+      control.focusPosts.push({ code, ...request.postDataJSON() });
+      return route.fulfill({ status: 410, json: { error: "A interface não deve enviar esta operação." } });
     }
     return route.fulfill({ status: 404, json: { error: "não simulado: " + endpoint } });
   });
@@ -169,10 +157,6 @@ async function switchPerson(page, control, who) {
   await until(page, (email) => document.querySelector(".topline")?.innerText.includes(email) && !document.querySelector("[aria-busy=true], .aa-op.is-busy"), control.people[who]);
   await quiet(page);
 }
-const focusStatus = (page) => page.locator("#tp-focus-status");
-const removeFocus = (page, n) => page.getByRole("button", { name: `Remover ${200 + n - 1}-KC - Atividade ${n} do foco`, exact: true });
-const saveFocus = (page) => page.locator('#focus-form [type="submit"]');
-const focusNames = (page) => page.locator(".focus-list .tp-focus-name").allTextContents();
 // C2 (C2-01): longe de Publicações da turma, o aviso ficou curto — a operação, a turma, a dúvida e onde ver —, e a orientação
 // inteira, com a consulta segura, fica em Publicações da turma de origem (tests/c2-robustness-browser.mjs).
 const UNSURE_RESTORE = (code) => `Não foi possível confirmar a restauração da turma ${code}. Ela pode ter sido concluída: veja Publicações.`;
@@ -503,160 +487,37 @@ test("C1-D04c: mesma turma — no Painel (o mesmo relatório) a dúvida espera e
   }
 });
 
-// ---------------------------------------------------------------- D05
+// ---------------------------------------------------------------- TODO 26
 
-const UNSURE_FOCUS_HELP = "A alteração pode ter sido salva. “Consultar atualização” mostra o foco em vigor, mas descarta as escolhas ainda não salvas; salvar de novo não grava duas vezes: se a alteração já tiver sido salva, o portal recusa a repetição.";
-const UNSURE_FOCUS = (code) => `Não foi possível confirmar a atualização do foco da ${code}. A alteração pode ter sido salva: consulte a atualização no Painel do instrutor da ${code} antes de salvar de novo.`;
-
-test("C1-D05a: na seção do foco — sucesso; recusas (400, 403, 409) dizem que não salvou; dúvida (500, 503, rede, resposta perdida) não diz isso nem mostra 'Failed to fetch'; o rascunho continua; nada se repete", async () => {
-  const cases = [
-    ["ok", "Foco da BRSA0267 atualizado.", "status"],
-    [400, `O foco não foi salvo. ${MESSAGES.focus[400]}`, "alert"],
-    [403, `O foco não foi salvo. ${MESSAGES.focus[403]}`, "alert"],
-    [409, `O foco não foi salvo. ${MESSAGES.focus[409]}`, "alert"],
-    [500, `Não foi possível confirmar a atualização do foco da turma. ${MESSAGES.focus[500]} ${UNSURE_FOCUS_HELP}`, "alert"],
-    [503, `Não foi possível confirmar a atualização do foco da turma. O portal está temporariamente indisponível. Tente novamente em instantes. ${UNSURE_FOCUS_HELP}`, "alert"],
-    ["network", `Não foi possível confirmar a atualização do foco da turma. A conexão com o portal falhou. ${UNSURE_FOCUS_HELP}`, "alert"],
-    ["lost", `Não foi possível confirmar a atualização do foco da turma. A conexão com o portal falhou. ${UNSURE_FOCUS_HELP}`, "alert"],
-  ];
-  for (const [mode, expected, role] of cases) {
-    const { context, page, errors, control } = await open({ view: "overview" });
-    control.focusMode = mode;
-    await removeFocus(page, 2).click();
-    const done = settled(page, "/focus-activities");
-    await saveFocus(page).click();
-    await done();
-    assert.equal(await text(focusStatus(page)), expected, String(mode));
-    assert.equal(await focusStatus(page).getAttribute("role"), role, String(mode));
-    assert.equal(await activeId(page), "tp-focus-status", `${mode}: o foco no resultado`);
-    assert.doesNotMatch(await page.locator("main").innerText(), /Failed to fetch/, String(mode));
-    assert.equal(control.focusPosts.length, 1, `${mode}: um pedido só`);
-    assert.deepEqual(await notices(page), [], `${mode}: nenhum aviso solto`);
-    // O rascunho (a2 removida) continua na tela depois de qualquer falha; salvo, vira o foco da turma.
-    assert.deepEqual(await focusNames(page), ["200-KC - Atividade 1", "202-KC - Atividade 3"], `${mode}: o foco mostrado`);
-    assert.equal(await saveFocus(page).isDisabled(), false, `${mode}: Salvar livre de novo`);
-    if (mode === "lost") {
-      // Salvar de novo depois da resposta perdida: o servidor já tem a alteração e recusa a repetição pela versão — uma escrita só.
-      control.focusMode = "ok";
-      const again = settled(page, "/focus-activities");
-      await saveFocus(page).click();
-      await again();
-      assert.equal(await text(focusStatus(page)), `O foco não foi salvo. ${MESSAGES.focus[409]}`);
-      assert.deepEqual(control.server.BRSA0267.focus, { activityIds: ["a1", "a3"], version: "v1" }, "uma escrita só");
+// O backend continua podendo devolver foco salvo. Esse dado legado não pode recriar o editor ou disparar escrita.
+test("TODO26-R1: foco legado não reaparece no painel/atividades nem gera escrita ao navegar, consultar ou trocar de turma", async () => {
+  for (const width of [1440, 390]) {
+    const { context, page, errors, control } = await open({ width, view: "overview" });
+    const noFocus = async () => {
+      assert.equal(await page.getByRole("heading", { name: "Foco da turma", exact: true }).count(), 0);
+      assert.equal(await page.locator("#focus-form, [data-add-focus], [data-remove-focus], #tp-focus-status").count(), 0);
+    };
+    await noFocus();
+    await page.getByRole("button", { name: "Ver por atividade", exact: true }).click();
+    await page.getByRole("heading", { name: "Visão por atividade", exact: true }).waitFor();
+    await noFocus();
+    await page.getByRole("button", { name: "Voltar ao painel", exact: true }).click();
+    await page.locator(".teacher-home h1").waitFor();
+    const refreshed = settled(page, "/report");
+    await page.locator('.teacher-home [data-action="refresh-report"]').click();
+    await refreshed();
+    await noFocus();
+    for (const code of ["BRSA0268", "BRSA0267"]) {
+      await page.locator("#cohort").selectOption(code);
+      await page.getByRole("heading", { name: `Painel da ${code}`, exact: true }).waitFor();
+      await noFocus();
     }
-    assert.deepEqual(errors, [], String(mode));
+    assert.deepEqual(control.focusPosts, [], "nenhum pedido de escrita do foco");
+    assert.equal(control.calls.filter((call) => call.includes("/focus-activities")).length, 0);
+    assert.deepEqual(control.server.BRSA0267.focus, { activityIds: ["a1", "a2", "a3"], version: "v0" }, "dado legado preservado");
+    assert.deepEqual(errors, []);
     await context.close();
   }
-});
-
-test("C1-D05b: com outro relatório na tela (outra turma, Consultar atualização) — a dúvida e a recusa dizem a turma de origem; o sucesso continua com a turma", async () => {
-  const otherCohort = async (page) => { await page.locator("#cohort").selectOption("BRSA0268"); await page.locator(".teacher-home h1").waitFor(); await quiet(page); };
-  const consult = async (page) => { const reload = settled(page, "/report"); await page.locator('.teacher-home [data-action="refresh-report"]').first().click(); await reload(); };
-  for (const [go, label] of [[otherCohort, "outra turma"], [consult, "consulta"]]) {
-    for (const [mode, expected] of [["network", UNSURE_FOCUS("BRSA0267")], [500, UNSURE_FOCUS("BRSA0267")], ["lost", UNSURE_FOCUS("BRSA0267")],
-      [409, `O foco da BRSA0267 não foi salvo. ${MESSAGES.focus[409]}`], [403, `O foco da BRSA0267 não foi salvo. ${MESSAGES.focus[403]}`], ["ok", "Foco da BRSA0267 atualizado."]]) {
-      const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-      control.focusMode = mode;
-      await removeFocus(page, 2).click();
-      const h = holdNext("focus");
-      await saveFocus(page).click();
-      await h.arrived.promise;
-      await go(page);
-      const done = settled(page, "/focus-activities");
-      h.gate.resolve();
-      await done();
-      await until(page, () => document.querySelectorAll("#notices .notice").length > 0);
-      assert.deepEqual(await notices(page), [expected], `${label} ${mode}`);
-      assert.equal(await focusStatus(page).count(), 0, `${label} ${mode}: nada no relatório novo`);
-      assert.equal(control.focusPosts.length, 1, `${label} ${mode}: um pedido só`);
-      assert.deepEqual(errors, [], `${label} ${mode}`);
-      await context.close();
-    }
-  }
-});
-
-test("C1-D05c: troca de pessoa durante o salvamento do foco — nada de A aparece para B (sucesso, recusa ou dúvida) e a resposta antiga não dispara pedido", async () => {
-  for (const mode of ["ok", 409, "network"]) {
-    const { context, page, errors, control, holdNext } = await open({ role: "admin", view: "overview" });
-    control.focusMode = mode;
-    await removeFocus(page, 2).click();
-    const h = holdNext("focus");
-    await saveFocus(page).click();
-    await h.arrived.promise;
-    await switchPerson(page, control, 1);
-    await openPanel(page);
-    assert.equal(await focusStatus(page).count() && await text(focusStatus(page)), 0, `${mode}: o andamento de A não aparece para B`);
-    const before = control.calls.length;
-    const done = settled(page, "/focus-activities");
-    h.gate.resolve();
-    await done();
-    assert.deepEqual(await notices(page), [], `${mode}: nenhum aviso de A para B`);
-    assert.equal(await focusStatus(page).count(), 0, `${mode}: nenhum resultado de A na tela de B`);
-    assert.deepEqual(control.calls.slice(before), [], `${mode}: nenhum pedido`);
-    assert.deepEqual(errors, [], String(mode));
-    await context.close();
-  }
-});
-
-test("C1-D05d: a sessão expira durante o salvamento do foco (401 noutra leitura) — o resultado que chega depois não aparece na entrada pública", async () => {
-  for (const mode of ["ok", "network", 409]) {
-    const { context, page, errors, control, holdNext } = await open({ view: "overview" });
-    control.focusMode = mode;
-    await removeFocus(page, 2).click();
-    const h = holdNext("focus");
-    await saveFocus(page).click();
-    await h.arrived.promise;
-    control.expireNext = true;
-    await page.locator('.teacher-home [data-action="refresh-report"]').first().click();
-    await page.getByRole("button", { name: "Entrar no meu portal" }).waitFor();
-    await quiet(page);
-    const shown = await notices(page), before = control.calls.length;
-    const done = settled(page, "/focus-activities");
-    h.gate.resolve();
-    await done();
-    assert.deepEqual(await notices(page), shown, `${mode}: nada da sessão que expirou`);
-    assert.deepEqual(control.calls.slice(before), [], `${mode}: nenhum pedido`);
-    assert.deepEqual(errors, [], String(mode));
-    await context.close();
-  }
-});
-
-test("C1-D05e: B salva o foco enquanto o salvamento de A está pendente — a resposta de A não mexe no andamento nem no rascunho de B, nem depois de um render", async () => {
-  const { context, page, errors, control, holdNext } = await open({ role: "admin", view: "overview" });
-  await removeFocus(page, 2).click();
-  const hA = holdNext("focus");
-  await saveFocus(page).click();
-  await hA.arrived.promise;
-  await switchPerson(page, control, 1);
-  await openPanel(page);
-  assert.equal(await removeFocus(page, 3).isDisabled(), false, "Remover livre para B");
-  await removeFocus(page, 3).click();
-  assert.equal(await saveFocus(page).isDisabled(), false, "Salvar livre para B");
-  const hB = holdNext("focus");
-  await saveFocus(page).click();
-  await Promise.race([hB.arrived.promise, page.waitForTimeout(3000)]);   // sem o pedido, falha na asserção abaixo
-  assert.equal(control.focusPosts.length, 2, "o pedido de B saiu");
-  assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…");
-  // A resposta de A chega (o servidor gravou a de A): nada muda para B, nem depois de um render (Publicações e volta).
-  const a = settled(page, "/focus-activities");
-  hA.gate.resolve();
-  await a();
-  await openPublications(page);
-  await openPanel(page);
-  assert.equal(await text(focusStatus(page)), "Salvando o foco da turma…", "o andamento de B continua depois da resposta de A");
-  assert.equal(await saveFocus(page).isDisabled(), true, "Salvar continua parado para B");
-  assert.deepEqual(await focusNames(page), ["200-KC - Atividade 1", "201-KC - Atividade 2"], "o rascunho de B continua");
-  assert.deepEqual(await notices(page), [], "nenhum aviso de A para B");
-  // A resposta de B: o foco mudou (o de A); o servidor recusa (409, versão) e B vê o próprio resultado na seção.
-  const b = settled(page, "/focus-activities");
-  hB.gate.resolve();
-  await b();
-  assert.equal(await text(focusStatus(page)), `O foco não foi salvo. ${MESSAGES.focus[409]}`);
-  assert.deepEqual(await notices(page), []);
-  assert.deepEqual(control.server.BRSA0267.focus.activityIds, ["a1", "a3"]);
-  assert.equal(control.focusPosts.length, 2, "nenhuma repetição");
-  assert.deepEqual(errors, []);
-  await context.close();
 });
 
 // ---------------------------------------------------------------- PR #3 (fechamento, B1)

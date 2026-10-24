@@ -25,7 +25,7 @@ A partir daí, o aluno é identificado pelo **ID Canvas**, não pelo e-mail. Se 
 | --- | --- |
 | Data da última atualização e **Consultar atualização** | `updatedAt` da turma. Diferencia publicação de restauração. |
 | **Seu resumo**: com nota, sem nota, para revisar e o anel de progresso | `summary()` (backend) e `needsReview()` (frontend) |
-| **Por onde começar** / **Foco indicado pelo instrutor** | `nextActivities()` em `frontend/student-journey.js`. Com foco definido, mostra as atividades de foco que ainda estão pendentes ou em revisão. Sem foco, mostra até 3: primeiro as sem nota, depois as de revisão, na ordem da publicação. |
+| **Por onde começar** | `nextActivities()` em `frontend/student-journey.js` mostra até 3 sugestões automáticas: primeiro as sem nota, depois as de revisão, priorizando as liberadas mais recentemente. Sem data, preserva a ordem da publicação. Seleções antigas de foco não alteram as sugestões. |
 | Situação (selo) e **Como interpretar minhas notas?** | `status`: `ok`, `attention`, `critical`, `graduated` ou `insufficient` |
 | Métricas: média KC, média LAB, com nota, sem nota | `summary()` |
 | **O que mudou nas suas notas** | `history[current].changes` (`student_changes`) |

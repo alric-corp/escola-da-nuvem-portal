@@ -12,12 +12,13 @@ O papel é avaliado **por turma**: a mesma conta pode ser instrutora numa turma 
 ## 2. Painel do instrutor (`frontend/pages/teacher.js`)
 
 - Métricas da turma: total de alunos, na referência, atenção e crítico. Desistentes (alunos que o backend marca com `participationStatus: "WITHDRAWN"`) ficam fora das métricas: com algum desistente, o primeiro cartão vira **Alunos ativos**, com o número de desistentes na legenda.
-- **Foco da turma**: três campos de seleção com as atividades liberadas (`POST /focus-activities`). O salvamento exige a publicação atual e a versão do foco, para não sobrescrever a alteração de outro instrutor.
+- **Ver por atividade**: consulta médias e contagens por atividade, com filtros de tipo e módulo. A interface não oferece mais seleção ou salvamento de Foco da turma.
 - Tabela de alunos:
   - busca por nome ou e-mail;
   - filtros: situação, sem e-mail no Canvas, com atividades sem nota; com algum desistente, também **Ativos** e **Desistentes**. Os demais filtros contam só ativos;
   - ordenação: nome, mais pendências, menores médias;
   - desistentes continuam na tabela, com o badge **Desistente**, depois dos ativos em Todos os status;
+  - clicar nos cartões da situação da turma abre a população anunciada e limpa busca/filtro Canvas anteriores; os filtros manuais continuam combináveis;
   - **Exportar CSV** gera a lista filtrada da tela, com a coluna **Participação** (Ativo ou Desistente) no fim. A coluna **Situação** continua sendo a situação acadêmica.
 - **Ver pendências** de um aluno abre suas pendências, histórico, participação e situação dos lembretes. O modelo e o envio individual de e-mail foram removidos da interface; os filtros do painel são preservados ao voltar.
 - No detalhe, **Marcar como desistente** ou **Reativar aluno**, depois da confirmação, muda a participação do aluno na turma (`POST /participation`). O portal recarrega o detalhe e o painel. Se outra pessoa mudou a participação antes, o portal avisa e mostra o estado atual, sem repetir o pedido. Nada muda no Canvas.

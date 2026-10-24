@@ -1,9 +1,9 @@
-import { current, demo, e, formatOperationalDate, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
+import { current, e, formatOperationalDate, heading, icon, labels, normalize, plural, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 import { isWithdrawn } from "../participation.js";
 
 // Painel do instrutor (Expansão 4, docs/design-visual.md): instrumento de acompanhamento da turma. Situação da turma
-// (contagens que também filtram a lista), Foco da turma e a tabela de desempenho, na seção 34 do CSS (.teacher-home).
+// (contagens que também filtram a lista) e a tabela de desempenho, na seção 34 do CSS (.teacher-home).
 // Engajamento acrescenta informação auxiliar; os critérios acadêmicos e as ações existentes são preservados.
 
 const thresholdsOf = (report) => ({ kc: report.thresholds?.kc ?? 70, lab: report.thresholds?.lab ?? 95 });
@@ -109,31 +109,6 @@ export function averageText(value, reference) {
   return `${Number(value).toLocaleString("pt-BR", { maximumFractionDigits: digits })}%`;
 }
 
-// Atividades do foco com as contagens da turma (alunos ativos, do backend): ajudam a decidir se ainda vale manter.
-// view.focus (app.js): { kind: "saving" | "saved" | "error", message, unsure } do último salvamento deste relatório. Com
-// unsure (rede, 5xx), a gravação pode ter acontecido (C1): a seção diz isso e o que cada caminho faz com o que não foi salvo.
-const UNSURE_FOCUS = "A alteração pode ter sido salva. “Consultar atualização” mostra o foco em vigor, mas descarta as escolhas ainda não salvas; salvar de novo não grava duas vezes: se a alteração já tiver sido salva, o portal recusa a repetição.";
-export function focusEditor(view = {}) {
-  if (!state.report.publication) return "";
-  const ids = state.focusDraft || state.report.focus?.activityIds || [];
-  const saved = state.report.focus?.activityIds || [];
-  const activities = state.report.activities || [];
-  const outcome = view.focus || null, saving = outcome?.kind === "saving";
-  const changed = !!state.focusDraft && (ids.length !== saved.length || ids.some((id, i) => id !== saved[i]));
-  const item = (id) => {
-    const a = activities.find((x) => x.id === id), name = a?.name || id;
-    const counts = a ? [plural(a.pending, "aluno sem nota", "alunos sem nota"), plural(a.needsReview, "em revisão", "em revisão")].join(" · ") : "";
-    return `<li><span class="tp-focus-item">${a ? `<span class="tp-kind is-${a.kind === "lab" ? "lab" : "kc"}">${a.kind === "lab" ? "LAB" : "KC"}</span>` : ""}<span class="tp-focus-name">${e(name)}</span>${counts ? `<span class="tp-focus-meta">${counts}</span>` : ""}</span><button class="text-link tp-remove" type="button" data-remove-focus="${e(id)}" aria-label="Remover ${e(name)} do foco" ${demo || saving ? "disabled" : ""}>Remover</button></li>`;
-  };
-  const status = saving ? `<p class="tp-focus-status" id="tp-focus-status" role="status" tabindex="-1">Salvando o foco da turma…</p>`
-    : outcome?.kind === "saved" && !changed ? `<p class="tp-focus-status is-saved" id="tp-focus-status" role="status" tabindex="-1">${e(outcome.message)}</p>`
-    : outcome?.kind === "error" ? `<p class="tp-focus-status is-error" id="tp-focus-status" role="alert" tabindex="-1"><strong>${outcome.unsure ? "Não foi possível confirmar a atualização do foco da turma." : "O foco não foi salvo."}</strong> <span>${e(outcome.message)}</span>${outcome.unsure ? ` <span>${UNSURE_FOCUS}</span>` : ""}</p>`
-    : changed ? '<p class="tp-focus-status is-pending" id="tp-focus-status">Alterações ainda não salvas: os alunos continuam vendo o foco anterior.</p>' : "";
-  return `<section class="tp-focus" aria-labelledby="tp-focus-title"><h2 id="tp-focus-title">Foco da turma</h2><p class="tp-focus-help">Até três atividades que o aluno vê primeiro quando estão sem nota ou com sugestão de revisão. A escolha vale para toda a turma e continua nas próximas publicações enquanto as atividades existirem e estiverem liberadas.</p>${ids.length
-    ? `<ol class="focus-list">${ids.map(item).join("")}</ol>`
-    : '<p class="tp-focus-empty">Nenhuma atividade no foco: o aluno vê até três atividades na ordem da publicação, primeiro as sem nota e depois as de revisão.</p>'}${status}<form id="focus-form" class="tp-focus-actions"><button class="button ${changed ? "primary" : "secondary"}" type="submit"${demo || !ids.length || saving ? " disabled" : ""}${status ? ' aria-describedby="tp-focus-status"' : ""}>Salvar foco da turma</button><button class="text-link" type="button" data-view="activity-overview">Escolher na visão por atividade</button></form></section>`;
-}
-
 // Desistentes só entram em Todos e em Desistentes; os demais filtros, Ativos inclusive, contam só ativos (um
 // desistente não aparece como Crítico ou sem nota no painel).
 function matchesFilter(r, filter) {
@@ -186,7 +161,7 @@ export function studentsCsv(rows) {
 // conta com a mesma regra (matchesFilter). Rótulo, número e legenda, nessa ordem, como nos cartões de antes (C7.2).
 function filterButton(rows, filter, label, caption, kind) {
   const active = state.filter === filter, count = rows.filter((r) => matchesFilter(r, filter)).length;
-  return `<button type="button" class="tp-filter is-${kind}" data-filter="${filter}" data-scroll-to="students-heading" aria-pressed="${active}"><span>${label}</span><strong>${count.toLocaleString("pt-BR")}</strong><small>${caption}</small></button>`;
+  return `<button type="button" class="tp-filter is-${kind}" data-filter="${filter}" data-scroll-to="students-heading" data-teacher-shortcut aria-pressed="${active}"><span>${label}</span><strong>${count.toLocaleString("pt-BR")}</strong><small>${caption}</small></button>`;
 }
 
 // Situação da turma: quantos alunos ativos estão na referência, em atenção (uma média abaixo) e críticos (as duas), numa
@@ -257,7 +232,7 @@ export function teacherStudentResults(filtered = filteredStudents()) {
   return `<div class="tp-result"><p class="tp-count" role="status">${shown}</p>${state.filter === "pending" && filtered.length ? `<button class="button primary" data-action="reminders-batch" data-ids="${filtered.map((r) => e(r.id)).join(",")}">Enviar lembrete para ${plural(filtered.length, "aluno", "alunos")}</button>` : ""}</div>${filtered.length ? table : noMatch()}`;
 }
 
-export function teacherPage(view = {}) {
+export function teacherPage() {
   const report = state.report,
     rows = report.students || [];
   const t = thresholdsOf(report);
@@ -268,7 +243,7 @@ export function teacherPage(view = {}) {
   const filterOptions = [["all", "Todos os status"], ...(withdrawn ? [["active", "Ativos"], ["withdrawn", "Desistentes"]] : []), ["missing-email", "Sem e-mail no Canvas"], ["pending", "Com atividades sem nota"], ["no-portal", "Ainda não entraram no portal"], ...Object.entries(labels).filter(([k]) => ["ok", "attention", "critical"].includes(k))];
   const sortOptions = [["name", "Nome A–Z"], ["pending", "Mais atividades sem nota"], ["score", "Menor média geral primeiro"], ["last-activity", "Última atividade mais antiga primeiro"]];
   return `<div class="teacher-home">${heading("", `Painel da ${e(state.code)}`, "", `<div class="tp-actions"><button class="button secondary" data-view="activity-overview">Ver por atividade</button><button class="button ${auto ? "secondary" : "primary"}" data-view="import">${icon("upload")} ${auto ? "Enviar CSV manualmente" : "Atualizar notas"}</button></div>`)}
-  ${updateInfo()}${rows.length ? `<div class="tp-summary">${overview(rows, t)}${focusEditor(view)}</div>` : focusEditor(view)}
+  ${updateInfo()}${rows.length ? `<div class="tp-summary">${overview(rows, t)}</div>` : ""}
   ${canvasEngagement(report)}
   <section class="tp-students" aria-labelledby="students-heading"><h2 id="students-heading" tabindex="-1">Desempenho dos alunos</h2>${rows.length ? `<div class="tp-tools"><div class="tp-field tp-search"><label for="search">Buscar aluno</label><input id="search" type="search" placeholder="Nome ou e-mail" value="${e(state.search)}"></div><div class="tp-field"><label for="status-filter">Filtrar</label><select id="status-filter">${filterOptions.map(([id, label]) => `<option value="${id}" ${state.filter === id ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-field"><label for="canvas-activity-filter">Atividade no Canvas</label><select id="canvas-activity-filter">${[["all", "Todas as atividades"], ["inactive", "Última atividade conhecida há 7+ dias"], ["recent", "Com atividade nos últimos 7 dias"], ["unknown", "Sem informação de atividade"]].map(([id, label]) => `<option value="${id}" ${(state.canvasActivityFilter || "all") === id ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-field"><label for="student-sort">Ordenar por</label><select id="student-sort">${sortOptions.map(([value, label]) => `<option value="${value}" ${state.sort === value ? "selected" : ""}>${label}</option>`).join("")}</select></div><div class="tp-tool-actions"><button class="button secondary" data-action="clear-filters">Limpar filtros</button><button class="button secondary" data-action="export-csv" ${filtered.length ? "" : "disabled"}>Exportar CSV (${filtered.length})</button></div></div>
   <div id="teacher-student-results" data-cohort="${e(state.code)}">${teacherStudentResults(filtered)}</div>` : '<div class="tp-empty is-start"><h3>A turma está pronta para começar.</h3><p>Importe o CSV do Canvas para publicar a primeira atualização.</p></div>'}</section></div>`;

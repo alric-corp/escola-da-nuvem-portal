@@ -27,7 +27,8 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  let role = "student", focus = { activityIds: [], version: null }, saved = 0;
+  let role = "student", focusPosts = 0;
+  const legacyFocus = { activityIds: ["cert", "zero", "ok"], version: "legacy" };
   const activity = (id, name, kind, state, percent = null) => ({id,name,kind,state,percent,active:state !== "unreleased",points:"100"});
   const activities = [
     activity("linux", "226-LX-KC - Uma introdução ao Linux", "kc", "pending"),
@@ -58,15 +59,11 @@ try {
     else if (endpoint === "/cohorts") data={cohorts:["BRSA0267","BRSA0257"].map(code=>({code,canTeach:role === "instructor"}))};
     else if (endpoint.endsWith("/report")) {
       const own=endpoint.includes("BRSA0267") ? student : {...student,activities};
-      data={student:own,students:[own],activities:own.activities,publication,history:[],focus};
+      data={student:own,students:[own],activities:own.activities,publication,history:[],focus:legacyFocus};
     }
     else if (endpoint.endsWith("/focus-activities")) {
-      const body=route.request().postDataJSON();
-      assert.equal(body.expectedCurrent,"p1");
-      assert.equal(body.expectedVersion,focus.version);
-      assert.ok(body.activityIds.length<=3);
-      focus={activityIds:body.activityIds,version:"v"+(++saved)};
-      data={focus};
+      focusPosts++;
+      throw new Error("Foco removido: nenhuma chamada deve ser enviada.");
     } else throw new Error(endpoint);
     await route.fulfill({json:data});
   });
@@ -124,28 +121,24 @@ try {
   await page.getByRole("button",{name:"Ver por atividade",exact:true}).click();
   await page.getByRole("heading",{name:"Visão por atividade",exact:true}).waitFor();
   assert.equal(await page.locator("tbody tr").count(),9); // "future" não liberada fica de fora
-  await page.locator('[data-add-focus="cert"]').click();
-  await page.locator('[data-add-focus="zero"]').click();
-  await page.locator('[data-add-focus="ok"]').click();
-  assert.equal(await page.locator('[data-add-focus]').count(),6); // 3 viraram "No foco"
+  assert.equal(await page.locator("[data-add-focus], [data-remove-focus]").count(),0);
+  assert.equal(await page.getByRole("columnheader",{name:/foco/i}).count(),0);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.getByRole("button",{name:"Voltar ao painel",exact:true}).click();
   await page.getByRole("heading",{name:"Painel da BRSA0267",exact:true}).waitFor();
-  // Expansão 4: o Foco da turma fica aberto no painel; a confirmação aparece na própria seção.
-  assert.equal(await page.locator(".focus-list li").count(),3);
-  await page.getByRole("button",{name:"Salvar foco da turma",exact:true}).click();
-  await page.getByText("Foco da BRSA0267 atualizado.",{exact:true}).waitFor();
-  assert.equal(saved,1);
-  assert.deepEqual(focus.activityIds,["cert","zero","ok"]);
+  assert.equal(await page.locator(".tp-focus, #focus-form").count(),0);
   role="student";
   await page.reload();
-  await page.getByRole("heading",{name:"Foco indicado pelo instrutor",exact:true}).waitFor();
-  assert.equal(await page.locator(".next-steps .activity-card").count(),2);
-  assert.match(await page.locator(".next-steps .activity-card").first().innerText(),/195-CERT/);
-  assert.equal(await page.locator(".next-steps .review-hint").count(),1);
+  await page.getByRole("heading",{name:"Por onde começar",exact:true}).waitFor();
+  assert.equal(await page.getByRole("heading",{name:"Foco indicado pelo instrutor",exact:true}).count(),0);
+  assert.equal(await page.locator(".next-steps .activity-card").count(),3);
+  assert.match(await page.locator(".next-steps .activity-card").first().innerText(),/226-LX-KC/);
+  assert.ok(!(await page.locator(".next-steps").innerText()).includes("Certificação do Cenário"),"foco legado não substitui a ordem automática");
+  assert.equal(await page.locator(".next-steps .review-hint").count(),0,"primeiro vêm as pendências elegíveis");
   assert.equal(await page.locator("#focus-form").count(),0);
+  assert.equal(focusPosts,0);
   assert.deepEqual(errors,[]);
-  console.log("Aluno: início compacto, foco do instrutor, módulos, revisão, limites, filtros, teclado e celular OK.");
+  console.log("Aluno: início compacto automático, ausência de foco legado, módulos, revisão, limites, filtros, teclado e celular OK.");
 } finally {
   if (browser) await browser.close();
   await new Promise(resolve=>server.close(resolve));

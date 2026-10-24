@@ -27,7 +27,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  let role = "instructor", reportAttempts = 0, focusAttempts = 0;
+  let role = "instructor", reportAttempts = 0, participationAttempts = 0;
   const student = { id: "1", name: "Ana Teste", email: "ana@example.test", kc: 70, lab: 100, total: 85, completed: 1, pending: 0, progress: 100, status: "ok", activities: [] };
   const activities = [{ id: "a", name: "Atividade X", kind: "kc", active: true, completed: 1, pending: 0, needsReview: 0, average: 100, points: "100" }];
   const publication = { id: "p1", publishedAt: "2026-09-24T12:00:00Z" };
@@ -44,8 +44,12 @@ try {
       if (reportAttempts < 3) return route.fulfill({ status: 429, json: { message: "Too Many Requests" } });
       return route.fulfill({ json: { student, students: [student], activities, publication, history: [], focus: { activityIds: ["a"], version: null } } });
     }
-    if (endpoint.endsWith("/focus-activities") && request.method() === "POST") {
-      focusAttempts++;
+    if (endpoint.endsWith("/pending-preview") && request.method() === "POST")
+      return route.fulfill({ json: { student: { id: student.id, name: student.name, email: student.email },
+        publicationId: publication.id, publishedAt: publication.publishedAt, activities: [], remindersEnabled: false } });
+    if (endpoint.endsWith("/participation") && request.method() === "POST") {
+      participationAttempts++;
+      assert.deepEqual(request.postDataJSON(), { canvasId: "1", status: "WITHDRAWN", expectedStatus: "ACTIVE" });
       return route.fulfill({ status: 429, json: { message: "Too Many Requests" } });
     }
     throw new Error("Rota inesperada: " + endpoint);
@@ -55,11 +59,16 @@ try {
   await page.getByRole("heading", { name: "Painel da BRSA0267", exact: true }).waitFor();
   assert.equal(reportAttempts, 3);
 
-  // POST não é repetido automaticamente: a mensagem amigável aparece já na primeira 429 (desde a Expansão 4, no próprio
-  // Foco da turma, que fica sempre aberto no painel).
-  await page.getByRole("button", { name: "Salvar foco da turma", exact: true }).click();
+  // O teste de POST continua cobrindo uma mutação real da interface. O Foco da
+  // turma foi removido; participação preserva a garantia de não repetir operação.
+  await page.getByRole("button", { name: "Ver pendências de Ana Teste", exact: true }).click();
+  await page.getByRole("heading", { name: "Participação na turma", exact: true }).waitFor();
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Marcar como desistente", exact: true }).click();
   await page.getByText("O portal está com muitos acessos agora. Aguarde alguns segundos e tente novamente.", { exact: true }).waitFor();
-  assert.equal(focusAttempts, 1);
+  assert.equal(participationAttempts, 1);
+  assert.equal(await page.getByRole("button", { name: "Marcar como desistente", exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole("button", { name: "Reativar aluno", exact: true }).count(), 0, "429 não atualiza participação otimisticamente");
 
   assert.deepEqual(errors, []);
   console.log("Limite de requisições: GET repete com espera crescente, POST não repete e avisa na hora. OK.");
