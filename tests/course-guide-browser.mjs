@@ -8,7 +8,7 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = path.resolve("frontend/dist"), prefix = "/releases/guide-test-release/";
-const mime = { ".js": "text/javascript", ".json": "application/json", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".pdf": "application/pdf", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation" };
+const mime = { ".js": "text/javascript", ".json": "application/json", ".html": "text/html", ".css": "text/css", ".png": "image/png", ".pdf": "application/pdf" };
 const server = createServer(async (req, res) => {
   const pathname = new URL(req.url, "http://localhost").pathname;
   const relative = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : pathname.slice(1);
@@ -244,23 +244,39 @@ test("resize conserva seleção e foco; orientação e setas acompanham a dispos
   } finally { await c.close(); }
 });
 
-test("links têm nomes e abertura externa segura; documentos reais resolvem no prefixo versionado", async () => {
+test("regras mantêm LAB 100% e graduação no Canvas sem material inaugural ou comparação com o painel", async () => {
+  const c = await open();
+  try {
+    await guide(c.page);
+    const panel = c.page.locator('#guide-panel-rules');
+    const text = await panel.innerText();
+    assert.match(text, /Laboratórios[\s\S]*100%/);
+    assert.match(text, /KCs[\s\S]*70%/);
+    assert.match(text, /Graduado.*acompanha a graduação registrada no Canvas/);
+    assert.doesNotMatch(text, /95%|Acompanhamento do painel|Abrir material da aula inaugural|PPTX/);
+    assert.equal(await c.page.locator('.cg-note, #cg-panel-note, a[href$=".pptx"]').count(), 0);
+    assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
+  } finally { await c.close(); }
+});
+
+test("links têm nomes e abertura externa segura; normativa resolve no prefixo versionado sem PPTX", async () => {
   const c = await open(); await guide(c.page); const documents = new Set();
   for (const tab of ["rules", "support", "requests"]) {
     await c.page.locator(`[data-guide-tab="${tab}"]`).click();
     const links = await c.page.locator('[role="tabpanel"]:visible a').evaluateAll((els) => els.map((el) => ({ href: el.href, target: el.target, rel: el.rel, name: el.getAttribute("aria-label") || el.textContent, type: el.type })));
     for (const link of links) {
       assert.ok(link.name.trim(), "nome acessível");
+      assert.doesNotMatch(link.href, /\.pptx(?:[?#]|$)/i);
       if (link.target === "_blank") { assert.ok(link.rel.includes("noopener") && link.rel.includes("noreferrer")); assert.match(link.name, /nova aba/i); }
-      if (new URL(link.href).origin === origin && /\.(?:pdf|pptx)$/.test(link.href)) {
+      if (new URL(link.href).origin === origin && /\.pdf$/.test(link.href)) {
         assert.ok(new URL(link.href).pathname.startsWith(prefix + "documents/"), link.href);
         const response = await c.context.request.get(link.href);
         assert.equal(response.status(), 200); assert.equal(response.headers()["content-type"], mime[path.extname(new URL(link.href).pathname)]);
-        const bytes = await response.body(), signature = link.href.endsWith(".pdf") ? "%PDF-" : "PK\x03\x04"; assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature); assert.ok(bytes.length > 1000); documents.add(link.href);
+        const bytes = await response.body(), signature = "%PDF-"; assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature); assert.ok(bytes.length > 1000); documents.add(link.href);
       }
     }
   }
-  assert.equal(documents.size, 2);
+  assert.equal(documents.size, 1);
   assert.equal(await c.page.locator("iframe, video, form, input[type=checkbox]").count(), 0);
   assert.deepEqual(c.external, [], "não abre reuniões, vídeos nem formulários durante renderização");
   await c.close();
@@ -280,7 +296,8 @@ test("desktop/mobile e texto ampliado: conteúdo e menu sem sobreposição, foco
         const r = el.getBoundingClientRect(); return r.width && (r.left < -0.5 || r.right > innerWidth + 0.5 || el.scrollWidth > el.clientWidth + 1);
       }).map((el) => el.textContent.trim()));
       assert.deepEqual(clipped, [], `${JSON.stringify(options)} ${tab}: controles inteiros`);
-      const last = c.page.locator('[role="tabpanel"]:visible a').last();
+      const links = c.page.locator('[role="tabpanel"]:visible a');
+      const last = await links.count() ? links.last() : c.page.locator('[role="tabpanel"]:visible summary').last();
       await last.focus();
       assert.equal(await last.evaluate((el) => { const r = el.getBoundingClientRect(), nav = document.querySelector(".sidebar nav"), nr = nav.getBoundingClientRect(); return r.top >= -1 && r.bottom <= (getComputedStyle(nav).position === "fixed" ? nr.top : innerHeight) + 1; }), true, `${JSON.stringify(options)} ${tab}: link não escondido pela barra`);
       if (process.env.COURSE_GUIDE_SCREENSHOTS && !options.text && (options.width === 1440 && tab === "rules" || options.width === 390 && tab === "requests") && !options.role) {

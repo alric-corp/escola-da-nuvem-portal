@@ -42,7 +42,9 @@ execFileSync("git", ["clone", "--quiet", "--shared", "--no-checkout", ROOT, CLON
 git("checkout", "--quiet", "--detach", head);
 for (const rel of execFileSync("git", ["-C", ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard"]).toString().split("\0")) {
   const source = path.join(ROOT, rel);
-  if (!rel || !existsSync(source) || !statSync(source).isFile()) continue;
+  if (!rel) continue;
+  if (!existsSync(source)) { rmSync(path.join(CLONE, rel), { force: true }); continue; }
+  if (!statSync(source).isFile()) continue;
   mkdirSync(path.dirname(path.join(CLONE, rel)), { recursive: true });
   copyFileSync(source, path.join(CLONE, rel));
 }
@@ -191,7 +193,7 @@ test("links e imagens relativos ao documento resolvem contra a raiz", async () =
   await landing.close();
 });
 
-test("Guia do curso: documentos PDF/PPTX usam a release ativa, com bytes, MIME e cache do manifesto", async () => {
+test("Guia do curso: normativa PDF usa a release ativa e a apresentação removida não integra o pacote atual", async () => {
   activate(R1);
   const guide = await open();
   try {
@@ -199,27 +201,26 @@ test("Guia do curso: documentos PDF/PPTX usam a release ativa, com bytes, MIME e
     await guide.page.getByRole("heading", { name: "Guia do curso", exact: true }).waitFor();
     const inaugural = "documents/aula-inaugural-regras-curso.pptx";
     const normativa = "documents/normativa-abono-faltas.pdf";
-    const documents = [[inaugural, await guide.page.locator(`a[href$="/${inaugural}"]`).first().getAttribute("href")]];
+    assert.equal(await guide.page.locator(`a[href$="/${inaugural}"]`).count(), 0);
     await guide.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
-    documents.push([normativa, await guide.page.locator(`a[href$="/${normativa}"]`).first().getAttribute("href")]);
+    const href = await guide.page.locator(`a[href$="/${normativa}"]`).first().getAttribute("href");
     const manifest = JSON.parse(readFileSync(path.join(releaseDir(R1), "manifest.json"), "utf8"));
-    for (const [rel, href] of documents) {
-      assert.equal(href, `${origin}/releases/${R1}/${rel}`, "URL relativa ao módulo, nunca à raiz do documento");
-      const response = await guide.page.request.get(href);
-      assert.equal(response.status(), 200);
-      const meta = manifest.files.find((file) => file.path === rel);
-      assert.ok(meta, "documento listado no manifesto");
-      assert.equal(response.headers()["content-type"], rel.endsWith(".pdf") ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-      assert.equal(response.headers()["cache-control"], meta.cache_control);
-      const bytes = await response.body();
-      assert.deepEqual(bytes, readFileSync(path.join(releaseDir(R1), rel)));
-      assert.equal(bytes.length, meta.size);
-      assert.equal(createHash("sha256").update(bytes).digest("hex"), meta.sha256);
-      assert.ok(rel.endsWith(".pdf") ? bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))
-        : bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])));
-      assert.equal((await guide.page.request.get(`${origin}/${rel}`)).status(), 403, "o guia não depende de documentos na raiz");
-    }
+    assert.equal(manifest.files.some((file) => file.path.endsWith(".pptx")), false);
+    assert.equal(existsSync(path.join(releaseDir(R1), inaugural)), false);
+    assert.equal((await guide.page.request.get(`${origin}/releases/${R1}/${inaugural}`)).status(), 403);
+    assert.equal(href, `${origin}/releases/${R1}/${normativa}`, "URL relativa ao módulo, nunca à raiz do documento");
+    const response = await guide.page.request.get(href);
+    assert.equal(response.status(), 200);
+    const meta = manifest.files.find((file) => file.path === normativa);
+    assert.ok(meta, "normativa listada no manifesto");
+    assert.equal(response.headers()["content-type"], "application/pdf");
+    assert.equal(response.headers()["cache-control"], meta.cache_control);
+    const bytes = await response.body();
+    assert.deepEqual(bytes, readFileSync(path.join(releaseDir(R1), normativa)));
+    assert.equal(bytes.length, meta.size);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"), meta.sha256);
+    assert.ok(bytes.subarray(0, 5).equals(Buffer.from("%PDF-")));
+    assert.equal((await guide.page.request.get(`${origin}/${normativa}`)).status(), 403, "o guia não depende de documentos na raiz");
     assert.deepEqual(guide.configs(), [`/releases/${R1}/config.json`]);
     assert.deepEqual([guide.seen.errors, guide.seen.external], [[], []]);
   } finally {

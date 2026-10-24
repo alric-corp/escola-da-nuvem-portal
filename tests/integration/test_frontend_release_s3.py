@@ -15,7 +15,7 @@ from botocore.exceptions import ClientError
 from botocore.stub import Stubber
 from moto import mock_aws
 
-from release_fixtures import (BASELINE, BASELINE_SHA, BUCKET, MAIN_1, MAIN_2, OFF_MAIN, ORIGIN, PRE_FLOOR, REGION, FakeGit, Spy,
+from release_fixtures import (BASELINE, BASELINE_SHA, BUCKET, MAIN_1, MAIN_2, OFF_MAIN, ORIGIN, PRE_FLOOR, REGION, ROOT, FakeGit, Git, Spy,
                               api_routes, archive_baseline, block_network, build, config, copy_app, create_distribution, fr,
                               package, put_legacy, s3_fetch)
 
@@ -46,6 +46,13 @@ def setUpModule():
     R["off_main"] = package("modern", OFF_MAIN, apps["1"], api, out)
     R["m2_new_route"] = package("modern", MAIN_2, apps["3"], dict(api, routes=api["routes"] + ["GET /rota-nova"]), out)
     R["m2_new_contract"] = package("modern", MAIN_2, apps["2"], dict(api, openapi_sha256="f" * 64), out)
+    # O publicador continua aceitando um pacote histórico aprovado com PPTX;
+    # a remoção atinge somente o conjunto de assets da revisão atual.
+    previous_sha = "342f86a5c5beb3444bc1d8fcba28e97ee9ca3904"
+    previous = WORK / "historical-guide"
+    Git(ROOT).archive(previous_sha, previous)
+    build(previous, config())
+    R["historical_guide"] = package("modern", previous_sha, previous, api_routes(previous, WORK), out)
 
 
 def tearDownModule():
@@ -111,15 +118,27 @@ class ReleaseS3Tests(unittest.TestCase):
         head = self.s3.head_object(Bucket=BUCKET, Key=f"releases/{rid('m1')}/app.js")
         self.assertEqual(head["ContentType"], "text/javascript; charset=utf-8")
         self.assertEqual(head["CacheControl"], "public, max-age=31536000, immutable")
-        for name, mime in (("normativa-abono-faltas.pdf", "application/pdf"),
-                           ("aula-inaugural-regras-curso.pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation")):
-            rel = "documents/" + name
-            document = self.s3.get_object(Bucket=BUCKET, Key=f"releases/{rid('m1')}/{rel}")
-            self.assertEqual(document["ContentType"], mime)
-            self.assertEqual(document["CacheControl"], fr.IMMUTABLE)
-            self.assertEqual(document["Body"].read(), (R["m1"] / rel).read_bytes())
+        rel = "documents/normativa-abono-faltas.pdf"
+        document = self.s3.get_object(Bucket=BUCKET, Key=f"releases/{rid('m1')}/{rel}")
+        self.assertEqual(document["ContentType"], "application/pdf")
+        self.assertEqual(document["CacheControl"], fr.IMMUTABLE)
+        self.assertEqual(document["Body"].read(), (R["m1"] / rel).read_bytes())
+        self.assertFalse(any(key.endswith(".pptx") for key in self.keys(f"releases/{rid('m1')}/")))
+        self.assertFalse(any(call["Key"].endswith(".pptx") for call in spy.puts))
         self.assertEqual(fr.verify_remote_release(self.s3, BUCKET, rid("m1"))["release_id"], rid("m1"))
         self.assertEqual(self.index()[1], (R["legacy_dist"] / "index.html").read_bytes(), "publicar não ativa")
+
+    def test_current_package_omits_pptx_without_changing_a_historical_release(self):
+        self.publish("historical_guide")
+        key = f"releases/{rid('historical_guide')}/documents/aula-inaugural-regras-curso.pptx"
+        before = self.s3.get_object(Bucket=BUCKET, Key=key)
+        body, version, etag = before["Body"].read(), before["VersionId"], before["ETag"]
+        self.assertEqual(before["ContentType"], "application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        self.publish("m1")
+        self.assertFalse(any(path.endswith(".pptx") for path in self.keys(f"releases/{rid('m1')}/")))
+        after = self.s3.get_object(Bucket=BUCKET, Key=key)
+        self.assertEqual((after["VersionId"], after["ETag"], after["Body"].read()), (version, etag, body))
+        self.assertEqual(fr.verify_remote_release(self.s3, BUCKET, rid("historical_guide"))["release_id"], rid("historical_guide"))
 
     def test_publish_is_idempotent_and_preserves_every_release(self):
         self.publish("m1")

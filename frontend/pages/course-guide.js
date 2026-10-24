@@ -16,10 +16,8 @@ function rules() {
       <p class="cg-emphasis">${e(content.kcReminder)}</p>
       <p class="small">${e(content.graduationContext)}</p>
     </section>
-    <aside class="cg-note" aria-labelledby="cg-panel-note"><h2 id="cg-panel-note">Acompanhamento do painel não é graduação</h2><p>${e(content.panelNote)}</p><p class="small">${e(content.panelContext)}</p></aside>
     <section class="cg-section" aria-labelledby="cg-voucher"><h2 id="cg-voucher">Requisitos para o voucher AWS</h2><ul class="cg-list">${content.voucher.map((text) => `<li>${e(text)}</li>`).join("")}</ul><p class="small">${e(content.voucherNote)}</p></section>
-    <section class="cg-section" aria-labelledby="cg-orientations"><h2 id="cg-orientations">Orientações complementares</h2>${disclosures(content.orientations)}</section>
-    <div class="cg-document">${documentLink(content.documents.inaugural, "button secondary")}<p class="small">${e(content.documents.inaugural.description)}</p></div>`;
+    <section class="cg-section" aria-labelledby="cg-orientations"><h2 id="cg-orientations">Orientações complementares</h2>${disclosures(content.orientations)}</section>`;
 }
 
 function support() {

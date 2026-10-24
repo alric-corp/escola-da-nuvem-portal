@@ -4276,8 +4276,6 @@ details ul, .onboarding ol { padding-left: 24px; }
 .course-guide .cg-requirements dt { margin-bottom: var(--space-1); color: var(--color-text); font-weight: 650; }
 .course-guide .cg-requirements dd { margin: 0; color: var(--color-text-muted); font-size: 0.9375rem; }
 .course-guide .cg-emphasis { max-width: 80ch; color: var(--color-text); font-weight: 600; }
-.course-guide .cg-note { padding: var(--space-4); background: var(--color-surface); border-left: 3px solid var(--color-line); border-radius: 0 var(--radius-md) var(--radius-md) 0; }
-.course-guide .cg-note p:last-child { margin: 0; }
 .course-guide .cg-list { display: grid; gap: var(--space-2); max-width: 85ch; padding-left: 1.25rem; margin: 0 0 var(--space-3); color: var(--color-text-muted); }
 .course-guide .cg-details { border-top: 1px solid var(--color-line-soft); }
 .course-guide .cg-details details { border-bottom: 1px solid var(--color-line-soft); }

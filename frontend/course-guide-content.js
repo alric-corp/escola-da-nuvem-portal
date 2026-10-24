@@ -4,7 +4,7 @@ export const courseGuideContent = {
   title: "Guia do curso",
   description: "As informações e os canais de apoio para acompanhar sua jornada.",
   metadata: {
-    reviewedAt: "2026-10-20",
+    reviewedAt: "2026-10-24",
     timeZone: "America/Sao_Paulo",
     timeZoneLabel: "Horário de Brasília",
     sources: [
@@ -26,13 +26,6 @@ export const courseGuideContent = {
       format: "PDF",
       pages: 5,
     },
-    inaugural: {
-      url: new URL("./documents/aula-inaugural-regras-curso.pptx", import.meta.url).href,
-      label: "Abrir material da aula inaugural",
-      description: "Regras AWS re/Start 2 + NoCode · PowerPoint original · 13 slides",
-      format: "PPTX",
-      slides: 13,
-    },
   },
   scope: "As orientações de curso desta aba vêm do material de AWS re/Start 2 + NoCode. Confirme com a equipe quais módulos e horários de aula se aplicam à sua turma.",
   graduation: [
@@ -42,9 +35,7 @@ export const courseGuideContent = {
     { title: "Slides", text: "Consumir todos os slides." },
   ],
   kcReminder: "Todos os KCs são obrigatórios. Uma média elevada não substitui atividades obrigatórias não realizadas.",
-  panelNote: "As referências do painel ajudam no acompanhamento das notas. Estar na referência não significa que todos os requisitos de graduação foram cumpridos.",
-  panelContext: "O painel usa, por padrão, referências de 70% em KC e 95% em LAB. O material de graduação exige 100% nos laboratórios. As referências configuradas para sua turma continuam no painel.",
-  graduationContext: "A apresentação atribui ao Canvas a graduação automática ao final do curso. O portal acompanha as notas e não concede a graduação.",
+  graduationContext: "A situação “Graduado” no portal acompanha a graduação registrada no Canvas.",
   voucher: [
     "Ser aprovado no módulo AWS re/Start.",
     "Conquistar pelo menos 80% no simulado.",

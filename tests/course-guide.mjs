@@ -42,12 +42,15 @@ test("conteúdo informativo independe de notas, turma e estado do relatório", (
     assert.equal(htmlFor("rules", { me: { roles }, code: "", report: null, reportError: "Falha de relatório", bootError: "" }), baseline);
 });
 
-test("requisitos diferenciam graduação, referência acadêmica e voucher sem decisão automática", () => {
+test("requisitos preservam graduação no Canvas e voucher sem inferência pelas médias", () => {
   const text = plain(htmlFor("rules"));
   for (const pattern of [/Laboratórios/i, /100%/, /KCs|Quizzes/, /70%/, /80%/, /slides/i,
-    /todos os KCs/i, /média elevada/i, /referências do painel/i, /não significa.*requisitos de graduação/i,
+    /todos os KCs/i, /média elevada/i, /Graduado.*acompanha a graduação registrada no Canvas/i,
     /voucher/i, /simulado/i, /Cloud Practitioner/, /remot[ao]/i]) assert.match(text, pattern);
-  assert.doesNotMatch(text, /Apto à graduação|Voucher liberado|BRSAOXXX|\b80% de média\b/i);
+  assert.doesNotMatch(text, /Apto à graduação|Voucher liberado|BRSAOXXX|\b80% de média\b|95%|Acompanhamento do painel não é graduação/i);
+  assert.doesNotMatch(htmlFor("rules"), /<aside|cg-panel-note|cg-note/);
+  assert.equal(htmlFor("rules", { report: { student: { kc: 100, lab: 100, status: "graduated" } } }),
+    htmlFor("rules", { report: { student: { kc: 0, lab: 0, status: "critical" } } }), "as médias do relatório não concedem graduação no guia");
   assert.doesNotMatch(read("frontend/course-guide-content.js"), /https?:[^\s"']*(?:cartilha|gravacoes)/i,
     "não inventa destinos para recursos sem link fornecido");
 });
@@ -75,14 +78,18 @@ test("resumo da normativa preserva ressalvas e contexto de prazos", () => {
   assert.doesNotMatch(text, /(?:você tem|garantimos) sete abonos|aprovação garantida|voucher garantido/i);
 });
 
-test("documentos institucionais reais têm caminhos estáveis e não vazios", () => {
-  for (const [file, signature] of [["normativa-abono-faltas.pdf", "%PDF-"], ["aula-inaugural-regras-curso.pptx", "PK\x03\x04"]]) {
+test("normativa integral permanece disponível e o guia não oferece a apresentação inaugural", () => {
+  for (const [file, signature] of [["normativa-abono-faltas.pdf", "%PDF-"]]) {
     const bytes = readFileSync(new URL(`../frontend/documents/${file}`, import.meta.url));
     assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature);
     assert.ok(bytes.length > 1000, file);
     const all = ["rules", "requests"].map((tab) => htmlFor(tab)).join("");
     assert.ok(all.includes(file), `${file}: link para arquivo existente`);
   }
+  assert.deepEqual(Object.keys(content.documents), ["normative"]);
+  assert.equal(content.panelNote, undefined);
+  assert.equal(content.panelContext, undefined);
+  for (const tab of content.tabs) assert.doesNotMatch(htmlFor(tab.id), /\.pptx|PPTX|Abrir material da aula inaugural|PowerPoint/);
   assert.match(content.metadata.reviewedAt, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(content.metadata.timeZone, "America/Sao_Paulo");
 });

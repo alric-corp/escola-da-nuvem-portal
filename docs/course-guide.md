@@ -6,10 +6,16 @@ Conteúdo e endereços ficam em [`frontend/course-guide-content.js`](../frontend
 
 Revisão editorial iniciada em **20/10/2026**, horário de Brasília. Esse registro identifica a revisão para esta implementação; **não** é data de emissão, vigência ou atualização institucional dos documentos. As fontes fornecidas não apresentam uma data de emissão aplicável; `issuedAt` permanece `null`.
 
+**Revisão de 24/10/2026:** por decisão do titular, o Guia mantém as regras em
+HTML e deixa de oferecer o PowerPoint da aula inaugural. Também foi retirada a
+seção “Acompanhamento do painel não é graduação”. A regra de laboratórios
+continua exigindo 100%; “Graduado” reflete o indicador registrado no Canvas,
+sem ser calculado pelo simples atendimento das médias de KC/LAB.
+
 - Apresentação original fornecida: “CX Aula Inaugural Regras Curso AWS CX Aula Inaugural Regras Curso AWS Restart 2 + NoCode - BRSAOXXX (1).pptx”, 13 slides. Textos, imagens dos slides 8 e 10 e hyperlinks foram inspecionados. O slide 8 apresenta o exemplo de 99/100 KCs: média elevada não substitui completar todos. O slide 10 reforça a realização do exame no prazo estipulado, sem indicar uma data.
 - “Normativa de Abono de Faltas EdN.pdf”, 5 páginas, arts. 1º–5º. Texto integral extraído e todas as páginas conferidas visualmente; o PDF institucional inclui os contatos e a assinatura funcional da analista, sem registros de alunos.
 - Comunicados, horários e URLs fornecidos pelo responsável no pedido de implementação.
-- Referências do painel verificadas no código existente: padrão KC 70% e LAB 95%. Esses limites e os cálculos acadêmicos não foram alterados. O requisito de graduação de LAB 100% é apresentado separadamente.
+- O requisito institucional de LAB é 100%. O status “Graduado” continua vinculado a `Graduated Final Points` no fluxo de notas do Canvas; esta atualização de conteúdo não muda limites configurados, cálculos acadêmicos ou dados das turmas.
 
 ### Aplicabilidade e diferenças editoriais
 
@@ -26,17 +32,27 @@ Revisão editorial iniciada em **20/10/2026**, horário de Brasília. Esse regis
 
 Os documentos destinados aos alunos são assets públicos da release, com nomes estáveis em `frontend/documents/`. Não adicionar anexos privados, atestados ou arquivos de alunos a essa pasta. As URLs são construídas com `new URL(..., import.meta.url)`: apontam para a **mesma release versionada** do módulo, não para a raiz do CloudFront.
 
-| Fonte original | SHA-256 verificado |
+| Fonte original inspecionada | SHA-256 histórico verificado |
 |---|---|
 | Normativa PDF original | `5955ebc7db7a4eeceb07d0e4887e2e301ca6e88391cf18012b95baf33e1465d0` |
 | Apresentação PPTX original | `51471938df333b38bcdae28e8875ab4f187b0695043ea3f86f32c06da2dfaee7` |
 
-O nome original da apresentação contém um código genérico de turma. Ele não aparece no texto dos slides, nas imagens inspecionadas ou no nome estável oferecido pela interface.
+O nome original da apresentação contém um código genérico de turma. Ele não
+foi publicado na interface. A apresentação permanece registrada como origem
+editorial histórica, mas não integra o pacote atual do frontend.
 
 - `normativa-abono-faltas.pdf`: o PDF original, sem alterações, `application/pdf`.
-- `aula-inaugural-regras-curso.pptx`: a apresentação original, sem alterações, `application/vnd.openxmlformats-officedocument.presentationml.presentation`. A interface identifica o formato PowerPoint; é necessário um leitor compatível.
+- O PPTX foi retirado da lista explícita do build e do conteúdo distribuído a
+  partir da revisão de 24/10/2026. O suporte genérico ao MIME PPTX permanece nos
+  validadores para aceitar releases históricas; pacotes e objetos já publicados
+  não foram alterados ou removidos por esta edição.
 
-**Limitação da conversão:** a exportação local pelo Microsoft PowerPoint falhou; uma conversão alternativa por QuickLook foi rejeitada na conferência visual por perda de contraste e corte de conteúdo. Nenhum PDF dessa conversão foi incluído. Foi usado o fallback previsto no pedido: disponibilizar o original com suporte explícito de MIME/build/release. O resumo HTML mantém as orientações acessíveis sem depender da abertura da apresentação.
+**Histórico da conversão na implementação original:** a exportação local pelo
+Microsoft PowerPoint falhou; uma conversão alternativa por QuickLook foi
+rejeitada na conferência visual por perda de contraste e corte de conteúdo.
+Nenhum PDF dessa conversão foi incluído. Naquela entrega, disponibilizou-se o
+original como fallback. Nesta revisão, o Guia passa a disponibilizar o resumo HTML sem link para a
+apresentação.
 
 ## Conferência de links externos
 
