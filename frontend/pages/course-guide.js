@@ -2,10 +2,8 @@ import { courseGuideContent as content } from "../course-guide-content.js";
 import { state } from "../state.js";
 import { e, heading, icon } from "../ui.js";
 
-const external = (url, label, className = "text-link") =>
-  `<a class="${className}" href="${e(url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(label)} (abre em nova aba)">${e(label)} ${icon("external", 16)}</a>`;
-const documentLink = (document, className = "text-link") =>
-  external(document.url, `${document.label} (${document.format})`, className);
+const external = (url, label, className = "text-link", descriptionId = "") =>
+  `<a class="${className}" href="${e(url)}" target="_blank" rel="noopener noreferrer" aria-label="${e(label)} (abre em nova aba)"${descriptionId ? ` aria-describedby="${e(descriptionId)}"` : ""}>${e(label)} ${icon("external", 16)}</a>`;
 const paragraphs = (items) => items.map((text) => `<p>${e(text)}</p>`).join("");
 const disclosures = (items) => `<div class="cg-details">${items.map((item) => `<details><summary>${e(item.title)}</summary><div class="cg-detail-body">${paragraphs(item.paragraphs)}</div></details>`).join("")}</div>`;
 
@@ -25,9 +23,9 @@ function support() {
 }
 
 function requests() {
-  return `<ol class="cg-steps">${content.requestSteps.map((item, index) => `<li><article class="cg-card" aria-labelledby="cg-request-${index}"><span class="cg-step-number" aria-hidden="true">${index + 1}</span><h2 id="cg-request-${index}">${e(item.title)}</h2><p>${e(item.description)}</p><p class="small">${e(item.note)}</p><div class="cg-card-action">${external(item.url, item.action, "button primary")}${index === 1 ? documentLink(content.documents.normative) : ""}</div>${item.availabilityNote ? `<p class="small">${e(item.availabilityNote)}</p>` : ""}</article></li>`).join("")}</ol>
+  return `<ol class="cg-steps">${content.requestSteps.map((item, index) => `<li><article class="cg-card" aria-labelledby="cg-request-${index}"><span class="cg-step-number" aria-hidden="true">${index + 1}</span><h2 id="cg-request-${index}">${e(item.title)}</h2><div class="cg-request-copy"><p>${e(item.description)}</p><p class="small">${e(item.note)}</p>${item.availabilityNote ? `<p class="small" id="cg-request-${index}-availability">${e(item.availabilityNote)}</p>` : ""}</div><div class="cg-card-action">${external(item.url, item.action, "button primary", item.availabilityNote ? `cg-request-${index}-availability` : "")}</div></article></li>`).join("")}</ol>
     <section class="cg-section" aria-labelledby="cg-videos"><h2 id="cg-videos">Vídeos de orientação</h2><ul class="cg-videos">${content.videos.map((video) => `<li>${external(video.url, video.title)}</li>`).join("")}</ul></section>
-    <section class="cg-section" aria-labelledby="cg-before-request"><h2 id="cg-before-request">Leia antes de solicitar</h2><ul class="cg-list">${content.normativeSummary.map((text) => `<li>${e(text)}</li>`).join("")}</ul><div class="cg-document">${documentLink(content.documents.normative, "button secondary")}<p class="small">${e(content.documents.normative.description)}</p></div>${disclosures(content.normativeSections)}</section>`;
+    <section class="cg-section" aria-labelledby="cg-before-request"><h2 id="cg-before-request">Leia antes de solicitar</h2><ul class="cg-list">${content.normativeSummary.map((text) => `<li>${e(text)}</li>`).join("")}</ul>${disclosures(content.normativeSections)}</section>`;
 }
 
 // Conteúdo informativo não depende da turma, do relatório acadêmico ou de rede.

@@ -78,13 +78,13 @@ test("resumo da normativa preserva ressalvas e contexto de prazos", () => {
   assert.doesNotMatch(text, /(?:você tem|garantimos) sete abonos|aprovação garantida|voucher garantido/i);
 });
 
-test("normativa integral permanece disponível e o guia não oferece a apresentação inaugural", () => {
+test("documento legado permanece no pacote sem links PDF ou PPT no guia", () => {
   for (const [file, signature] of [["normativa-abono-faltas.pdf", "%PDF-"]]) {
     const bytes = readFileSync(new URL(`../frontend/documents/${file}`, import.meta.url));
     assert.equal(bytes.subarray(0, Buffer.byteLength(signature)).toString(), signature);
     assert.ok(bytes.length > 1000, file);
     const all = ["rules", "requests"].map((tab) => htmlFor(tab)).join("");
-    assert.ok(all.includes(file), `${file}: link para arquivo existente`);
+    assert.equal(all.includes(file), false, `${file}: documento descontinuado não aparece na interface`);
   }
   assert.deepEqual(Object.keys(content.documents), ["normative"]);
   assert.equal(content.panelNote, undefined);
@@ -92,6 +92,26 @@ test("normativa integral permanece disponível e o guia não oferece a apresenta
   for (const tab of content.tabs) assert.doesNotMatch(htmlFor(tab.id), /\.pptx|PPTX|Abrir material da aula inaugural|PowerPoint/);
   assert.match(content.metadata.reviewedAt, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(content.metadata.timeZone, "America/Sao_Paulo");
+});
+
+test("solicitações preservam três ações externas e o aviso vem antes do acompanhamento", () => {
+  const html = htmlFor("requests");
+  const panel = html.slice(html.indexOf('id="guide-panel-requests"'));
+  const cards = [...panel.matchAll(/<article class="cg-card"[\s\S]*?<\/article>/g)].map(([card]) => card);
+  assert.equal(cards.length, 3);
+  for (const [index, item] of content.requestSteps.entries()) {
+    const card = cards[index];
+    assert.equal((card.match(/<a\b/g) || []).length, 1, "uma ação principal por card");
+    assert.ok(card.includes(`href="${item.url}"`));
+    assert.match(card, /target="_blank" rel="noopener noreferrer"/);
+    assert.ok(card.includes(`${item.action} (abre em nova aba)`));
+    if (item.availabilityNote) {
+      assert.ok(card.includes(item.availabilityNote), "aviso preservado integralmente");
+      assert.ok(card.indexOf(item.availabilityNote) < card.indexOf('class="cg-card-action"'), "aviso antes da ação");
+      assert.match(card, /aria-describedby="cg-request-2-availability"/);
+    }
+  }
+  assert.doesNotMatch(panel, /href="[^"]*\.pdf|Ler normativa completa|PPTX/i);
 });
 
 test("guia só apresenta conteúdo; sessão/OAuth e rede continuam fora da página e do conteúdo", () => {

@@ -4288,7 +4288,13 @@ details ul, .onboarding ol { padding-left: 24px; }
 .course-guide :is(.button, .text-link) svg { flex: none; }
 .course-guide .cg-timezone { display: flex; align-items: center; gap: var(--space-2); font-size: 0.875rem; }
 .course-guide :is(.cg-card-grid, .cg-steps) { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
-.course-guide .cg-steps > li { min-width: 0; }
+.course-guide .cg-steps > li { display: grid; grid-template-rows: subgrid; grid-row: span 4; min-width: 0; }
+.course-guide .cg-steps .cg-card { display: grid; grid-template-rows: subgrid; grid-row: span 4; gap: var(--space-3); height: auto; }
+.course-guide .cg-steps :is(h2, .cg-step-number) { margin: 0; }
+.course-guide .cg-steps .cg-request-copy { display: grid; gap: var(--space-3); min-width: 0; }
+.course-guide .cg-steps .cg-request-copy p { margin: 0; font-size: 0.9375rem; }
+.course-guide .cg-steps .cg-request-copy .small { font-size: 0.875rem; }
+.course-guide .cg-steps .cg-card-action { align-self: stretch; margin-top: 0; padding-top: 0; }
 .course-guide .cg-card { display: flex; flex-direction: column; align-items: start; height: 100%; min-width: 0; padding: var(--space-4); border: 1px solid var(--color-line-soft); border-radius: var(--radius-md); background: var(--color-surface); }
 .course-guide .cg-card > p { font-size: 0.9375rem; }
 .course-guide .cg-card > .small { font-size: 0.875rem; }
@@ -4299,6 +4305,10 @@ details ul, .onboarding ol { padding-left: 24px; }
 .course-guide .cg-videos { display: grid; gap: var(--space-2); padding: 0; margin: 0; list-style: none; }
 @media (max-width: 1100px) {
   .course-guide :is(.cg-card-grid, .cg-steps) { grid-template-columns: minmax(0, 1fr); }
+}
+/* Mantém espaço para o texto ampliado; cada card empilhado tem altura natural. */
+@container course-guide (max-width: 42em) {
+  .course-guide .cg-steps { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
   .course-guide .cg-tabs button { padding: var(--space-3) var(--space-2); font-size: 0.875rem; }

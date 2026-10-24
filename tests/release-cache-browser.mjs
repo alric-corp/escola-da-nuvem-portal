@@ -193,7 +193,7 @@ test("links e imagens relativos ao documento resolvem contra a raiz", async () =
   await landing.close();
 });
 
-test("Guia do curso: normativa PDF usa a release ativa e a apresentação removida não integra o pacote atual", async () => {
+test("Guia do curso sem links PDF; normativa preservada no pacote versionado e apresentação removida", async () => {
   activate(R1);
   const guide = await open();
   try {
@@ -203,16 +203,18 @@ test("Guia do curso: normativa PDF usa a release ativa e a apresentação removi
     const normativa = "documents/normativa-abono-faltas.pdf";
     assert.equal(await guide.page.locator(`a[href$="/${inaugural}"]`).count(), 0);
     await guide.page.getByRole("tab", { name: "Faltas e solicitações", exact: true }).click();
-    const href = await guide.page.locator(`a[href$="/${normativa}"]`).first().getAttribute("href");
+    assert.equal(await guide.page.locator('#guide-panel-requests a[href$=".pdf"]').count(), 0,
+      "a normativa descontinuada não é oferecida como documento atual na interface");
     const manifest = JSON.parse(readFileSync(path.join(releaseDir(R1), "manifest.json"), "utf8"));
     assert.equal(manifest.files.some((file) => file.path.endsWith(".pptx")), false);
     assert.equal(existsSync(path.join(releaseDir(R1), inaugural)), false);
     assert.equal((await guide.page.request.get(`${origin}/releases/${R1}/${inaugural}`)).status(), 403);
-    assert.equal(href, `${origin}/releases/${R1}/${normativa}`, "URL relativa ao módulo, nunca à raiz do documento");
+    const meta = manifest.files.find((file) => file.path === normativa);
+    assert.ok(meta, "normativa preservada no manifesto, sem depender de link visível");
+    const href = new URL(meta.path, `${origin}/releases/${R1}/`).href;
+    assert.equal(href, `${origin}/releases/${R1}/${normativa}`, "URL do pacote deriva do manifesto e da release");
     const response = await guide.page.request.get(href);
     assert.equal(response.status(), 200);
-    const meta = manifest.files.find((file) => file.path === normativa);
-    assert.ok(meta, "normativa listada no manifesto");
     assert.equal(response.headers()["content-type"], "application/pdf");
     assert.equal(response.headers()["cache-control"], meta.cache_control);
     const bytes = await response.body();

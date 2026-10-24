@@ -12,6 +12,21 @@ seção “Acompanhamento do painel não é graduação”. A regra de laborató
 continua exigindo 100%; “Graduado” reflete o indicador registrado no Canvas,
 sem ser calculado pelo simples atendimento das médias de KC/LAB.
 
+Na aba **Faltas e solicitações**, a mesma revisão retira os dois links de acesso
+ao PDF descontinuado: no card de solicitação e após o resumo das orientações.
+O conteúdo em HTML e os destinos externos continuam preservados. O aviso de
+indisponibilidade fica antes do botão de acompanhamento e é associado a ele
+por `aria-describedby`. O refinamento de layout é restrito aos três cards dessa
+aba; não altera Plantões, Regras, APIs ou fluxos de solicitação.
+
+O layout foi conferido localmente em 320–1440px, com texto a 100%, 150% e
+200% por `Page.setFontSizes` do Chromium. Cards lado a lado compartilham
+as linhas de título, conteúdo e ação; empilhados, têm altura natural.
+Capturas com dados fictícios: [desktop antes](evidence/guia-solicitacoes/desktop-antes.png),
+[desktop depois](evidence/guia-solicitacoes/desktop-depois.png),
+[mobile](evidence/guia-solicitacoes/mobile-390.png) e
+[mobile com texto a 200%](evidence/guia-solicitacoes/mobile-320-texto-200.png).
+
 - Apresentação original fornecida: “CX Aula Inaugural Regras Curso AWS CX Aula Inaugural Regras Curso AWS Restart 2 + NoCode - BRSAOXXX (1).pptx”, 13 slides. Textos, imagens dos slides 8 e 10 e hyperlinks foram inspecionados. O slide 8 apresenta o exemplo de 99/100 KCs: média elevada não substitui completar todos. O slide 10 reforça a realização do exame no prazo estipulado, sem indicar uma data.
 - “Normativa de Abono de Faltas EdN.pdf”, 5 páginas, arts. 1º–5º. Texto integral extraído e todas as páginas conferidas visualmente; o PDF institucional inclui os contatos e a assinatura funcional da analista, sem registros de alunos.
 - Comunicados, horários e URLs fornecidos pelo responsável no pedido de implementação.
@@ -28,9 +43,13 @@ sem ser calculado pelo simples atendimento das médias de KC/LAB.
 - Art. 1º da normativa distingue justificativa do registro de falta e prevê até sete justificativas, sem garantir abonos. Art. 2º: dois dias úteis a partir do término do impedimento; esse prazo não foi estendido à transferência de turno. Art. 4º: uma semana apenas para casos não previstos no art. 3º.
 - O endereço de acompanhamento `https://2sh9po.s.gy/Solicita` respondeu **404 / “Link not found”** durante a revisão. O endereço fornecido foi preservado e recebeu aviso visível para confirmar o acesso com a equipe. Não foi inventado destino alternativo. Essa pendência não bloqueia os demais conteúdos e canais.
 
-## Documentos distribuídos
+## Assets e fontes documentais
 
-Os documentos destinados aos alunos são assets públicos da release, com nomes estáveis em `frontend/documents/`. Não adicionar anexos privados, atestados ou arquivos de alunos a essa pasta. As URLs são construídas com `new URL(..., import.meta.url)`: apontam para a **mesma release versionada** do módulo, não para a raiz do CloudFront.
+Os arquivos institucionais mantidos em `frontend/documents/` são assets públicos
+da release. Não adicionar anexos privados, atestados ou arquivos de alunos a
+essa pasta. O PDF da normativa permanece no pacote por compatibilidade, mas
+não recebe link na interface atual. Sua URL relativa ao módulo continua
+apontando para a mesma release versionada, não para a raiz do CloudFront.
 
 | Fonte original inspecionada | SHA-256 histórico verificado |
 |---|---|
@@ -41,7 +60,9 @@ O nome original da apresentação contém um código genérico de turma. Ele nã
 foi publicado na interface. A apresentação permanece registrada como origem
 editorial histórica, mas não integra o pacote atual do frontend.
 
-- `normativa-abono-faltas.pdf`: o PDF original, sem alterações, `application/pdf`.
+- `normativa-abono-faltas.pdf`: original preservado, `application/pdf`, sem
+  botão/link na interface. A retirada do acesso não altera as orientações HTML
+  nem afirma que o arquivo deixou de estar acessível por URL direta.
 - O PPTX foi retirado da lista explícita do build e do conteúdo distribuído a
   partir da revisão de 24/10/2026. O suporte genérico ao MIME PPTX permanece nos
   validadores para aceitar releases históricas; pacotes e objetos já publicados

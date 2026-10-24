@@ -105,7 +105,7 @@ export const courseGuideContent = {
     },
     {
       title: "Fazer uma solicitação",
-      description: "Utilize o formulário para solicitar abono de faltas e/ou transferência de turno. Antes de preencher, leia a normativa e as orientações disponíveis.",
+      description: "Utilize o formulário para solicitar abono de faltas e/ou transferência de turno. Antes de preencher, leia as orientações disponíveis nesta aba.",
       note: "O formulário é externo. Não envie atestados, documentos ou dados pessoais pelo portal.",
       action: "Abrir formulário de solicitação",
       url: "https://docs.google.com/forms/d/e/1FAIpQLSdFFlPkfcSqNNm5pcIzPToBgQ09PJfTyIH5wEuBq5yT-NsBug/viewform",
