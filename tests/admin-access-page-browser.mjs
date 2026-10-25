@@ -1060,22 +1060,27 @@ test("TODO28: concessão iniciada em B não muda a lista de A nem empresta sua e
   assert.deepEqual(errors, []);
 });
 
-test("TODO28: formulário de vínculo posterior permanece legível e operável por teclado em desktop e 320px com texto 200%", async () => {
+test("TODO28: após selecionar o instrutor, Tab/Shift+Tab e Enter preservam o vínculo legível em desktop e 320px com texto 200%", async () => {
   for (const [width, textSize] of [[1440, 1], [320, 2]]) {
     const { context, page, errors, control } = await open({ width, text: textSize, long: true });
     await page.locator("#cohort").selectOption("BRSA0268");
     await quiet(page);
     const field = page.getByLabel("Instrutor já aprovado", { exact: true });
+    // A seleção é arranjada pela API do select: ArrowDown/Enter podem abrir ou confirmar a popup conforme o sistema.
+    // O que exercitamos por teclado aqui é a ordem de foco do formulário e a confirmação por Enter, com a popup fechada.
+    await field.selectOption("u-ana");
+    await settle(page);
     await field.focus();
-    await field.press("ArrowDown");
-    await field.press("Enter");
-    await settle(page);
-    // selectOption modela a seleção nativa nos ambientes em que ArrowDown abre a popup sem confirmar automaticamente.
-    if (await page.locator("#approved-instructor").inputValue() !== "u-ana") await page.locator("#approved-instructor").selectOption("u-ana");
-    await settle(page);
-    await page.locator("#approved-instructor").focus();
+    assert.equal(await field.inputValue(), "u-ana", "a escolha permanece depois do render");
+    assert.equal(await grant(page).isDisabled(), false, "a escolha válida habilita a concessão");
+    assert.equal(await field.evaluate((el) => el.matches(":open")), false, "arranjo: popup nativa fechada antes de Tab");
+    assert.match(await active(page), /^select#approved-instructor /);
     await page.keyboard.press("Tab");
     assert.match(await active(page), /^button Conceder acesso à turma$/);
+    await page.keyboard.press("Shift+Tab");
+    assert.match(await active(page), /^select#approved-instructor /, "a volta chega ao seletor");
+    await page.keyboard.press("Tab");
+    assert.match(await active(page), /^button Conceder acesso à turma$/, "a ordem do formulário é previsível nas duas direções");
     assert.deepEqual(await ringAround(page, "#approved-instructor-form button"), [], "foco ciano inteiro visível");
     assert.equal(await pageScroll(page), 0);
     assert.deepEqual(await clipped(page), []);
