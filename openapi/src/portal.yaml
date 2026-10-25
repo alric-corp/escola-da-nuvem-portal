@@ -158,6 +158,8 @@ components:
       $ref: ./components/report-schemas.yaml#/CanvasSubmission
     CanvasSubmissions:
       $ref: ./components/report-schemas.yaml#/CanvasSubmissions
+    CanvasSyncDiagnostics:
+      $ref: ./components/report-schemas.yaml#/CanvasSyncDiagnostics
     StudentReport:
       $ref: ./components/report-schemas.yaml#/StudentReport
     EmptyCohortReport:

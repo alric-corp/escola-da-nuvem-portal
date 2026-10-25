@@ -1049,7 +1049,8 @@ class Portal:
         if not cohort.get("current"):
             require(teach)
             return {"cohort": code, "publication": None, "students": [], "history": [],
-                    "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId")}
+                    "thresholds": cohort_thresholds(cohort), "canvasCourseId": cohort.get("canvasCourseId"),
+                    **self._sync_report(cohort, pk)}
         publication, snap, focus = self._current_view(code, cohort, pk)
         thresholds = cohort_thresholds(cohort)
         canvas_course_id = cohort.get("canvasCourseId")
@@ -1068,12 +1069,24 @@ class Portal:
                     "updatedAt": cohort.get("updatedAt", publication["publishedAt"]),
                     "updateKind": cohort.get("updateKind", "publish"),
                     "thresholds": thresholds, "canvasCourseId": canvas_course_id,
-                    "canvasSync": self.repo.get(pk, "SYNC"),
+                    **self._sync_report(cohort, pk),
                     "history": sorted(({k: v for k, v in p.items() if k != "releasedAt"} for p in self.repo.list(pk, "PUB#")),
                                      key=lambda p: p["publishedAt"], reverse=True)}
         student = self.student(code, snap, bind=True)
         require(student is not None, 403, "Matrícula não localizada para sua conta nesta turma.")
         return self._student_report(code, cohort, pk, publication, snap, focus, student)
+
+    def _sync_report(self, cohort, pk):
+        from sync_runs import diagnostics
+        sync = self.repo.get(pk, "SYNC")
+        if isinstance(sync, dict):
+            # O registro histórico permanece intacto. Texto de exceção nunca é
+            # necessário para explicar a qualidade da coleta na interface.
+            sync = {key: value for key, value in sync.items()
+                    if key in ("status", "message", "at", "students", "publicationId")}
+            if sync.get("status") == "failed":
+                sync["message"] = "Não foi possível concluir a verificação das notas no Canvas."
+        return {"canvasSync": sync, "canvasSyncDiagnostics": diagnostics(self.repo, cohort)}
 
     def _current_view(self, code, cohort, pk):
         """Publicação atual como aluno e instrutor a enxergam: nomes de exibição,

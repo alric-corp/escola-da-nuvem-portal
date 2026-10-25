@@ -110,12 +110,42 @@ class ConcreteResponseContracts(unittest.TestCase):
             with self.subTest(changed=changed), self.assertRaises(ValidationError):
                 self.validate("/cohorts/{code}/class-report", changed)
         own = self.student.dispatch("GET", "/cohorts/FIC001/report", {})
-        for field in ["students", "canvasEngagement", "canvasSync", "warnings"]:
+        for field in ["students", "canvasEngagement", "canvasSync", "canvasSyncDiagnostics", "warnings"]:
             changed = {**own, field: []}
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 self.validate("/cohorts/{code}/report", changed)
         # Extensões legítimas não são fechadas por additionalProperties=false global.
         self.validate("/cohorts/{code}/class-report", {**actual, "futureExtension": True})
+
+    def test_sync_diagnostics_real_report_and_negative_privacy_contract(self):
+        from sync_runs import SyncRun, scheduled_context
+        self.publish()
+        metadata = self.repo.get("COHORT#FIC001", "METADATA")
+        metadata = {**metadata, "autoSync": True}
+        self.repo.put("COHORT#FIC001", "METADATA", metadata)
+        context = scheduled_context({"source": "portal.scheduler", "type": "canvas-sync", "scheduledFor": "2026-10-21T09:00:00Z",
+                                     "executionId": "synthetic", "attemptNumber": 1})
+        proof = SyncRun(self.repo, metadata, context, lambda: "2026-10-21T09:01:00Z")
+        proof.stages.update(catalog="failed", roster="succeeded")
+        proof.complete_unchanged(metadata)
+        actual = self.admin.dispatch("GET", "/cohorts/FIC001/report", {})
+        self.assertEqual(actual["canvasSyncDiagnostics"]["status"], "failed")
+        self.validate("/cohorts/{code}/report", actual)
+        legacy = copy.deepcopy(actual)
+        legacy.pop("canvasSyncDiagnostics")
+        self.validate("/cohorts/{code}/report", legacy)
+        for mutate in [lambda x: x.pop("stages"), lambda x: x.update(status="invented"),
+                       lambda x: x["stages"].update(catalog="invented"), lambda x: x["stages"].pop("grades"),
+                       lambda x: x.update(startedAt=123), lambda x: x.update(finishedAt="invalid"),
+                       lambda x: x.update(token="private")]:
+            changed = copy.deepcopy(actual)
+            mutate(changed["canvasSyncDiagnostics"])
+            with self.assertRaises(ValidationError):
+                self.validate("/cohorts/{code}/report", changed)
+        own = self.student.dispatch("GET", "/cohorts/FIC001/report", {})
+        self.validate("/cohorts/{code}/report", own)
+        with self.assertRaises(ValidationError):
+            self.validate("/cohorts/{code}/report", {**own, "canvasSyncDiagnostics": actual["canvasSyncDiagnostics"]})
 
     def test_history_required_fields_and_nullable_are_distinct(self):
         self.publish()

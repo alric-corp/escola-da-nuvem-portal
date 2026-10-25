@@ -167,6 +167,34 @@ const failed = (page) => { const restore = page.waitForEvent("requestfailed", { 
   return async () => { await restore; await page.waitForTimeout(60); await settle(page); }; };
 const active = (page) => page.evaluate(() => { const a = document.activeElement; return a === document.body ? "BODY" : (a.id ? `#${a.id}` : "") + ` ${(a.getAttribute("aria-label") || a.innerText || a.tagName).trim().split("\n")[0]}`; });
 const pageScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+
+test("TODO29: publicações mostram etapas atuais sem alterar a data histórica e sem exigir primeira publicação", async () => {
+  const proof = { status: "failed", scheduledFor: "2026-10-11T09:00:00Z", startedAt: "2026-10-11T09:00:01Z", finishedAt: "2026-10-11T09:00:12Z",
+    stages: { catalog: "failed", roster: "succeeded", grades: "unchanged" } };
+  for (const width of [1440, 390]) {
+    const data = { ...report(), canvasSyncDiagnostics: proof };
+    const { context, page, errors } = await open({ width, data });
+    try {
+      const current = page.locator(".tpub-current");
+      assert.match(await current.innerText(), /Publicação de 10 de outubro de 2026/);
+      assert.match(await current.innerText(), /Catálogo: indisponível; Matrículas: verificadas; Notas: verificadas, sem mudanças/);
+      assert.match(await current.innerText(), /conclusão em 11 de outubro de 2026/);
+      assert.equal(await page.locator(".tpub-entry").count(), HISTORY.length);
+      assert.ok(await pageScroll(page) <= 1);
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  }
+  const empty = { ...report({ history: [] }), canvasSync: { status: "failed", at: proof.finishedAt, message: "Não foi possível concluir a verificação das notas no Canvas." },
+    canvasSyncDiagnostics: { ...proof, stages: { catalog: "succeeded", roster: "failed", grades: "skipped" } } };
+  const { context, page, errors } = await open({ width: 390, data: empty });
+  try {
+    assert.match(await page.locator(".teacher-publications").innerText(), /As atualizações publicadas aparecerão aqui/);
+    assert.match(await page.locator(".teacher-publications").innerText(), /Matrículas: indisponíveis; Notas: não verificadas/);
+    assert.equal(await page.locator(".tpub-current, .tpub-entry").count(), 0);
+    assert.deepEqual(errors, []);
+  } finally { await context.close(); }
+});
+
 // Controles e textos recortados pela janela ou por um ancestral com overflow, e texto cortado dentro do controle.
 const clipped = (page) => page.evaluate(() => {
   const bad = [];

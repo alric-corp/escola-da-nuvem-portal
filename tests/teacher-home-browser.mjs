@@ -116,6 +116,40 @@ const clipped = (page) => page.evaluate(() => {
   return bad;
 });
 const pageScroll = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+
+test("TODO29: painel distingue catálogo indisponível de notas sem mudanças e substitui o diagnóstico na recuperação", async () => {
+  const proof = { status: "failed", scheduledFor: "2026-10-11T09:00:00Z", startedAt: "2026-10-11T09:00:01Z", finishedAt: "2026-10-11T09:00:12Z",
+    stages: { catalog: "failed", roster: "succeeded", grades: "unchanged" } };
+  for (const [width, text, role] of [[1440, 1, "instructor"], [390, 1, "admin"], [320, 2, "instructor"]]) {
+    let data = report(ROSTER, { canvasSyncDiagnostics: proof });
+    const { context, page, errors, control } = await open({ width, text, role, data: () => data });
+    try {
+      const area = page.getByRole("region", { name: "Atualização das notas" });
+      assert.match(await area.innerText(), /Verificação por etapas incompleta/);
+      assert.match(await area.innerText(), /Catálogo: indisponível; Matrículas: verificadas; Notas: verificadas, sem mudanças/);
+      const academic = await area.locator(".sync-times > div").first().innerText();
+      assert.ok(await pageScroll(page) <= 1, `${width}/${text}: sem rolagem horizontal`);
+      data = report(ROSTER, { canvasSyncDiagnostics: { ...proof, status: "succeeded", stages: { catalog: "succeeded", roster: "succeeded", grades: "unchanged" } } });
+      const refresh = area.getByRole("button", { name: "Consultar atualização" });
+      await refresh.focus();
+      const response = page.waitForResponse((r) => r.url().endsWith("/report"));
+      await page.keyboard.press("Enter");
+      await response;
+      await page.getByText(/Etapas da sincronização acadêmica verificadas/).waitFor();
+      assert.doesNotMatch(await area.innerText(), /Catálogo: indisponível|Verificação por etapas incompleta/);
+      assert.equal(await area.locator(".sync-times > div").first().innerText(), academic);
+      data = report(); // Frontend novo com backend anterior.
+      const legacy = page.waitForResponse((r) => r.url().endsWith("/report"));
+      await area.getByRole("button", { name: "Consultar atualização" }).click();
+      await legacy;
+      await page.getByText(/Diagnóstico por etapas não disponível/).waitFor();
+      assert.doesNotMatch(await area.innerText(), /Etapas da sincronização acadêmica verificadas/);
+      assert.equal(control.focusPosts.length, 0);
+      assert.deepEqual(errors, []);
+    } finally { await context.close(); }
+  }
+});
+
 const RING = [0, 203, 221];
 const isRing = (c) => !!c && c.every((v, i) => Math.abs(v - RING[i]) <= 45);
 async function ringOnScreen(page) {
