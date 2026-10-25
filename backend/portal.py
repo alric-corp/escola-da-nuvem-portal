@@ -784,6 +784,8 @@ class Portal:
         request = self.repo.get("REQUESTS", uid)
         require(request is not None and request["email"].rsplit("@", 1)[-1] == self.domain,
                 400, "Selecione uma solicitação institucional existente.")
+        require(request.get("status", "pending") in ("pending", "approved"), 409,
+                "Solicitação recusada ou não elegível para vínculo.")
         old = self.repo.get("USER#" + uid, "TEACH#" + code)
         self.repo.transaction([
             ("USER#" + uid, "TEACH#" + code, {"code": code, "approvedBy": self.uid}, old),

@@ -16,10 +16,10 @@ export function configure(options) {
 let accessRequest = 0;
 let searchRequest = 0;
 
-export async function loadAccess() {
+export async function loadAccess(stillCurrent = () => true) {
   const request = ++accessRequest;
   const code = state.code, owner = state.me;
-  const current = () => request === accessRequest && code === state.code && owner === state.me;
+  const current = () => request === accessRequest && code === state.code && owner === state.me && stillCurrent();
   state.accessLoading = true;
   state.accessError = "";
   state.requests = [];
@@ -78,7 +78,7 @@ export async function searchStudents(query) {
 export async function revokeInstructor(userId, started = () => {}) {
   const code = state.code, owner = state.me;
   const email = state.instructors.find((i) => i.userId === userId)?.email;
-  if (!confirm(`Remover o acesso ${email ? `de ${email}` : "deste instrutor"} à ${code}?\n\nA pessoa deixa de acompanhar a ${code}; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da ${code}, eles param até outro remetente ser configurado.\n\nEsta tela não tem como devolver o acesso depois.`))
+  if (!confirm(`Remover o acesso ${email ? `de ${email}` : "deste instrutor"} à ${code}?\n\nA pessoa deixa de acompanhar a ${code}; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da ${code}, eles param até outro remetente ser configurado.\n\nSe já estiver aprovada no portal, você poderá conceder o vínculo novamente em Instrutores da turma.`))
     return;
   started();
   await api.access.revokeInstructor(code, { userId });
@@ -162,4 +162,29 @@ export async function approveInstructor(userId, code, started = () => {}) {
   if (state.me !== owner) return;
   await loadAccess();
   notice(`Acesso à ${code} concedido a ${request.email}.`);
+}
+
+// Concessão posterior à aprovação inicial: somente uma pessoa já aprovada, ainda
+// sem vínculo na turma selecionada e com as listas carregadas. Recusas não reabrem
+// pedidos; nenhuma concessão acontece como efeito da remoção ou da recarga.
+export async function linkApprovedInstructor(userId, code, started = () => {}) {
+  const owner = state.me, viewing = state.studentView;
+  const current = () => state.me === owner && state.studentView === viewing;
+  const request = state.requests.find((r) => r.userId === userId && r.status === "approved");
+  const cohort = state.cohorts.find((c) => c.code === code);
+  if (!owner?.roles?.includes("admin") || state.studentView || state.accessLoading || state.accessError || code !== state.code
+    || !request || !cohort || state.instructors.some((i) => i.userId === userId)) return false;
+  const label = cohort.name && cohort.name !== cohort.code ? `${cohort.code} — ${cohort.name}` : cohort.code;
+  if (!confirm(`Conceder acesso de instrutor a ${request.email} na turma ${label}?\n\nA pessoa poderá ver as notas dos alunos, publicar e restaurar notas, marcar desistências e enviar lembretes por e-mail nesta turma. Os vínculos com outras turmas e a configuração dos lembretes automáticos não mudam.`)) return false;
+  started();
+  try {
+    await api.access.addInstructor(code, { userId });
+  } catch (err) {
+    if (!current()) return false;
+    throw err;
+  }
+  if (!current()) return true;
+  await loadAccess(current);
+  if (current()) notice(`Acesso à ${code} concedido a ${request.email}.`);
+  return true;
 }

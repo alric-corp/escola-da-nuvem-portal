@@ -157,7 +157,7 @@ async function finish(page, suffix, gate) {
   await quiet(page);
 }
 const writeButtons = (page) => page.evaluate(() => [...document.querySelectorAll(".admin-access button")]
-  .filter((b) => /data-(reject|revoke|unlink|start-edit-name)=/.test(b.outerHTML) || /^(Vincular à turma|Salvar configurações|Criar turma|Salvar)$/.test(b.textContent.trim()))
+  .filter((b) => /data-(reject|revoke|unlink|start-edit-name)=/.test(b.outerHTML) || /^(Vincular à turma|Conceder acesso à turma|Salvar configurações|Criar turma|Salvar)$/.test(b.textContent.trim()))
   .map((b) => ({ text: b.textContent.trim(), disabled: b.disabled, describedby: b.getAttribute("aria-describedby") || "" })));
 // Livre de operação e de carga: parado só com o motivo de Vincular sem turma (Expansão 8.1: escolher a turma; ou não haver turmas),
 // nunca ligado ao andamento nem ao aviso de carregamento.
@@ -301,7 +301,7 @@ test("AB4: remover acesso — a pergunta com a pessoa, a turma e as consequênci
   const { context, page, errors, control } = await open();
   control.confirm = false;
   await page.locator('[data-revoke="u-ana"]').click();
-  assert.deepEqual(control.dialogs, ["Remover o acesso de ana.lima@instituicao.example à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nEsta tela não tem como devolver o acesso depois."]);
+  assert.deepEqual(control.dialogs, ["Remover o acesso de ana.lima@instituicao.example à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nSe já estiver aprovada no portal, você poderá conceder o vínculo novamente em Instrutores da turma."]);
   assert.equal(posts(control, "/revoke-instructor"), 0);
   control.confirm = true;
   for (const [mode, expected] of [["403", "O acesso não foi removido por este pedido. Você não tem acesso a esta operação."],
@@ -914,4 +914,207 @@ test("PR3-B3: busca de alunos com recarga do portal ou troca de turma no meio �
   assert.equal(await page.locator("#student-search-form button").isDisabled(), false, "outra pessoa: Buscar livre");
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+const linkQuestion = (email, label) => `Conceder acesso de instrutor a ${email} na turma ${label}?\n\nA pessoa poderá ver as notas dos alunos, publicar e restaurar notas, marcar desistências e enviar lembretes por e-mail nesta turma. Os vínculos com outras turmas e a configuração dos lembretes automáticos não mudam.`;
+const grant = (page) => page.locator("#approved-instructor-form button[type=submit]");
+async function chooseApproved(page, code = "BRSA0268") {
+  await page.locator("#cohort").selectOption(code);
+  await quiet(page);
+  await page.getByLabel("Instrutor já aprovado", { exact: true }).selectOption("u-ana");
+  await settle(page);
+}
+
+test("TODO28: vínculo adicional e reconcessão são explícitos, sem duplicata ou repetição por clique duplo", async () => {
+  const { context, page, errors, control, holdNext } = await open();
+  assert.equal(await page.locator("#approved-instructor-form").count(), 0, "Ana já vinculada à A não é oferecida de novo");
+  await page.locator("#cohort").selectOption("BRSA0268");
+  await quiet(page);
+  assert.deepEqual(await page.locator("#approved-instructor option").evaluateAll((options) => options.map((o) => o.value)), ["", "u-ana"], "somente aprovada; pendente e recusado não viram concessão posterior");
+  assert.equal(await grant(page).isDisabled(), true);
+  assert.match(await described(page, "#approved-instructor-form button"), /Escolha um instrutor já aprovado/);
+  await page.getByLabel("Instrutor já aprovado", { exact: true }).selectOption("u-ana");
+  await settle(page);
+  await search(page, "li");
+  assert.equal(await page.locator("#approved-instructor").inputValue(), "u-ana", "outra leitura não perde a escolha");
+  control.confirm = false;
+  await grant(page).click();
+  await settle(page);
+  assert.equal(posts(control, "/instructors"), 0, "cancelar não envia");
+  assert.deepEqual(control.dialogs, [linkQuestion(REQUESTS[2].email, T268)]);
+  control.confirm = true;
+  const h = holdNext("approve");
+  await grant(page).click();
+  await h.arrived.promise;
+  await settle(page);
+  assert.equal(await text(page.locator("#aa-op-status")), `Vinculando ${REQUESTS[2].email} à BRSA0268…`);
+  assert.match(await active(page), /^p#aa-op-status/);
+  assert.ok((await writeButtons(page)).every((b) => b.disabled), "escritas ficam paradas enquanto aguarda a resposta");
+  // Envio sintético defensivo do mesmo formulário, apesar do botão disabled: a barreira não depende apenas do DOM.
+  await page.locator("#approved-instructor-form").evaluate((f) => f.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await settle(page);
+  assert.equal(posts(control, "/instructors"), 1);
+  await finish(page, "/cohorts/BRSA0268/instructors", h.gate);
+  assert.deepEqual(await notices(page), [`Acesso à BRSA0268 concedido a ${REQUESTS[2].email}.`]);
+  assert.deepEqual(control.bodies.filter((r) => r.endpoint.endsWith("/instructors")), [{ endpoint: "/cohorts/BRSA0268/instructors", body: { userId: "u-ana" } }]);
+  assert.equal(await page.locator("#approved-instructor-form").count(), 0, "a lista recarregada não permite duplicar");
+  assert.match(await active(page), /^h3#aa-instructors-title/);
+  assert.deepEqual(control.instructors.BRSA0267.map((i) => i.userId), ["u-ana", "u-joao"], "vínculo com A preservado");
+  await closeNotice(page);
+  // Remover não concede nada de novo; só uma nova escolha e confirmação podem restabelecer o vínculo.
+  const revoked = done(page, "/revoke-instructor");
+  await page.locator('[data-revoke="u-ana"]').click();
+  await revoked; await quiet(page);
+  assert.equal(await page.locator("#approved-instructor").inputValue(), "");
+  assert.equal(await grant(page).isDisabled(), true);
+  assert.equal(posts(control, "/instructors"), 1);
+  await closeNotice(page);
+  await page.getByLabel("Instrutor já aprovado", { exact: true }).selectOption("u-ana");
+  await settle(page);
+  const regranted = done(page, "/cohorts/BRSA0268/instructors");
+  await grant(page).click();
+  await regranted; await quiet(page);
+  assert.equal(posts(control, "/instructors"), 2);
+  assert.equal(control.dialogs.filter((d) => d === linkQuestion(REQUESTS[2].email, T268)).length, 3, "cancelamento, concessão e reconcessão têm confirmação própria");
+  assert.equal(control.instructors.BRSA0268.filter((i) => i.userId === "u-ana").length, 1);
+  assert.equal(control.requests.filter((r) => /settings|sender|reminder/.test(r)).length, 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test("TODO28: recusa, conflito e resposta incerta preservam pessoa/turma; atualizar a lista nunca repete a concessão", async () => {
+  for (const mode of ["403", "409", "503", "network", "lost"]) {
+    const { context, page, errors, control } = await open();
+    await chooseApproved(page);
+    control.modes.approve = mode;
+    const answered = done(page, "/cohorts/BRSA0268/instructors");
+    await grant(page).click();
+    await answered; await quiet(page);
+    const unsure = ["503", "network", "lost"].includes(mode);
+    assert.match(await text(page.locator("#aa-op-status")), unsure
+      ? /Não foi possível confirmar o vínculo de ana\.lima@instituicao\.example à BRSA0268/
+      : /O vínculo de ana\.lima@instituicao\.example à BRSA0268 não foi feito/, mode);
+    assert.equal(await page.locator("#aa-op-status").getAttribute("role"), "alert");
+    assert.equal(await page.locator("#approved-instructor").inputValue(), "u-ana", "falha não troca pessoa nem turma escolhida");
+    assert.equal(posts(control, "/instructors"), 1);
+    assert.deepEqual(await notices(page), []);
+    assert.equal(await page.locator("#aa-op-retry").count(), mode === "403" ? 0 : 1);
+    if (mode !== "403") {
+      const refreshed = done(page, "/requests");
+      await page.locator("#aa-op-retry").click();
+      await refreshed; await quiet(page);
+      assert.equal(posts(control, "/instructors"), 1, `${mode}: consulta segura, sem repetir POST`);
+      assert.equal(await page.locator("#aa-op-status").count(), 0);
+      assert.equal(await page.locator("#approved-instructor-form").count(), mode === "lost" ? 0 : 1, "resposta perdida é reconciliada pela lista atual");
+      assert.match(await active(page), /^h3#aa-instructors-title/);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+test("TODO28: concessão iniciada em B não muda a lista de A nem empresta sua escolha à outra sessão", async () => {
+  const { context, page, errors, control, holdNext } = await open();
+  await chooseApproved(page);
+  const h = holdNext("approve");
+  await grant(page).click();
+  await h.arrived.promise;
+  await page.locator("#cohort").selectOption("BRSA0267");
+  await quiet(page);
+  assert.equal(await page.locator("#aa-op-status").count(), 0);
+  assert.deepEqual(await page.locator(".aa-instructors .aa-email").allInnerTexts(), [REQUESTS[2].email, "joao.paz@instituicao.example"]);
+  await finish(page, "/cohorts/BRSA0268/instructors", h.gate);
+  assert.deepEqual(await page.locator(".aa-instructors .aa-email").allInnerTexts(), [REQUESTS[2].email, "joao.paz@instituicao.example"]);
+  assert.deepEqual(await notices(page), [`Acesso à BRSA0268 concedido a ${REQUESTS[2].email}.`]);
+  assert.equal(posts(control, "/instructors"), 1);
+  await context.close();
+  // Injeção somente no fixture: reproduz a troca de identidade no mesmo documento enquanto o POST está em voo.
+  // A volta ao mesmo e-mail usa outro objeto de sessão, não pode reutilizar seleção/erro/recarga anteriores (A→B→A).
+  for (const mode of ["ok", "503"]) {
+    const next = await open();
+    await chooseApproved(next.page);
+    next.control.modes.approve = mode;
+    const pending = next.holdNext("approve");
+    await grant(next.page).click();
+    await pending.arrived.promise;
+    const before = next.control.requests.length;
+    await next.page.evaluate(async () => {
+      const { state } = await import("/state.js");
+      const previous = state.me;
+      state.me = { email: "outra.admin@example.test", roles: ["admin"] };
+      state.me = { ...previous };
+      document.getElementById("requests-filter").dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    assert.equal(await next.page.locator("#aa-op-status").count(), 0, "andamento pertence à sessão anterior");
+    if (mode !== "ok") {
+      assert.equal(await next.page.locator("#approved-instructor").inputValue(), "", "outra sessão começa sem a escolha anterior");
+      assert.equal(await grant(next.page).isDisabled(), true);
+    }
+    await finish(next.page, "/cohorts/BRSA0268/instructors", pending.gate);
+    assert.equal(next.control.requests.length, before, "resposta antiga não recarrega a lista da nova sessão");
+    assert.deepEqual(await notices(next.page), [], "sem sucesso ou erro emprestado à outra sessão");
+    assert.equal(await next.page.locator("#aa-op-status").count(), 0);
+    assert.deepEqual(next.errors, []);
+    await next.context.close();
+  }
+  assert.deepEqual(errors, []);
+});
+
+test("TODO28: formulário de vínculo posterior permanece legível e operável por teclado em desktop e 320px com texto 200%", async () => {
+  for (const [width, textSize] of [[1440, 1], [320, 2]]) {
+    const { context, page, errors, control } = await open({ width, text: textSize, long: true });
+    await page.locator("#cohort").selectOption("BRSA0268");
+    await quiet(page);
+    const field = page.getByLabel("Instrutor já aprovado", { exact: true });
+    await field.focus();
+    await field.press("ArrowDown");
+    await field.press("Enter");
+    await settle(page);
+    // selectOption modela a seleção nativa nos ambientes em que ArrowDown abre a popup sem confirmar automaticamente.
+    if (await page.locator("#approved-instructor").inputValue() !== "u-ana") await page.locator("#approved-instructor").selectOption("u-ana");
+    await settle(page);
+    await page.locator("#approved-instructor").focus();
+    await page.keyboard.press("Tab");
+    assert.match(await active(page), /^button Conceder acesso à turma$/);
+    assert.deepEqual(await ringAround(page, "#approved-instructor-form button"), [], "foco ciano inteiro visível");
+    assert.equal(await pageScroll(page), 0);
+    assert.deepEqual(await clipped(page), []);
+    control.confirm = false;
+    await page.keyboard.press("Enter");
+    await settle(page);
+    assert.equal(posts(control, "/instructors"), 0);
+    assert.deepEqual(control.dialogs, [linkQuestion(longEmail(REQUESTS[2].email), `${T268}${LONG}`)]);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+test("TODO28 modo aluno: conceder em andamento não recarrega acessos nem mostra resultado administrativo na visualização", async () => {
+  for (const mode of ["ok", "503"]) {
+    const { context, page, errors, control, holdNext } = await open({ cohorts: [COHORTS[0], { ...COHORTS[1], current: "pub-268" }] });
+    await context.route("**/api/cohorts/BRSA0268/student-view", (route) => route.fulfill({ json: {
+      cohort: "BRSA0268", publication: { id: "pub-268", publishedAt: "2026-10-13T14:00:00Z" },
+      updatedAt: "2026-10-13T14:00:00Z", thresholds: { kc: 70, lab: 95 }, history: [],
+      student: { id: "31000", name: "Lia Mota", kc: null, lab: null, total: null, progress: 0, pending: 0, completed: 0, status: "attention", activities: [] },
+      viewAs: { studentId: "31000", name: "Lia Mota" },
+    } }));
+    await chooseApproved(page);
+    await search(page, "li");
+    control.modes.approve = mode;
+    const h = holdNext("approve");
+    await grant(page).click();
+    await h.arrived.promise;
+    await page.locator('[data-view-as-student="31000"]').click();
+    await until(page, () => !!document.querySelector(".student-view-banner") && !document.querySelector(".student-home.is-loading"));
+    assert.match(await text(page.locator("main")), /Lia/);
+    assert.equal(await page.locator(".admin-access").count(), 0);
+    const requests = control.requests.length, main = await text(page.locator("main"));
+    await finish(page, "/cohorts/BRSA0268/instructors", h.gate);
+    assert.equal(control.requests.length, requests, `${mode}: nenhuma recarga administrativa depois da mudança de modo`);
+    assert.deepEqual(await notices(page), [], `${mode}: nem sucesso nem erro administrativo aparece ao visualizar aluno`);
+    assert.equal(await text(page.locator("main")), main, "a resposta não troca a tela nem rouba o foco/contexto do aluno");
+    assert.equal(posts(control, "/instructors"), 1, "a operação recebida no servidor não é desfeita nem repetida");
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
