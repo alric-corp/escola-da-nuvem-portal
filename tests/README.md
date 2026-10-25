@@ -1,6 +1,6 @@
 # Testes
 
-Índice das suítes do portal: o que cada uma cobre, como rodar e onde roda na CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). Nenhuma suíte automatizada acessa a AWS real. As únicas exceções são as verificações manuais `live_*` ([abaixo](#verificações-manuais-contra-o-ambiente-publicado)).
+Índice das suítes do portal: o que cada uma cobre, como rodar e onde roda na CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)). Nenhuma suíte automatizada acessa a AWS real. Os scripts de verificação manual `live_*` podem acessar o ambiente real somente quando executados explicitamente ([abaixo](#verificações-manuais-contra-o-ambiente-publicado)).
 
 Os comandos rodam a partir da raiz do repositório.
 
@@ -48,6 +48,7 @@ As suítes de navegador medem layout com as fontes do sistema. A evidência verd
 | Regras puras | `canvas-links.mjs` (links do Canvas anotados pelo backend), `student-journey.mjs` (módulos, revisão e próximos passos), `participation.mjs` (participação na turma, C7.2.3) |
 | Concorrência e lifecycle | `stale-responses.mjs` (C7.4, respostas assíncronas obsoletas), `feedback-lifecycle.mjs` (C7.5, Feedback e rascunhos de importação) |
 | Telas renderizadas como texto | `student-feedback.mjs`, `student-feedback-outcomes.mjs`, `teacher-home.mjs`, `teacher-publications.mjs`, `teacher-import.mjs`, `teacher-reminders.mjs`, `admin-access-page.mjs`, `admin-feedback-page.mjs`, `c1-reliability.mjs`, `c2-robustness.mjs` |
+| Kit de QA manual | `live-qa.mjs`: helpers do smoke com API/fetch fictícios, configuração da release ativa, recusas de contrato e imports sem efeitos |
 | Pipeline de deploy do frontend e configuração do CI | `release-pipeline.mjs` (invariantes do workflow `deploy-frontend.yml`, das composite actions e dos scripts de release; config relativa ao módulo, D1; ruleset; timeouts e instalação do Chromium; Python 3.13 dos testes e Python 3.12 isolado de deploy; P-SC1: instalação com hashes antes do OIDC, sem reinstalação depois das credenciais) |
 
 ## Navegador (`npm run test:browser`)
@@ -103,6 +104,7 @@ As mutações do frontend precisam do `npm ci` e do Chromium do Playwright.
 | `test_manual_recovery.py` | Recuperação pelo alias protegido, com DynamoDB/S3 Moto e SES fictício |
 | `test_ses.py` | Contrato do SES com o Stubber do botocore, sem enviar e-mail |
 | `test_hygiene.py` | Higiene do backend (C7.6): compilação sem avisos e `Content-Disposition` |
+| `test_live_qa.py` | Kit manual em Moto/fakes: contexto sintético, escopo da limpeza, referências derivadas, paginação, CAS, falha parcial e retomada; não executa AWS real |
 | `test_frontend_release_package.py` | Releases do frontend: build determinístico, id, manifesto SHA-256, grafo de imports, MIME, config por release, ponteiro, baseline C7.3 e CLIs num clone temporário |
 | `test_frontend_release_s3.py` | Publicação com `If-None-Match`, ativação com `If-Match`, corrida, upload parcial, falhas antes e depois do `index.html` e rollback, em S3/CloudFront Moto |
 | `test_frontend_release_gate.py` | Gates do workflow (deploy push/main somente com PR integrado, CI4/4 e árvore testada equivalente, main, SHA, CI, environment restrito à main, variables, chaves estáticas, outputs do gate), claims OIDC sem expor o token e a sonda S3 |
@@ -121,10 +123,34 @@ Ao final do job Backend, a CI também instala o lock real com a mesma composite 
 
 ## Verificações manuais contra o ambiente publicado
 
-Não fazem parte de `npm test`, `npm run test:browser` nem da CI. **Acessam o ambiente de produção: só executar com autorização explícita**, conforme [infra/DEPLOYMENT.md](../infra/DEPLOYMENT.md).
+Os scripts `live_*` **não** fazem parte de `npm test`, `npm run test:browser` nem são executados pela CI. Importá-los também não abre navegador ou faz consultas. `live-qa.mjs` e `integration/test_live_qa.py` são regressões locais do kit com dados fictícios/fakes/Moto, incluídas nas suítes normais; não representam QA autenticado produtivo.
 
-| Arquivo | O que faz |
-| --- | --- |
-| `live_readiness.mjs` | Verificação pública pós-deploy, somente leitura; não usa credenciais nem contas de aluno |
-| `live_accounts.py` | Contas efêmeras para o smoke real, com envio de e-mail suprimido; cria recursos temporários |
-| `live_browser.mjs` | Smoke no navegador contra o deploy real, só com contas sintéticas; cria recursos temporários |
+### Leitura pública ou com identidades já autorizadas
+
+Só executar contra produção com autorização explícita. Não obter credenciais, criar contas ou entrar em reuniões/formulários para realizar a conferência.
+
+- `node tests/live_readiness.mjs /caminho/outputs.json`: leitura pública, sem login ou POSTs. Resolve o ponteiro ativo, lê o manifesto e compara a **configuração da release moderna** com os outputs provisionados, conferindo o hash do asset. Baseline/legado usam a configuração da raiz conforme seu contrato. Registra Release ID, source SHA e caminho efetivamente conferido; não publica, invalida ou altera recursos.
+- Para QA autenticado, usar identidades previamente autorizadas e **já vinculadas** à turma. Confirmar isso antes de abrir o portal: `GET /report` no primeiro acesso pode criar `OWNER#/STUDY#`; o login também emite tokens no Cognito. Se essa condição não estiver estabelecida, solicitar a execução apropriada ao operador, sem chamar o fluxo de somente leitura.
+- Após login, conferir Meu desempenho/Minhas atividades/Meu histórico/Guia no perfil aluno; Painel do instrutor/Publicações da turma no instrutor; Turmas e acessos/Feedbacks no admin. Aluno deve receber **403** em `class-report` e somente seus dados em `report`. Não usar os antigos controles “Notas da turma” ou “Minha visibilidade”. Não abrir feedbacks nem “Visualizar como aluno” para alegar leitura sem efeitos: esses fluxos podem registrar leitura/auditoria.
+- Não importar/publicar/restaurar notas, alterar acessos/participação, enviar feedback ou lembretes nesse roteiro. Não registrar dados pessoais, tokens ou cookies nas evidências.
+- Registrar data, ambiente, release/source SHA e evidência independente da versão/backend integrado quando disponível. Os scripts deixam `backendVersion: null`: sucesso do frontend não identifica o ZIP/versão da Lambda. Informar “backend não verificado” sem essa leitura. Mocks, smoke sintético e relato histórico não encerram QA autenticado real.
+
+### Smoke que cria dados sintéticos
+
+`live_accounts.py setup` e `live_browser.mjs` **criam/modificam recursos**. O smoke cria quatro contas efêmeras, turma `SMOKE-<run>`, publicações CSV e vínculos; testa aprovação/revogação e restauração apenas nesse contexto. Não é um roteiro para contas reais nem teste da integração Canvas. A autorização precisa cobrir setup, smoke e cleanup; nenhum deles é automático no merge/deploy.
+
+Com os outputs existentes e uma janela autorizada, os comandos são:
+
+```sh
+python tests/live_accounts.py setup --outputs /caminho/outputs.json --context /tmp/portal-smoke.json --account-id CONTA_CONFIRMADA
+node tests/live_browser.mjs /tmp/portal-smoke.json
+python tests/live_accounts.py cleanup --context /tmp/portal-smoke.json --account-id CONTA_CONFIRMADA
+```
+
+O contexto contém senhas e deve ficar fora do Git, em arquivo 0600. `SUPPRESS` evita mensagens de criação de conta; o smoke não chama o envio de lembretes. Pare o navegador/smoke antes do cleanup. Em caso de erro, preserve o contexto para diagnóstico e retomada; não iniciar outro setup sobre ele.
+
+A limpeza valida **todos** os nomes/subs/Cognito e o contexto antes das exclusões. Consulta somente partições das identidades/turma sintéticas, a entrada exata em `COHORT_DIRECTORY` e os candidatos `DISCOVERY_EMAIL#<hash>/COHORT#<turma sintética>` dos atores. Preserva `DERIVED_ACCESS`, revisões globais, candidatos de outras turmas e dados canônicos reais. Usa exclusões condicionais ao conteúdo lido; dado alterado ou fora do escopo interrompe a operação. No Cognito, preserva o `sub` original do setup, persiste o `Username` canônico e o revalida imediatamente antes de excluir; nunca exclui pelo alias de e-mail. Conta substituída ou contexto sem a identidade original exige diagnóstico, preservando o contexto. Não faz Scan, backfill ou cutover.
+
+Objetos e versões são removidos somente do prefixo `cohorts/<turma sintética>/`. Falha parcial mantém o contexto; repetir cleanup relê e reconcilia os alvos restantes, sem depender de cursor antigo. Não apagar o contexto manualmente para esconder uma falha. O arquivo só é removido após sucesso completo. Dados inesperados exigem diagnóstico, não ampliação automática da limpeza.
+
+O resultado sintético fica em `infra/terraform/.build/live-smoke-results.json` (ignorado pelo Git), com release/source SHA e limites da evidência. Não apresentar o sucesso desses scripts como implantação do backend, QA de usuários reais ou comprovação de permissões Canvas.
