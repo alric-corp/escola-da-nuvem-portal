@@ -1,4 +1,4 @@
-import { canvasSyncHours, current, e, formatOperationalDate, heading, instant, labels, nextCanvasSync, percent, percentStudent, plural, teacher, timeZoneLabel, updateInfo } from "../ui.js";
+import { canvasSyncHours, current, e, formatOperationalDate, heading, instant, labels, nextCanvasSync, percent, percentStudent, plural, syncDiagnostics, teacher, timeZoneLabel, updateInfo } from "../ui.js";
 import { state } from "../state.js";
 
 export function historyPage(view = {}) {
@@ -32,7 +32,7 @@ function publicationsPage(view) {
   if (!r?.publication) {
     return teacherPublicationsState(`${publicationsHeading()}<div class="tpub-empty"><p>As atualizações publicadas aparecerão aqui.</p><p>${syncs()
       ? `A primeira chega pela sincronização com o Canvas (próxima verificação: ${nextCanvasSync()}) ou por um CSV publicado em Atualizar notas.`
-      : "Publique o CSV do Canvas em Atualizar notas para criar a primeira."}</p></div>`);
+      : "Publique o CSV do Canvas em Atualizar notas para criar a primeira."}</p></div>${r?.canvasSyncDiagnostics ? syncInfo(r) : ""}`);
   }
   return teacherPublicationsState(`${publicationsHeading()}${inForce(r, rows, view)}${rows.length ? publicationHistory(r, rows, view) : ""}`);
 }
@@ -66,7 +66,7 @@ function syncInfo(r) {
   const body = current()?.autoSync
     ? `<p>Atualizado automaticamente do Canvas às ${canvasSyncHours.map((h) => `${h}h`).join(" e às ")} (horário de Brasília).</p><dl class="tpub-sync-times">${sync?.at
       ? `<div><dt>Última verificação</dt><dd>${dateTime(sync.at)}${sync.status === "unchanged" ? " · sem mudanças" : ""}</dd></div>` : ""}<div><dt>Próxima verificação</dt><dd>${nextCanvasSync()}</dd></div></dl>${sync?.status === "failed"
-      ? `<p class="tpub-sync-failed" role="status">A atualização automática pelo Canvas falhou em ${dateTime(sync.at)}: ${e(sync.message)} As notas exibidas são da última publicação bem-sucedida.</p>` : ""}`
+      ? `<p class="tpub-sync-failed" role="status">A atualização automática pelo Canvas falhou em ${dateTime(sync.at)}: ${e(sync.message)}${r.publication ? " As notas exibidas são da última publicação bem-sucedida." : ""}</p>` : ""}${syncDiagnostics(r, dateTime)}`
     : "<p>Esta turma não tem atualização automática pelo Canvas: as notas mudam quando um CSV é publicado em Atualizar notas.</p>";
   return `<div class="tpub-sync">${body}<button type="button" class="text-link tpub-refresh" data-action="refresh-report">Consultar atualização</button></div>`;
 }

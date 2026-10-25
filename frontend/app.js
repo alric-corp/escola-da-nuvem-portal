@@ -922,24 +922,27 @@ let accessFailure = null;
 // sozinha à primeira turma — uma nova tentativa, depois de uma falha, iria para a turma errada. Expansão 8.1: sem escolha, o
 // seletor fica em "Selecione uma turma" e Vincular, parado; outra pessoa na aba começa sem escolhas.
 let approvePicks = { owner: null, picks: {} };
+// A escolha do vínculo posterior pertence à sessão e à turma, não ao pedido pendente.
+let instructorPick = { owner: null, code: "", userId: "" };
 // Vincular só sai (Expansão 8.1) com a turma escolhida neste pedido (não um valor trocado sem escolher), pela pessoa da sessão,
 // sem outra operação em andamento — o botão parado não é a única proteção. O handler confere o pedido pendente e a turma da
 // lista atual e pergunta com esses mesmos identificadores, que vão no pedido.
 const approvable = (userId, code) => !accessBusy && approvePicks.owner === state.me?.email && approvePicks.picks[userId] === code;
 // Operações da turma selecionada (as outras valem para o portal inteiro): o andamento e o erro delas só aparecem na turma em que
 // começaram — a mesma pessoa pode acompanhar as duas turmas, e a linha dela na outra turma não é o alvo.
-const COHORT_OPS = ["revoke", "unlink", "rename", "settings"];
-const accessList = (kind) => ({ approve: state.requests, reject: state.requests, revoke: state.instructors, unlink: state.studentResults, rename: state.studentResults,
+const COHORT_OPS = ["revoke", "unlink", "rename", "settings", "link"];
+const accessList = (kind) => ({ approve: state.requests, reject: state.requests, revoke: state.instructors, link: state.instructors, unlink: state.studentResults, rename: state.studentResults,
   settings: state.cohorts.find((c) => c.code === state.code), create: state.cohorts })[kind];
 function accessView() {
-  const mine = (op) => !!op && op.owner === state.me?.email && (!COHORT_OPS.includes(op.kind) || op.code === state.code);
+  const mine = (op) => !!op && op.owner === state.me?.email && (op.kind !== "link" || (op.person === state.me && op.viewing === state.studentView)) && (!COHORT_OPS.includes(op.kind) || op.code === state.code);
   return { busy: mine(accessBusy) ? accessBusy : null, failure: mine(accessFailure) && accessFailure.list === accessList(accessFailure.kind) ? accessFailure : null,
-    picks: approvePicks.owner === state.me?.email ? approvePicks.picks : {} };
+    picks: approvePicks.owner === state.me?.email ? approvePicks.picks : {},
+    instructorPick: instructorPick.owner === state.me && instructorPick.code === state.code ? instructorPick.userId : "" };
 }
 const accessError = (err) => ({ unsure: !!err.network || err.status >= 500, stale: err.status === 404 || err.status === 409,
   message: err.network ? "A conexão com o portal falhou." : err.message || "Não foi possível concluir a operação." });
 async function accessOperation(op, run, focusTo) {
-  const mine = { ...op, owner: state.me?.email, code: state.code };
+  const mine = { ...op, owner: state.me?.email, person: state.me, viewing: state.studentView, code: state.code };
   let started = false, failure = null;
   try {
     await run(() => { started = true; accessFailure = null; accessBusy = mine; ownFocus(); render(); restoreFocus("#aa-op-status"); });
@@ -948,8 +951,9 @@ async function accessOperation(op, run, focusTo) {
   }
   if (accessBusy === mine) accessBusy = null;
   // Sessão encerrada, ou recusado antes do pedido (ex.: nome vazio): o aviso de sempre. Cancelado: nada.
+  if (op.kind === "link" && state.studentView !== mine.viewing) return;
   if (failure && (!state.me || !started)) throw failure;
-  if (!started || state.me?.email !== mine.owner) return;
+  if (!started || state.me?.email !== mine.owner || (op.kind === "link" && state.me !== mine.person)) return;
   const here = state.view === "access" && (!COHORT_OPS.includes(op.kind) || state.code === mine.code);
   if (failure && !here) throw failure;
   if (failure) accessFailure = { ...mine, list: accessList(op.kind), ...accessError(failure) };
@@ -1370,6 +1374,10 @@ document.addEventListener("change", (event) => {
   if (target.id === "requests-filter") {
     accessHandlers.setRequestsFilter(target.value);
   }
+  if (target.id === "approved-instructor") {
+    instructorPick = { owner: state.me, code: state.code, userId: target.value };
+    render();
+  }
   if (target.name === "cohort" && target.closest(".approve-form")) {
     if (approvePicks.owner !== state.me?.email) approvePicks = { owner: state.me?.email, picks: {} };
     // A escolha é deste pedido; "Selecione uma turma" a desfaz. O render libera ou para Vincular (o foco volta ao seletor).
@@ -1461,6 +1469,15 @@ document.addEventListener("submit", (event) => {
       } else if (form.dataset.editNameForm) {
         const canvasId = form.dataset.editNameForm;
         await accessOperation({ kind: "rename", target: canvasId }, (started) => accessHandlers.saveDisplayName(form, started), "#aa-students-count");
+      } else if (form.id === "approved-instructor-form") {
+        const userId = String(new FormData(form).get("userId") || ""), code = form.dataset.cohort;
+        const pick = instructorPick;
+        if (accessView().busy || pick.owner !== state.me || pick.code !== state.code || pick.code !== code || pick.userId !== userId) return;
+        const request = state.requests.find((r) => r.userId === userId);
+        await accessOperation({ kind: "link", target: userId, cohort: code, email: request?.email || "" }, async (started) => {
+          const linked = await accessHandlers.linkApprovedInstructor(userId, code, started);
+          if (linked && instructorPick === pick) instructorPick = { owner: null, code: "", userId: "" };
+        }, "#aa-instructors-title");
       } else if (form.classList.contains("approve-form")) {
         const userId = form.dataset.user, cohort = String(new FormData(form).get("cohort") || "");
         if (!approvable(userId, cohort)) return;

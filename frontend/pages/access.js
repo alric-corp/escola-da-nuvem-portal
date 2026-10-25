@@ -37,6 +37,9 @@ const emailOf = (list, key, id) => list.find((x) => x[key] === id)?.email || "";
 const nameOf = (id) => (state.studentResults || []).find((s) => s.id === id)?.name || `Canvas ID ${id}`;
 const OPS = {
   approve: { busy: (op) => `Vinculando ${emailOf(state.requests, "userId", op.target)} à ${op.cohort}…`, refused: "O vínculo não foi feito.", unsure: "Não foi possível confirmar o vínculo.", retry: RETRY.list },
+  link: { busy: (op) => `Vinculando ${op.email} à ${op.cohort}…`,
+    refused: (op) => `O vínculo de ${op.email} à ${op.cohort} não foi feito.`,
+    unsure: (op) => `Não foi possível confirmar o vínculo de ${op.email} à ${op.cohort}.`, retry: RETRY.list },
   reject: { busy: (op) => `Recusando a solicitação de ${emailOf(state.requests, "userId", op.target)}…`, refused: "A solicitação não foi recusada.", unsure: "Não foi possível confirmar a recusa.", retry: RETRY.list },
   revoke: { busy: (op) => `Removendo o acesso de ${emailOf(state.instructors, "userId", op.target)} à ${state.code}…`, refused: "O acesso não foi removido por este pedido.",
     unsure: "Não foi possível confirmar a remoção do acesso.", retry: RETRY.list },
@@ -51,7 +54,8 @@ function opStatus(view, kind, target) {
   const text = OPS[kind];
   if (view.busy) return `<p class="aa-op is-busy" id="${OP}" role="status" tabindex="-1">${e(text.busy(op))}</p>`;
   const f = view.failure, [button, guide] = text.retry;
-  return `<div class="aa-op is-error" id="${OP}" role="alert" tabindex="-1"><p><strong>${f.unsure ? text.unsure : text.refused}</strong> <span>${e(f.message)}</span>${f.unsure ? ` <span>${guide}</span>` : ""}</p>${f.unsure || f.stale ? button : ""}</div>`;
+  const lead = f.unsure ? text.unsure : text.refused;
+  return `<div class="aa-op is-error" id="${OP}" role="alert" tabindex="-1"><p><strong>${e(typeof lead === "function" ? lead(op) : lead)}</strong> <span>${e(f.message)}</span>${f.unsure ? ` <span>${guide}</span>` : ""}</p>${f.unsure || f.stale ? button : ""}</div>`;
 }
 
 function requestRow(r, view, noCohortsReason) {
@@ -91,7 +95,14 @@ function instructorsSection(view) {
       : state.instructors.length
         ? `<ul class="aa-list aa-instructor-list">${state.instructors.map((i) => `<li class="aa-row"><div class="aa-who"><strong class="aa-email" id="aa-ins-${e(i.userId)}">${e(i.email)}</strong><span class="aa-role">Acompanha a ${e(i.code)}</span></div><div class="aa-actions"><button class="button aa-danger" data-revoke="${e(i.userId)}"${writeAttrs(view, `aa-ins-${i.userId}`)}>Remover acesso</button></div>${opStatus(view, "revoke", i.userId)}</li>`).join("")}</ul>`
         : `<p class="aa-empty">Nenhum instrutor vinculado à ${e(state.code)}. Administradores têm acesso a todas as turmas.</p>`;
-  return `<section class="aa-sub aa-instructors" aria-labelledby="aa-instructors-title"><h3 id="aa-instructors-title" tabindex="-1">Instrutores da ${e(state.code)}</h3><p class="aa-note aa-instructors-note">Quem acompanha esta turma pelo vínculo de instrutor. Administradores acessam todas as turmas sem precisar de vínculo.</p>${body}</section>`;
+  const ready = !state.accessLoading && !state.accessError;
+  const candidates = ready ? state.requests.filter((r) => r.status === "approved" && !state.instructors.some((i) => i.userId === r.userId)) : [];
+  const selected = candidates.some((r) => r.userId === view.instructorPick) ? view.instructorPick : "";
+  const reason = selected ? "" : '<p class="aa-reason" id="aa-pick-approved-instructor">Escolha um instrutor já aprovado para conceder acesso a esta turma.</p>';
+  const link = candidates.length ? `<form id="approved-instructor-form" class="aa-form aa-approved-link" data-cohort="${e(state.code)}"><label for="approved-instructor">Instrutor já aprovado</label><select id="approved-instructor" name="userId" required${fieldAttrs()}><option value=""${selected ? "" : " selected"}>Selecione um instrutor</option>${candidates.map((r) => `<option value="${e(r.userId)}"${selected === r.userId ? " selected" : ""}>${e(r.email)}</option>`).join("")}</select>${reason}<div class="aa-actions"><button class="button secondary" type="submit"${writeAttrs(view, selected ? "aa-instructors-title" : "aa-pick-approved-instructor").replace(/ disabled$/, "")}${view.busy || !selected ? " disabled" : ""}>Conceder acesso à turma</button></div></form>` : "";
+  const operation = view.busy || view.failure;
+  const status = operation?.kind === "link" ? opStatus(view, "link", operation.target) : "";
+  return `<section class="aa-sub aa-instructors" aria-labelledby="aa-instructors-title"><h3 id="aa-instructors-title" tabindex="-1">Instrutores da ${e(state.code)}</h3><p class="aa-note aa-instructors-note">Quem acompanha esta turma pelo vínculo de instrutor. Administradores acessam todas as turmas sem precisar de vínculo. Pessoas já aprovadas podem receber acesso a outras turmas ou ter um vínculo removido concedido novamente.</p>${body}${link}${status}</section>`;
 }
 
 function studentRow(s, view) {

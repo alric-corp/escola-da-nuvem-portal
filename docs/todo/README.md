@@ -12,14 +12,26 @@ implementação. Propostas fora do planejamento atual ficam em
 | ID | Item | Estado |
 | --- | --- | --- |
 | 20 | [Domínio próprio](20-dominio-proprio.md) | Pendente / dependência externa |
-| 28 | [Vínculos adicionais de instrutores](28-vinculos-adicionais-de-instrutores.md) | Lacuna de jornada: aprovado sem ação para outra turma ou devolução de acesso |
-| 29 | [Diagnóstico da sincronização por etapa](29-diagnostico-da-sincronizacao-por-etapa.md) | Notas sem mudanças podem ocultar a falha auxiliar na apresentação do relatório |
-| 30 | [QA manual e limpeza](30-atualizar-qa-manual-e-limpeza.md) | Roteiros antigos precisam acompanhar os perfis, releases e projeções atuais |
+| 31 | [Programa da turma e Guia por curso](31-programa-da-turma-e-guia-por-curso.md) | Proposta registrada: associação explícita re/Start 1/2 e conteúdo por turma |
+| 32 | [Ritmo do curso para instrutor](32-ritmo-do-curso-para-instrutor.md) | Proposta registrada: definir fonte e validar a fórmula antes de implementar |
 
 Não renumerar itens históricos: os números registram a origem do roadmap.
 Ao concluir um item, mover o mesmo arquivo para `concluido/`, preservando
 seu número e nome. Prioridades e esforços dos documentos existentes são
 os registros históricos de abertura.
+
+## Entrega dos TODOs 28–30 em revisão
+
+| ID | Escopo implementado nesta branch | Pendência preservada |
+| --- | --- | --- |
+| [28 — Vínculos adicionais](concluido/28-vinculos-adicionais-de-instrutores.md) | Concessão/reconcessão explícita para aprovado; recusa backend antes da transação | Integração do PR e implantação da guarda backend |
+| [29 — Diagnóstico por etapa](concluido/29-diagnostico-da-sincronizacao-por-etapa.md) | Resumo sanitizado no relatório docente e área de atualização; contrato aditivo | Integração e implantação separada de API/canvas-sync |
+| [30 — QA manual e limpeza](concluido/30-atualizar-qa-manual-e-limpeza.md) | Kit atual, configuração da release ativa e limpeza sintética delimitada | Integração do kit; QA autenticado real continua não executado |
+
+Os arquivos ficam em `concluido/` pelo escopo de desenvolvimento. Isso não
+declara merge, implantação, migração ou execução produtiva. Os novos itens
+31/32 registram somente propostas, sem implementar a identificação do programa
+ou o acompanhamento de ritmo nesta entrega.
 
 ## Levantamento de fluxo — 23/10/2026
 
@@ -38,11 +50,12 @@ Ordem sugerida no levantamento inicial: corrigir 26/27 juntos, completar a
 jornada 28 e melhorar o diagnóstico 29. A atualização local do kit 30 pode avançar em paralelo; o QA
 autenticado continua dependendo de identidades e execução autorizadas.
 
-**Evolução nesta branch:** o titular substituiu a correção do 26 pela
+**Evolução da entrega do PR #18:** o titular substituiu a correção do 26 pela
 [remoção do Foco da turma](concluido/26-remover-foco-da-turma.md). Essa remoção e
 a [correção dos atalhos do 27](concluido/27-atalhos-e-filtros-do-painel.md)
-estão implementadas, com integração/publicação ainda pendentes. Os documentos
-ficam em `concluido/` pelo escopo de desenvolvimento; não declaram implantação.
+foram integradas em `342f86a5c5beb3444bc1d8fcba28e97ee9ca3904`.
+Esta atualização não acrescenta uma conferência da publicação em produção;
+os documentos preservam o histórico e os limites da evidência da entrega.
 
 Não foram criados itens duplicados para implantação/cutover do 05, limpeza do
 legado do 13, rotação Canvas do 17 ou destino institucional de solicitações,

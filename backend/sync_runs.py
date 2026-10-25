@@ -70,6 +70,49 @@ def metadata_version(metadata):
     return hashlib.sha256(json.dumps(metadata, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
+def diagnostics(repo, cohort):
+    """Resumo docente da última prova; nunca é autorização para envio ou publicação.
+
+    A consulta é limitada a uma prova. Falha de leitura/registro incompatível não
+    derruba as notas nem vira ausência ou sucesso. Registros antigos só são
+    atribuídos ao curso atual quando a versão exata de METADATA comprova o vínculo.
+    """
+    if not cohort.get("autoSync") or not cohort.get("canvasCourseId"):
+        return None
+    unavailable = {"status": "unavailable", "scheduledFor": None, "startedAt": None, "finishedAt": None,
+                   "stages": {name: "unknown" for name in ("catalog", "roster", "grades")}}
+    try:
+        rows, done = repo.page("COHORT#" + cohort["code"], "SYNC_RUN#", 1)
+        if not rows:
+            return None if done else unavailable
+        key, record = rows[0]
+        stages = record["stages"]
+        status = record["status"]
+        scheduled = instant(record["scheduledFor"])
+        started = instant(record["startedAt"])
+        finished = instant(record["finishedAt"]) if record.get("finishedAt") is not None else None
+        course_matches = (record["courseId"] == cohort["canvasCourseId"] if "courseId" in record
+                          else record.get("metadataVersion") == metadata_version(cohort))
+        if (record.get("source") != SOURCE or key != "SYNC_RUN#" + canonical_time(record["scheduledFor"])
+                or not course_matches or scheduled > started
+                or status not in ("running", "succeeded", "failed")
+                or any(stages.get(name) not in ("pending", "succeeded", "failed") for name in ("catalog", "roster"))
+                or stages.get("grades") not in ("pending", "published", "unchanged", "failed", "skipped")
+                or (status == "running" and finished is not None)
+                or (status != "running" and (finished is None or finished < started))
+                or (status == "succeeded" and (stages["catalog"] != "succeeded"
+                    or stages["roster"] != "succeeded" or stages["grades"] not in ("published", "unchanged")))):
+            return unavailable
+        # Somente valores enumerados e horários validados; sem execução, versão
+        # interna, payload, mensagem de exceção ou identificadores de alunos.
+        return {"status": status, "scheduledFor": record["scheduledFor"], "startedAt": record["startedAt"],
+                "finishedAt": record["finishedAt"], "stages": {name: stages[name] for name in ("catalog", "roster", "grades")}}
+    except Exception:
+        # Diagnóstico auxiliar: inclusive erro de porta é indisponibilidade, não
+        # prova de que a execução ou uma etapa não existiu.
+        return unavailable
+
+
 class SyncRun:
     """running sem finishedAt é prova incompleta. Tentativa antiga nunca finaliza por cima de outra.
 
@@ -91,7 +134,7 @@ class SyncRun:
         if instant(at) < instant(context["scheduledFor"]):
             raise ValueError("Sync não pode começar antes da ocorrência agendada")
         self.stages = {"catalog": "pending", "roster": "pending", "grades": "pending"}
-        self.record = {**context, "startedAt": at, "finishedAt": None, "status": "running",
+        self.record = {**context, "courseId": cohort.get("canvasCourseId"), "startedAt": at, "finishedAt": None, "status": "running",
                        "publicationId": None, "metadataVersion": None, "stages": dict(self.stages)}
         repo.transaction([(self.pk, self.sk, self.record, previous)])
 

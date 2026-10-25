@@ -176,11 +176,36 @@ export function nextCanvasSync(now = new Date()) {
 
 const syncSchedule = () => `às ${canvasSyncHours.map((h) => `${h}h`).join(" e às ")} (horário de Brasília)`;
 
+// A prova descreve somente estas três etapas da sincronização acadêmica. Não é
+// frescor da atividade/entregas nem autorização para lembretes ou publicação.
+export function syncDiagnostics(report = state.report, formatDate = date) {
+  if (!teacher() || !current()?.autoSync) return "";
+  const run = report?.canvasSyncDiagnostics;
+  if (!run) return report?.canvasSync
+    ? '<p class="small">Diagnóstico por etapas não disponível para este registro. A última verificação informada descreve somente as notas.</p>' : "";
+  const unavailable = '<p class="small" role="status">Diagnóstico por etapas indisponível. Não é possível confirmar todas as etapas desta execução.</p>';
+  const labels = {
+    catalog: { succeeded: "verificado", failed: "indisponível", pending: "não confirmado" },
+    roster: { succeeded: "verificadas", failed: "indisponíveis", pending: "não confirmadas" },
+    grades: { published: "publicadas", unchanged: "verificadas, sem mudanças", failed: "verificação falhou", skipped: "não verificadas", pending: "não confirmadas" },
+  };
+  const stages = run.stages || {};
+  if (!["running", "succeeded", "failed"].includes(run.status)
+      || Object.keys(labels).some((key) => !Object.hasOwn(labels[key], stages[key]))
+      || (run.status === "succeeded" && (stages.catalog !== "succeeded" || stages.roster !== "succeeded" || !["published", "unchanged"].includes(stages.grades)))) return unavailable;
+  const title = run.status === "failed" ? "Verificação por etapas incompleta"
+    : run.status === "running" ? "Verificação por etapas sem conclusão registrada" : "Etapas da sincronização acadêmica verificadas";
+  const at = run.finishedAt || run.startedAt;
+  const when = instant(at) ? ` · ${run.finishedAt ? "conclusão" : "início"} em ${formatDate(at)}` : "";
+  return `<p class="small" role="status"><strong>${title}${when}.</strong> Catálogo: ${labels.catalog[stages.catalog]}; Matrículas: ${labels.roster[stages.roster]}; Notas: ${labels.grades[stages.grades]}.</p>`;
+}
+
 export function updateInfo() {
   const r = state.report;
-  if (!r?.publication) return "";
   const auto = !!current()?.autoSync;
   const instructor = teacher();
+  if (!r?.publication) return instructor && auto && r?.canvasSyncDiagnostics
+    ? `<section class="update-line" aria-label="Atualização das notas"><div>${syncDiagnostics(r)}<p class="small">${timeZoneLabel}.</p></div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>` : "";
   const restored = r.updateKind === "restore" ? `<p>Versão restaurada. Notas originalmente publicadas em ${date(r.publication.publishedAt)}.</p>` : "";
   if (!auto) {
     const source = instructor
@@ -193,7 +218,7 @@ export function updateInfo() {
   // Canvas (canvasSync) só vem no relatório do instrutor.
   return `<section class="update-line" aria-label="Atualização das notas"><div><strong>Atualizado automaticamente do Canvas ${syncSchedule()}</strong>
   <dl class="sync-times"><div><dt>Última mudança nas notas</dt><dd>${date(r.updatedAt || r.publication.publishedAt)}</dd></div>${instructor && r.canvasSync ? `<div><dt>Última verificação</dt><dd>${date(r.canvasSync.at)}${r.canvasSync.status === "unchanged" ? " · sem mudanças" : ""}</dd></div>` : ""}<div><dt>Próxima verificação</dt><dd>${nextCanvasSync()}</dd></div></dl>
-  ${restored}${instructor ? "" : "<p>Uma correção feita no Canvas aparece aqui na verificação seguinte.</p>"}${r.canvasSync?.status === "failed" ? canvasSyncStatus(r.canvasSync) : ""}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
+  ${restored}${instructor ? syncDiagnostics(r) : "<p>Uma correção feita no Canvas aparece aqui na verificação seguinte.</p>"}${r.canvasSync?.status === "failed" ? canvasSyncStatus(r.canvasSync) : ""}</div><button class="button secondary" data-action="refresh-report">Consultar atualização</button></section>`;
 }
 
 // Só o relatório do instrutor traz canvasSync (backend/portal.py); o aluno não vê falhas técnicas.

@@ -538,7 +538,7 @@ class ScheduledSyncProofTests(unittest.TestCase):
         event = {**self.event(), "email": "do-not-store@example.test", "token": "private-token", "body": {"name": "private-name"}}
         self.execute(event)
         proof = self.proof()
-        self.assertEqual(set(proof), {"source", "scheduledFor", "executionId", "attemptNumber", "startedAt",
+        self.assertEqual(set(proof), {"source", "scheduledFor", "executionId", "attemptNumber", "courseId", "startedAt",
                                      "finishedAt", "status", "publicationId", "metadataVersion", "stages"})
         self.assertNotIn("@", json.dumps(proof))
         self.assertNotIn("private", json.dumps(proof))

@@ -14,10 +14,46 @@ por decisão do titular, sem ser contado como implementado.
 Os IDs foram preservados. O [backlog ativo](../README.md) mantém
 os itens que ainda precisam de decisão ou trabalho.
 
-Na branch atual, os itens [26 — Remover Foco da turma](26-remover-foco-da-turma.md)
+Na entrega registrada em 23/10/2026, os itens [26 — Remover Foco da turma](26-remover-foco-da-turma.md)
 e [27 — Atalhos e filtros](27-atalhos-e-filtros-do-painel.md) também estão
 implementados, totalizando **25 documentos numerados** nesta pasta. Sua
-integração/publicação permanece pendente; não são evidência de produção.
+integração posterior ocorreu pelo PR #18, em `342f86a`. Os registros originais
+não são, isoladamente, evidência de publicação em produção.
+
+Nesta entrega, os itens [28 — Vínculos adicionais](28-vinculos-adicionais-de-instrutores.md),
+[29 — Diagnóstico por etapa](29-diagnostico-da-sincronizacao-por-etapa.md) e
+[30 — Kit de QA manual](30-atualizar-qa-manual-e-limpeza.md) foram implementados,
+totalizando **28 documentos numerados** nesta pasta. Integração, implantação
+backend dos itens 28/29 e QA autenticado produtivo continuam distintos de
+desenvolvimento/testes locais. Os [itens 31/32](../README.md#pendentes) são
+propostas abertas e não integram a implementação desta branch.
+
+## Validação local dos TODOs 28–30 — 25/10/2026
+
+Base: main `9b811cf08f9dd5e1f948c277acbfd237a933567e`. Resultados executados
+nesta entrega, sem somar novamente recortes às suítes completas:
+
+| Verificação | Resultado |
+| --- | --- |
+| `npm test` | 563 aprovados, sem falhas/skips |
+| `npm run test:browser` | 259 aprovados, sem falhas/skips; dados fictícios |
+| Backend, Python 3.12.13 local | 331 aprovados |
+| Integração, Python 3.12.13 local | 382 aprovados; DynamoDB/S3 Moto e Cognito fake no kit QA |
+| Mutações stale | 28 mortas, zero sobreviventes |
+| Mutações lifecycle | 44 mortas, zero sobreviventes |
+| OpenAPI check, actionlint e diff-check | Aprovados |
+
+Node local: 26.7.0. Python 3.13 não está disponível localmente: o check Backend
+existente continua usando 3.13 e sua execução no PR é a evidência daquele
+runtime. O ambiente isolado das ferramentas de deploy permanece separado.
+Nenhum script live foi executado contra produção; QA autenticado real e a
+implantação das Lambdas permanecem pendentes.
+
+O hash bruto do OpenAPI muda de
+`d0a0d9df167b05cd77a044e049a28cc1a607c43aa6678459ddd324939bfe79c2`
+para `061c0fd58ce151ac1db3764e30c0b24e489e4c48e019572556cdfe54df09db86`
+pela adição do diagnóstico. Os testes de release/rollback fazem parte da
+integração completa; hashes e manifestos históricos não foram reescritos.
 
 “Concluído” significa que a implementação do escopo entregue está presente
 no repositório. Não significa uma certificação funcional universal de produção.

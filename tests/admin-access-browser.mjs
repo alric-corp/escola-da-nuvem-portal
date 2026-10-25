@@ -217,7 +217,7 @@ try {
     await revoke.click();
     await tab.evaluate(() => {});
     // Expansão 8: a pergunta diz a pessoa, a turma e as consequências (a mesma confirmação, no mesmo ponto).
-    assert.deepEqual(log.dialogs, [approveQuestion, "Remover o acesso de prof.a@example.test à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nEsta tela não tem como devolver o acesso depois."]);
+    assert.deepEqual(log.dialogs, [approveQuestion, "Remover o acesso de prof.a@example.test à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nSe já estiver aprovada no portal, você poderá conceder o vínculo novamente em Instrutores da turma."]);
     assert.deepEqual(since(mark), []);
     assert.ok(await revoke.isEnabled());
     assert.doesNotMatch(await notices.innerText(), /Acesso removido/);

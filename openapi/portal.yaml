@@ -2654,6 +2654,68 @@ components:
               - students
             properties:
               students: {}
+    CanvasSyncDiagnostics:
+      type: object
+      nullable: true
+      description: Resumo sanitizado da última prova agendada do curso atual, exclusivo do relatório docente. Não altera notas, coleta auxiliar ou autorização de lembretes. Null indica ausência de prova utilizável; unavailable indica leitura ou prova não confirmada.
+      required:
+        - status
+        - scheduledFor
+        - startedAt
+        - finishedAt
+        - stages
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+          enum:
+            - running
+            - succeeded
+            - failed
+            - unavailable
+        scheduledFor:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stages:
+          type: object
+          required:
+            - catalog
+            - roster
+            - grades
+          additionalProperties: false
+          properties:
+            catalog:
+              type: string
+              enum:
+                - pending
+                - succeeded
+                - failed
+                - unknown
+            roster:
+              type: string
+              enum:
+                - pending
+                - succeeded
+                - failed
+                - unknown
+            grades:
+              type: string
+              enum:
+                - pending
+                - published
+                - unchanged
+                - failed
+                - skipped
+                - unknown
     StudentReport:
       type: object
       required:
@@ -2721,6 +2783,10 @@ components:
             properties:
               canvasSync: {}
           - required:
+              - canvasSyncDiagnostics
+            properties:
+              canvasSyncDiagnostics: {}
+          - required:
               - warnings
             properties:
               warnings: {}
@@ -2756,6 +2822,19 @@ components:
         canvasCourseId:
           type: string
           nullable: true
+        canvasSync:
+          type: object
+          nullable: true
+          properties:
+            status:
+              type: string
+            at:
+              type: string
+              format: date-time
+            message:
+              type: string
+        canvasSyncDiagnostics:
+          $ref: '#/components/schemas/CanvasSyncDiagnostics'
       not:
         anyOf:
           - required:
@@ -2833,6 +2912,8 @@ components:
               format: date-time
             message:
               type: string
+        canvasSyncDiagnostics:
+          $ref: '#/components/schemas/CanvasSyncDiagnostics'
         history:
           type: array
           items:

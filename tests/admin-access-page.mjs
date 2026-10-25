@@ -72,6 +72,21 @@ const rows = (html) => [...html.matchAll(/<li class="aa-row[^"]*"[^>]*>/g)].map(
 const tag = (html, attr) => (html.match(new RegExp(`<[^>]*${attr}[^>]*>`)) || [""])[0];
 const headings = (html) => [...html.matchAll(/<h([1-3])\b[^>]*>(.*?)<\/h\1>/g)].map((m) => `h${m[1]} ${strip(m[2])}`);
 
+test("TODO28: vínculo adicional usa somente aprovados ainda não vinculados à turma, fora da aprovação inicial", () => {
+  const html = page({ code: "BRSA0268", instructors: [], requestsFilter: "approved" }, { instructorPick: "u-ana" });
+  const form = block(html, "aa-approved-link");
+  assert.match(form, /id="approved-instructor-form"/);
+  assert.match(form, /name="userId"/);
+  assert.match(form, /value="u-ana" selected/);
+  assert.doesNotMatch(form, /u-carla|u-bruno|u-diego/);
+  assert.match(form, />Conceder acesso à turma<\/button>/);
+  assert.doesNotMatch(form, / disabled/);
+  assert.doesNotMatch(block(html, "aa-request-list"), /approve-form/, "pedido aprovado continua somente leitura");
+  assert.doesNotMatch(page(), /id="approved-instructor-form"/, "não oferece vínculo duplicado na turma atual");
+  for (const values of [{ accessLoading: true }, { accessError: "Falha de leitura" }])
+    assert.doesNotMatch(page({ code: "BRSA0268", instructors: [], ...values }), /id="approved-instructor-form"/, "não concede com lista inconclusiva");
+});
+
 test("AA1: a tela diz o escopo — solicitações e criação de turma valem para o portal inteiro; instrutores, alunos e configurações, para a turma selecionada, identificada por código e nome — e o que é mais frequente vem antes", () => {
   const html = page();
   assert.match(html, /^<div class="admin-access">/);
@@ -174,7 +189,7 @@ test("AA3: carregando e erro na própria seção — sem listas vazias que pare�
 
 test("AA4: instrutores da turma — pessoa, o que ela faz e em qual turma, e Remover acesso com a ênfase de consequência, ligado à pessoa; vazio dito", () => {
   const html = page();
-  assert.equal(strip(block(html, "aa-instructors-note")), "Quem acompanha esta turma pelo vínculo de instrutor. Administradores acessam todas as turmas sem precisar de vínculo.");
+  assert.equal(strip(block(html, "aa-instructors-note")), "Quem acompanha esta turma pelo vínculo de instrutor. Administradores acessam todas as turmas sem precisar de vínculo. Pessoas já aprovadas podem receber acesso a outras turmas ou ter um vínculo removido concedido novamente.");
   const list = rows(block(html, "aa-instructor-list"));
   assert.equal(list.length, 2);
   assert.equal(list[0], '<li class="aa-row"><div class="aa-who"><strong class="aa-email" id="aa-ins-u-ana">ana.lima@instituicao.example</strong><span class="aa-role">Acompanha a BRSA0267</span></div><div class="aa-actions"><button class="button aa-danger" data-revoke="u-ana" aria-describedby="aa-ins-u-ana">Remover acesso</button></div></li>');
@@ -252,7 +267,7 @@ const OPS = {
 };
 const GUIDE = { "refresh-requests": "O pedido pode ter sido concluído: atualize a lista antes de tentar de novo.",
   "repeat-student-search": "O pedido pode ter sido concluído: busque de novo antes de tentar outra vez.", "retry-boot": "O pedido pode ter sido concluído: consulte de novo antes de tentar outra vez." };
-const WRITES = /data-reject=|data-revoke=|data-unlink=|data-start-edit-name=|>Vincular à turma<|>Salvar configurações<|>Criar turma<|>Salvar</;
+const WRITES = /data-reject=|data-revoke=|data-unlink=|data-start-edit-name=|>Vincular à turma<|>Conceder acesso à turma<|>Salvar configurações<|>Criar turma<|>Salvar</;
 
 test("AA7: andamento junto do alvo, com o foco, e tudo que muda parado (ligado ao andamento); recusa (nada mudou) e dúvida (pode ter mudado) ditas de jeitos diferentes, com a consulta segura", () => {
   for (const [kind, op] of Object.entries(OPS)) {
@@ -328,7 +343,7 @@ test("AA9: perguntas com a pessoa, a turma e a consequência; o aviso de início
     // Sem esperar a promessa: se a pergunta fosse pulada, o pedido ficaria pendente; o que conta é o que aconteceu até aqui.
     handlers.revokeInstructor("u-ana", () => started++);
     await Promise.resolve(); await Promise.resolve();
-    assert.deepEqual(h.dialogs, ["Remover o acesso de ana.lima@instituicao.example à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nEsta tela não tem como devolver o acesso depois."]);
+    assert.deepEqual(h.dialogs, ["Remover o acesso de ana.lima@instituicao.example à BRSA0267?\n\nA pessoa deixa de acompanhar a BRSA0267; o acesso a outras turmas não muda. Se ela for quem envia os lembretes automáticos da BRSA0267, eles param até outro remetente ser configurado.\n\nSe já estiver aprovada no portal, você poderá conceder o vínculo novamente em Instrutores da turma."]);
     assert.deepEqual([h.calls.length, started], [0, 0]);
     h = harness();
     let run = handlers.revokeInstructor("u-ana", () => { started++; h.order.push("started"); });
@@ -488,4 +503,100 @@ test("AA12: atalho Criar turma (Expansão 8.1) — no cabeçalho, um link para o
   assert.deepEqual([count(html, 'href="#aa-create-title"'), count(html, 'id="aa-create-title"'), count(html, 'id="cohort-form"')], [1, 1, 1]);
   assert.match(html, /<h2 id="aa-create-title" tabindex="-1">Criar uma turma<\/h2>/);
   assert.equal(count(page({ cohorts: [], code: "", instructors: [] }), 'href="#aa-create-title"'), 1, "sem turmas, o atalho leva a criar a primeira");
+});
+
+test("TODO28: concessão posterior confirma pessoa/turma, usa a rota atual e recarrega sem repetir o POST", async () => {
+  await withStateAsync({ code: "BRSA0268", instructors: [] }, async () => {
+    let h = harness(), started = 0;
+    h.refuse();
+    assert.equal(await handlers.linkApprovedInstructor("u-ana", "BRSA0268", () => started++), false);
+    assert.deepEqual([h.calls.length, started], [0, 0]);
+    assert.match(h.dialogs[0], /Conceder acesso de instrutor a ana\.lima@instituicao\.example na turma BRSA0268 — AWS re\/Start · Turma 268/);
+    assert.match(h.dialogs[0], /vínculos com outras turmas.*lembretes automáticos não mudam/);
+    h = harness();
+    const run = handlers.linkApprovedInstructor("u-ana", "BRSA0268", () => h.order.push("started"));
+    assert.equal(await settle(run, h, { instructors: [{ userId: "u-ana", email: REQUESTS[2].email, code: "BRSA0268" }] }), "ok");
+    assert.equal(await run, true);
+    assert.deepEqual(h.order.slice(0, 3), ["confirm", "started", "POST /cohorts/BRSA0268/instructors"]);
+    assert.deepEqual(h.calls[0].body, { userId: "u-ana" });
+    assert.equal(h.calls.filter((c) => c.method === "POST").length, 1);
+    assert.deepEqual(h.notices, ["Acesso à BRSA0268 concedido a ana.lima@instituicao.example."]);
+    h = harness();
+    assert.equal(await handlers.linkApprovedInstructor("u-ana", "BRSA0268"), false, "lista recarregada não oferece duplicata");
+    assert.deepEqual([h.calls.length, h.dialogs.length], [0, 0]);
+  });
+});
+
+test("TODO28: pendente, recusado, desconhecido, duplicado, outra turma ou listas inconclusivas não concedem acesso", async () => {
+  await withStateAsync({}, async () => {
+    for (const [userId, code, changes] of [
+      ["u-carla", "BRSA0268", {}], ["u-diego", "BRSA0268", {}], ["u-x", "BRSA0268", {}],
+      ["u-ana", "BRSA0267", { code: "BRSA0267", instructors: INSTRUCTORS }],
+      ["u-ana", "BRSA0267", {}], ["u-ana", "BRSA9999", { code: "BRSA9999" }],
+      ["u-ana", "BRSA0268", { accessLoading: true }], ["u-ana", "BRSA0268", { accessError: "Leitura falhou" }],
+      ["u-ana", "BRSA0268", { studentView: { studentId: "101" } }],
+      ["u-ana", "BRSA0268", { me: { email: "other@example.test", roles: ["instructor"] } }],
+    ]) {
+      Object.assign(state, { me: ADMIN, code: "BRSA0268", instructors: [], studentView: null, accessLoading: false, accessError: "", ...changes });
+      const h = harness(); let started = 0;
+      assert.equal(await handlers.linkApprovedInstructor(userId, code, () => started++), false);
+      assert.deepEqual([h.calls.length, h.dialogs.length, started], [0, 0, 0]);
+    }
+  });
+});
+
+test("TODO28: erros preservam o contexto; outra sessão, inclusive A→B→A, não recebe resposta nem recarga", async () => {
+  await withStateAsync({ code: "BRSA0268", instructors: [] }, async () => {
+    let h = harness();
+    let run = handlers.linkApprovedInstructor("u-ana", "BRSA0268");
+    h.calls[0].reject(Object.assign(new Error("Resposta incerta"), { status: 503 }));
+    await assert.rejects(run, (err) => err.status === 503);
+    assert.equal(h.calls.length, 1, "sem repetição ou consulta após falha do POST");
+    assert.deepEqual(h.notices, []);
+    for (const failure of [false, true]) {
+      state.me = ADMIN;
+      h = harness();
+      run = handlers.linkApprovedInstructor("u-ana", "BRSA0268");
+      state.me = { email: "other@example.test", roles: ["admin"] };
+      state.me = { ...ADMIN };
+      if (failure) h.calls[0].reject(new Error("Erro da sessão anterior"));
+      else h.calls[0].resolve({ approved: true });
+      await run;
+      assert.deepEqual([h.calls.length, h.notices.length], [1, 0]);
+    }
+  });
+});
+
+test("TODO28 modo aluno: resposta do POST pendente não consulta acessos nem avisa depois da troca de modo", async () => {
+  for (const failed of [false, true]) await withStateAsync({ code: "BRSA0268", instructors: [] }, async () => {
+    const h = harness();
+    const run = handlers.linkApprovedInstructor("u-ana", "BRSA0268");
+    const requests = [{ userId: "outro", status: "approved" }], instructors = [{ userId: "outro" }];
+    Object.assign(state, { studentView: { code: "BRSA0268", studentId: "31000" }, view: "overview", requests, instructors, accessLoading: true, accessError: "Estado do modo aluno" });
+    if (failed) h.calls[0].reject(Object.assign(new Error("Falha do administrador anterior"), { status: 503 }));
+    else h.calls[0].resolve({ approved: true });
+    assert.equal(await settle(run, h), "ok", "erro antigo também é suprimido");
+    assert.equal(h.calls.length, 1, "a conclusão do POST não inicia GET de acessos em modo aluno");
+    assert.deepEqual(h.notices, []);
+    assert.deepEqual([state.requests, state.instructors, state.accessLoading, state.accessError], [requests, instructors, true, "Estado do modo aluno"], "dados, erro e finally anteriores não escrevem no outro modo");
+  });
+});
+
+test("TODO28 modo aluno: recarga de acessos já pendente não escreve dados, erro, loading ou aviso depois da troca de modo", async () => {
+  for (const failed of [false, true]) await withStateAsync({ code: "BRSA0268", instructors: [] }, async () => {
+    const h = harness();
+    const run = handlers.linkApprovedInstructor("u-ana", "BRSA0268");
+    h.calls[0].resolve({ approved: true }); h.calls[0].done = true;
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(h.calls.length, 3, "a leitura começa no contexto administrativo original");
+    const requests = [{ userId: "outro", status: "approved" }], instructors = [{ userId: "outro" }];
+    Object.assign(state, { studentView: { code: "BRSA0268", studentId: "31000" }, view: "overview", requests, instructors, accessLoading: true, accessError: "Estado do modo aluno" });
+    if (failed) h.calls[1].reject(new Error("Leitura administrativa antiga"));
+    else h.calls[1].resolve({ requests: REQUESTS });
+    h.calls[1].done = true;
+    h.calls[2].resolve({ instructors: INSTRUCTORS }); h.calls[2].done = true;
+    await run;
+    assert.deepEqual([state.requests, state.instructors, state.accessLoading, state.accessError], [requests, instructors, true, "Estado do modo aluno"], "releitura e finally respeitam o modo em que começaram");
+    assert.deepEqual(h.notices, []);
+  });
 });
