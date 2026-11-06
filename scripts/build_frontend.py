@@ -10,7 +10,7 @@ FILES = ["index.html", "styles.css", "app.js", "api.js", "ui.js", "state.js", "h
           "pages/history.js", "pages/import.js", "pages/access.js", "pages/activities-overview.js",
           "pages/feedback.js", "pages/admin-feedback.js", "pages/signup-confirmation.js", "pages/course-guide.js",
           "practice.js", "practice-content.js", "practice-focus.js", "pages/practice.js", "handlers/practice.js",
-          "practice-exams/question.js", "practice-exams/clf-c02-01.js", "practice-exams/clf-c02-02.js",
+          "practice-exams/question.js", "practice-exams/references.js", "practice-exams/clf-c02-01.js", "practice-exams/clf-c02-02.js",
           "documents/normativa-abono-faltas.pdf"]
 
 

@@ -95,9 +95,7 @@ export function answer(optionId) {
   const ui = ensure();
   if (ui.screen !== "attempt") { render(); return; }
   if (selectPracticeAnswer(ui.model.current, optionId)) {
-    const checked = checkPracticeAnswer(ui.model.current);
     save(); render();
-    if (checked) return "explanation";
   }
 }
 export function action(name, value = "") {
@@ -129,7 +127,11 @@ export function action(name, value = "") {
   else if (name === "discard" && ui.confirm === "discard") { ui.model.current = null; ui.screen = "home"; ui.confirm = ""; }
   else if (name === "cancel") ui.confirm = "";
   else if (ui.screen === "attempt" && attempt && !attempt.completedAt) {
-    if (name === "jump") {
+    if (name === "check") {
+      if (!checkPracticeAnswer(attempt)) return;
+      save(); render();
+      return "explanation";
+    } else if (name === "jump") {
       const index = Number(value);
       if (!Number.isInteger(index) || index < 0 || index >= attempt.questionIds.length) return;
       attempt.index = index; ui.confirm = ""; moveFocus = true;
