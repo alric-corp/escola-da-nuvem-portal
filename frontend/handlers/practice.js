@@ -48,6 +48,11 @@ export function view() { return ensure(); }
 export function setting(name, value) {
   if (!allowed() || state.view !== "practice") return;
   const ui = ensure();
+  if (name === "timerVisible" && typeof value === "boolean" && ui.screen === "attempt" && ui.model.current?.deadline && !ui.model.current.completedAt) {
+    ui.model.current.timerVisible = value;
+    save();
+    return true;
+  }
   if (name === "exam" && ui.screen === "home" && practiceExamById(value)) {
     save();
     let model = ui.models[value];

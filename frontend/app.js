@@ -1357,6 +1357,14 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.practiceSetting === "timerVisible") {
+    if (practiceHandlers.setting("timerVisible", target.checked)) {
+      target.setAttribute("aria-checked", String(target.checked));
+      $("#practice-clock-region").hidden = !target.checked;
+      $("#practice-time-hidden").hidden = target.checked;
+    } else render();
+    return;
+  }
   if (target.dataset.practiceSetting) return practiceHandlers.setting(target.dataset.practiceSetting, target.type === "checkbox" ? target.checked : target.value);
   if (target.dataset.practiceOption) {
     const destination = practiceHandlers.answer(target.dataset.practiceOption);

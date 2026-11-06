@@ -139,6 +139,21 @@ test("tentativas antigas conservam os 90 minutos do exame e a prática sem limit
   const invalid = start({ timeLimitMinutes: 135 }); invalid.current.timeLimitMinutes = 180;
   assert.deepEqual(restorePractice(JSON.stringify(invalid)), freshPractice());
 });
+
+test("visibilidade é opcional no legado, pertence à tentativa e não muda prazo, resultado ou expiração", () => {
+  const model = start(), original = structuredClone(model.current), result = practiceResult(model.current);
+  model.current.timerVisible = false;
+  const restored = restorePractice(JSON.stringify(model));
+  assert.equal(restored.current.timerVisible, false);
+  for (const key of ["id", "startedAt", "deadline", "timeLimitMinutes"]) assert.equal(restored.current[key], original[key]);
+  assert.deepEqual(practiceResult(restored.current), result);
+  assert.equal(expirePractice(restored, original.deadline), true);
+  assert.equal(restored.history[0].timerVisible, false);
+  startPractice(restored, {}, original.deadline + 1000);
+  assert.equal(restored.current.timerVisible, true);
+  delete restored.current.timerVisible;
+  assert.equal(restorePractice(JSON.stringify(restored)).current.timerVisible, true);
+});
 test("não sobrescreve tentativa em andamento; conclusão é idempotente e histórico tem cópias independentes", () => {
   const model = start({ count: 10 });
   const original = model.current;

@@ -96,6 +96,54 @@ async function evidence(page, name) {
   await page.screenshot({ path: path.join(process.env.PRACTICE_EVIDENCE, name + ".png"), fullPage: true });
 }
 
+test("tempo oculto continua correndo no menu, navegação, reload e retomada; expira e fica isolado por usuário e tentativa", async () => {
+  const c = await open(), { page } = c;
+  try {
+    const instant = new Date("2026-11-06T12:00:00Z");
+    await page.clock.install({ time: instant }); await page.clock.pauseAt(instant);
+    await startExam(page);
+    const original = (await saved(page)).current;
+    const toggle = page.getByRole("switch", { name: "Mostrar tempo", exact: true });
+    assert.equal(await toggle.isChecked(), true);
+    await toggle.uncheck();
+    assert.equal(await page.locator("#practice-clock").isVisible(), false);
+    assert.equal(await page.getByText("Tempo oculto. A contagem continua.", { exact: true }).isVisible(), true);
+    await page.clock.fastForward(60000);
+    await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
+    await page.clock.fastForward(60000); await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.getElementById("practice-navigation").open);
+    await page.getByRole("button", { name: "Próxima questão", exact: true }).click();
+    assert.equal(await toggle.isChecked(), false);
+    await toggle.check(); assert.equal(await page.locator("#practice-clock").innerText(), "88:00");
+    await toggle.uncheck();
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await page.clock.fastForward(60000);
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    const restored = (await saved(page)).current;
+    assert.equal(restored.timerVisible, false);
+    for (const key of ["id", "deadline", "startedAt", "timeLimitMinutes"]) assert.equal(restored[key], original[key]);
+    assert.equal(await toggle.isChecked(), false);
+    await page.route("**/api/me", (route) => route.fulfill({ json: { email: "other@example.test", roles: ["student"] } }));
+    await page.reload(); await page.getByRole("button", { name: "Simulados AWS", exact: true }).click(); await startExam(page);
+    assert.equal(await toggle.isChecked(), true, "outra conta começa com o tempo visível");
+    await page.unroute("**/api/me"); await page.reload();
+    await page.getByRole("button", { name: "Simulados AWS", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    assert.equal(await toggle.isChecked(), false, "a preferência da primeira conta foi mantida");
+    await page.clock.fastForward(87 * 60000);
+    await page.getByRole("heading", { name: "Resultado da tentativa", exact: true }).waitFor();
+    const finished = await saved(page);
+    assert.equal(finished.current.completedAt, original.deadline);
+    assert.equal(finished.current.timedOut, true); assert.equal(finished.history.length, 1);
+    assert.equal(await page.locator(".practice-focus").count(), 0);
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await startExam(page, null);
+    assert.equal(await toggle.count(), 0, "tentativa ilimitada não tem controle sem significado");
+    assert.deepEqual(c.errors, []);
+  } finally { await c.close(); }
+});
+
 test("primeira configuração tem nomes neutros; retomada mantém a tentativa e nova tentativa depende do histórico deste simulado", async () => {
   const c = await open(), { page } = c;
   try {

@@ -36,7 +36,7 @@ export function startPractice(model, { mode = "study", domain = "all", count = "
     questionIds: (mode === "exam" || shuffle ? shuffleQuestions(pool, random) : pool).slice(0, limit),
     answers: {}, checked: [], flagged: [], index: 0, startedAt: now,
     timeLimitMinutes, deadline: timeLimitMinutes === null ? null : now + timeLimitMinutes * 60000,
-    completedAt: null, timedOut: false,
+    completedAt: null, timedOut: false, timerVisible: true,
   };
   return true;
 }
@@ -118,7 +118,7 @@ export function restorePractice(serialized, examId = defaultPracticeExamId) {
     const model = JSON.parse(serialized);
     if (!practiceExamById(examId) || model.bank !== examId || !Array.isArray(model.history) || model.history.length > 20 ||
       !model.history.every((attempt) => validAttempt(attempt, examId, true)) || (model.current !== null && !validAttempt(model.current, examId))) return freshPractice(examId);
-    const normalize = (attempt) => ({ ...attempt, examId, timeLimitMinutes: timeLimitFor(attempt) });
+    const normalize = (attempt) => ({ ...attempt, examId, timeLimitMinutes: timeLimitFor(attempt), timerVisible: attempt.timerVisible !== false });
     return { bank: model.bank, current: model.current ? normalize(model.current) : null, history: model.history.map(normalize) };
   } catch { return freshPractice(examId); }
 }
