@@ -1198,12 +1198,15 @@ function focusPractice(destination) {
   target?.focus({ preventScroll: true });
   target?.scrollIntoView({ block: "nearest" });
 }
-setInterval(() => {
+function updatePracticeClock() {
   const tick = practiceHandlers.tick();
   if (state.view !== "practice" || !tick) return;
   if (tick.expired) { render(); focusPractice("question"); }
   else if ($("#practice-clock")) $("#practice-clock").textContent = tick.remaining;
-}, 1000);
+}
+setInterval(updatePracticeClock, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) updatePracticeClock(); });
+window.addEventListener("pageshow", updatePracticeClock);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
@@ -1359,10 +1362,12 @@ document.addEventListener("change", (event) => {
   const target = event.target;
   if (target.dataset.practiceSetting === "timerVisible") {
     if (practiceHandlers.setting("timerVisible", target.checked)) {
+      updatePracticeClock();
+      if (!$("#practice-clock-region")) return;
       target.setAttribute("aria-checked", String(target.checked));
       $("#practice-clock-region").hidden = !target.checked;
       $("#practice-time-hidden").hidden = target.checked;
-    } else render();
+    } else { render(); focusPractice("question"); }
     return;
   }
   if (target.dataset.practiceSetting) return practiceHandlers.setting(target.dataset.practiceSetting, target.type === "checkbox" ? target.checked : target.value);
