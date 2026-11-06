@@ -96,6 +96,54 @@ async function evidence(page, name) {
   await page.screenshot({ path: path.join(process.env.PRACTICE_EVIDENCE, name + ".png"), fullPage: true });
 }
 
+test("modo foco reutiliza a navegação modal, preserva questão e prazo e restaura o portal ao sair", async () => {
+  for (const options of [{ width: 1440 }, { width: 390 }, { width: 320, text: 2 }]) {
+    const c = await open(options), { page } = c;
+    try {
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      await startStudy(page);
+      await page.locator("#practice-option-A").check();
+      await page.getByRole("button", { name: "Marcar para revisar", exact: true }).click();
+      const before = (await saved(page)).current;
+      await page.evaluate(() => { window.practiceQuestionNode = document.querySelector(".practice-question"); });
+      const trigger = page.getByRole("button", { name: "Abrir menu de navegação", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Navegação do portal", exact: true });
+      await trigger.click();
+      assert.equal(await trigger.getAttribute("aria-expanded"), "true");
+      assert.equal(await dialog.evaluate((el) => el.matches(":modal")), true);
+      assert.equal(await page.locator(".sidebar").count(), 1, "não duplica a navegação");
+      for (let i = 0; i < 20; i++) {
+        await page.keyboard.press(i % 2 ? "Shift+Tab" : "Tab");
+        assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true);
+      }
+      await page.evaluate(() => document.getElementById("practice-option-B").focus());
+      assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true, "conteúdo de fundo é inerte");
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.getElementById("practice-menu-toggle").getAttribute("aria-expanded") === "false");
+      assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      assert.equal(await trigger.evaluate((el) => el === document.activeElement), true);
+      assert.equal(await page.evaluate(() => window.practiceQuestionNode === document.querySelector(".practice-question")), true);
+      assert.deepEqual((await saved(page)).current, before);
+      await trigger.click(); await page.getByRole("button", { name: "Fechar menu", exact: true }).click();
+      await page.waitForFunction(() => document.getElementById("practice-menu-toggle").getAttribute("aria-expanded") === "false");
+      assert.equal(await trigger.evaluate((el) => el === document.activeElement), true);
+      await trigger.click(); await dialog.getByRole("button", { name: "Guia do curso", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      assert.equal(await page.locator(".layout > .sidebar").count(), 1);
+      await page.getByRole("button", { name: "Simulados AWS", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 1);
+      assert.deepEqual((await saved(page)).current, before);
+      await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 1);
+      assert.deepEqual((await saved(page)).current, before);
+      await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      assert.equal(await page.locator(".layout > .sidebar").count(), 1);
+      assert.deepEqual(c.errors, []);
+    } finally { await c.close(); }
+  }
+});
+
 test("estudo corrige seleção dupla, mantém respostas, revisa erros e inicia novo estudo com os erros", async () => {
   const c = await open(), { page } = c;
   try {
