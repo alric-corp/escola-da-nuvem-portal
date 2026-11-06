@@ -4354,7 +4354,7 @@ details ul, .onboarding ol { padding-left: 24px; }
 .practice-page .practice-mode-choice { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; padding: var(--space-5); background: var(--color-surface); border: 1px solid var(--color-line); border-radius: var(--radius-md); cursor: pointer; }
 .practice-page .practice-mode-choice:has(input:checked) { border-color: var(--color-action); background: var(--color-surface-raised); }
 .practice-page .practice-mode-choice:has(input:focus-visible) { outline: 3px solid var(--color-focus); outline-offset: 3px; }
-.practice-page .practice-mode-copy { display: grid; gap: var(--space-3); min-width: 0; }
+.practice-page .practice-mode-copy { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); min-width: 0; overflow-wrap: anywhere; }
 .practice-page .practice-mode-copy > strong { font-size: 1.125rem; line-height: 1.5; }
 .practice-page .practice-mode-copy > span { color: var(--color-text-muted); font-size: .9375rem; }
 .practice-page .practice-time-settings { margin-block: var(--space-6); }

@@ -307,18 +307,29 @@ test("falha de storage e registro corrompido não impedem responder", async () =
   }
 });
 
-test("interface em celular e texto ampliado não transborda nos três estados", async () => {
-  for (const options of [{ width: 320 }, { width: 390 }, { width: 320, text: 2 }, { width: 1440, text: 2 }]) {
+test("interface em celular e texto ampliado não transborda no início, configuração, questão e resultado", async () => {
+  // A fonte larga reproduz no macOS o reflow que falhou no CI Linux a 320 px e texto a 200%.
+  const wideFont = 'Verdana, "DejaVu Sans", sans-serif';
+  for (const options of [{ width: 320 }, { width: 390 }, { width: 320, text: 2 }, { width: 1440, text: 2 }, { width: 320, text: 2, font: wideFont }]) {
     const c = await open(options), { page } = c;
     const fits = async () => {
       const metrics = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
-        overflow: [...document.querySelectorAll(".practice-page *")].filter((node) => node.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map((node) => ({ tag: node.tagName, class: node.className, text: node.textContent.slice(0, 80) })) }));
-      if (metrics.scroll > metrics.width + 1) await evidence(page, `overflow-${options.width}-${options.text || 1}`);
+        overflow: [...document.querySelectorAll(".practice-page *")].filter((node) => node.getBoundingClientRect().right > innerWidth + 1).slice(0, 8).map((node) => ({ tag: node.tagName, class: node.className, text: node.textContent.slice(0, 80) })),
+        modeTextOverflow: [...document.querySelectorAll(".practice-mode-copy > *")].filter((node) => {
+          const box = node.closest(".practice-mode-choice").getBoundingClientRect(), range = document.createRange();
+          range.selectNodeContents(node);
+          return [...range.getClientRects()].some((rect) => rect.left < box.left - 1 || rect.right > box.right + 1);
+        }).map((node) => node.textContent) }));
+      if (metrics.scroll > metrics.width + 1 || metrics.modeTextOverflow.length) await evidence(page, `overflow-${options.width}-${options.text || 1}`);
       assert.ok(metrics.scroll <= metrics.width + 1, JSON.stringify({ options, ...metrics }));
+      assert.deepEqual(metrics.modeTextOverflow, [], JSON.stringify({ options, ...metrics }));
     };
     try {
+      if (options.font) await page.addStyleTag({ content: `:root { --font-ui: ${options.font}; }` });
       await fits(); if (options.width === 390) await evidence(page, "home-mobile");
       await openSetup(page);
+      await fits();
+      if (options.font) await evidence(page, "setup-mobile-text-200-wide");
       if (options.width === 390) await evidence(page, "setup-mobile");
       await page.getByRole("switch", { name: "Estender tempo", exact: true }).check();
       await fits();
