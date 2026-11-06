@@ -82,19 +82,249 @@ const startStudy = async (page, count = "10", domain = "all") => {
   await page.locator("#practice-domain").selectOption(domain);
   await page.locator("#practice-count").selectOption(count);
   await page.locator("#practice-shuffle").uncheck();
-  await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+  await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
 };
 const startExam = async (page, minutes = 90) => {
   await openSetup(page);
   await page.locator("#practice-mode-exam").check();
   await chooseTime(page, minutes);
-  await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+  await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
 };
 async function evidence(page, name) {
   if (!process.env.PRACTICE_EVIDENCE) return;
   await mkdir(process.env.PRACTICE_EVIDENCE, { recursive: true });
-  await page.screenshot({ path: path.join(process.env.PRACTICE_EVIDENCE, name + ".png"), fullPage: true });
+  await page.screenshot({ path: path.join(process.env.PRACTICE_EVIDENCE, name + ".png"), fullPage: !["menu-mobile", "feedback-desktop-text-200"].includes(name) });
 }
+
+test("correção por alternativa exige confirmação e conserva a associação após reordenar opções", async () => {
+  const c = await open(), { page } = c;
+  try {
+    await page.evaluate(async (url) => {
+      const { practiceExams } = await import(url);
+      practiceExams[0].questions[0].options.reverse();
+    }, origin + prefix + "practice-content.js");
+    const instant = new Date("2026-11-06T12:00:00Z");
+    await page.clock.install({ time: instant }); await page.clock.pauseAt(instant);
+    await startStudy(page);
+    assert.deepEqual(await page.locator(".practice-options input").evaluateAll((nodes) => nodes.map((node) => node.value)), ["E", "D", "C", "B", "A"]);
+    await page.locator("#practice-option-A").check();
+    assert.equal(await page.getByRole("button", { name: "Confirmar resposta", exact: true }).isDisabled(), true);
+    await page.locator("#practice-option-C").check();
+    assert.equal(await page.locator(".practice-option-feedback, .practice-options a").count(), 0);
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
+    assert.equal(await page.locator(".practice-options .practice-option-feedback").count(), 5);
+    assert.equal(await page.locator(".practice-options .is-incorrect").count(), 1);
+    for (const option of practiceQuestions[0].options) {
+      const card = page.locator(`[data-option-key="${option.key}"]`);
+      assert.ok((await card.innerText()).includes(option.explanation));
+      assert.deepEqual(await card.locator("a").evaluateAll((links) => links.map((link) => link.href)), option.references.map((reference) => reference.url));
+      assert.equal(await card.locator("a").first().getAttribute("target"), "_blank");
+      assert.match(await card.locator("a").first().getAttribute("rel"), /noopener/);
+    }
+    assert.match(await page.locator('.practice-option:has(#practice-option-A)').innerText(), /Sua escolha · Correta/);
+    assert.match(await page.locator('.practice-option:has(#practice-option-C)').innerText(), /Sua escolha · Incorreta/);
+    assert.match(await page.locator('.practice-option:has(#practice-option-B)').innerText(), /Resposta correta · Não selecionada/);
+    assert.match(await page.locator('.practice-option:has(#practice-option-D)').innerText(), /— Não selecionada/);
+    assert.equal(await page.evaluate(() => document.activeElement.id), "practice-explanation");
+    const focus = await page.locator("#practice-explanation").boundingBox();
+    assert.ok(focus.y >= -1 && focus.y < 900, "resumo da mesma questão recebe foco na área visível");
+    const deadline = (await saved(page)).current.deadline;
+    let documentRequests = 0;
+    await c.context.route("https://aws.amazon.com/**", (route) => {
+      documentRequests++;
+      return route.fulfill({ contentType: "text/html", body: '<html lang="pt-BR"><head><link rel="icon" href="data:,"><title>Referência fictícia</title></head><body>Documento oficial simulado pelo teste.</body></html>' });
+    });
+    assert.equal(documentRequests, 0);
+    const toggle = page.getByRole("switch", { name: "Mostrar tempo", exact: true });
+    await toggle.uncheck();
+    const opened = page.waitForEvent("popup");
+    await page.locator('.practice-option:has(#practice-option-A) a').first().click();
+    const popup = await opened; await popup.waitForLoadState("domcontentloaded");
+    await popup.bringToFront();
+    // Simula a suspensão dos callbacks em segundo plano: muda a hora real sem executar ticks.
+    await page.clock.setSystemTime(new Date(instant.getTime() + 60000)); await popup.close();
+    assert.equal(documentRequests, 1, "documentação só é consultada ao acionar o link");
+    assert.equal((await saved(page)).current.deadline, deadline);
+    await toggle.check(); assert.equal(await page.locator("#practice-clock").innerText(), "89:00");
+    await page.getByRole("button", { name: "Próxima questão", exact: true }).click();
+    await page.locator("#practice-option-A").check();
+    assert.equal(await page.locator(".practice-option-feedback").count(), 0, "resposta única também aguarda confirmação");
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
+    assert.match(await page.locator('.practice-option:has(#practice-option-C)').innerText(), /Resposta correta · Não selecionada/);
+    assert.equal(await page.locator(".practice-option-feedback").count(), 4);
+    await finish(page);
+    await page.getByRole("heading", { name: "0 de 10 questões corretas", exact: true }).waitFor();
+    assert.deepEqual(c.external, [], "referências não geram requisições externas na renderização");
+    assert.deepEqual(c.errors, []);
+  } finally { await c.close(); }
+});
+
+test("exame não revela gabarito, comentários ou referências antes da finalização; revisão mantém todas as alternativas", async () => {
+  const c = await open(), { page } = c;
+  try {
+    await startExam(page);
+    await page.locator(".practice-options input").first().check();
+    assert.equal(await page.locator(".practice-option-feedback, .practice-answer-summary, .practice-options a, .practice-option.is-correct, .practice-option.is-incorrect").count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Confirmar resposta", exact: true }).count(), 0);
+    await page.evaluate(async (url) => { const handlers = await import(url); handlers.action("check"); }, origin + prefix + "handlers/practice.js");
+    assert.equal(await page.locator(".practice-option-feedback").count(), 0);
+    await finish(page);
+    await page.getByRole("button", { name: "Todas (65)", exact: true }).click();
+    const details = page.locator(".practice-review details").first(); await details.locator("summary").click();
+    const attempt = (await saved(page)).current, question = practiceQuestions.find(({ id }) => id === attempt.questionIds[0]);
+    assert.equal(await details.locator(".practice-option-feedback").count(), question.options.length);
+    assert.equal(await details.locator(".practice-answer-summary").count(), 1);
+    for (const option of question.options) assert.ok((await details.locator(`[data-option-key="${option.key}"]`).innerText()).includes(option.explanation));
+    assert.deepEqual(c.external, []); assert.deepEqual(c.errors, []);
+  } finally { await c.close(); }
+});
+
+test("revisão de alternativa legada sem referências mostra a falta sem usar o link complementar como substituto", async () => {
+  const c = await open(), { page } = c;
+  try {
+    await page.evaluate(async (url) => {
+      const { practiceExams } = await import(url);
+      delete practiceExams[0].questions[0].options[0].references;
+    }, origin + prefix + "practice-content.js");
+    await startStudy(page);
+    await page.locator("#practice-option-A").check(); await page.locator("#practice-option-B").check();
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
+    const card = page.locator(`[data-option-key="${practiceQuestions[0].options[0].key}"]`);
+    assert.equal(await card.locator("a").count(), 0);
+    assert.match(await card.innerText(), /Referência específica indisponível/);
+    assert.ok((await card.innerText()).includes(practiceQuestions[0].options[0].explanation));
+    await finish(page); await page.getByRole("button", { name: "Todas (10)", exact: true }).click();
+    await page.locator(".practice-review details").first().locator("summary").click();
+    assert.match(await card.innerText(), /Referência específica indisponível/);
+    assert.deepEqual(c.errors, []);
+  } finally { await c.close(); }
+});
+
+test("tempo oculto continua correndo no menu, navegação, reload e retomada; expira e fica isolado por usuário e tentativa", async () => {
+  const c = await open(), { page } = c;
+  try {
+    const instant = new Date("2026-11-06T12:00:00Z");
+    await page.clock.install({ time: instant }); await page.clock.pauseAt(instant);
+    await startExam(page);
+    const original = (await saved(page)).current;
+    const toggle = page.getByRole("switch", { name: "Mostrar tempo", exact: true });
+    assert.equal(await toggle.isChecked(), true);
+    await toggle.uncheck();
+    assert.equal(await page.locator("#practice-clock").isVisible(), false);
+    assert.equal(await page.getByText("Tempo oculto. A contagem continua.", { exact: true }).isVisible(), true);
+    await page.clock.fastForward(60000);
+    await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
+    await page.clock.fastForward(60000); await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !document.getElementById("practice-navigation").open);
+    await page.getByRole("button", { name: "Próxima questão", exact: true }).click();
+    assert.equal(await toggle.isChecked(), false);
+    await toggle.check(); assert.equal(await page.locator("#practice-clock").innerText(), "88:00");
+    await toggle.uncheck();
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await page.clock.fastForward(60000);
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    const restored = (await saved(page)).current;
+    assert.equal(restored.timerVisible, false);
+    for (const key of ["id", "deadline", "startedAt", "timeLimitMinutes"]) assert.equal(restored[key], original[key]);
+    assert.equal(await toggle.isChecked(), false);
+    await page.route("**/api/me", (route) => route.fulfill({ json: { email: "other@example.test", roles: ["student"] } }));
+    await page.reload(); await page.getByRole("button", { name: "Simulados AWS", exact: true }).click(); await startExam(page);
+    assert.equal(await toggle.isChecked(), true, "outra conta começa com o tempo visível");
+    await page.unroute("**/api/me"); await page.reload();
+    await page.getByRole("button", { name: "Simulados AWS", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    assert.equal(await toggle.isChecked(), false, "a preferência da primeira conta foi mantida");
+    await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
+    await page.clock.fastForward(87 * 60000);
+    await page.getByRole("heading", { name: "Resultado da tentativa", exact: true }).waitFor();
+    const finished = await saved(page);
+    assert.equal(finished.current.completedAt, original.deadline);
+    assert.equal(finished.current.timedOut, true); assert.equal(finished.history.length, 1);
+    assert.equal(await page.locator(".practice-focus").count(), 0);
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await startExam(page, null);
+    assert.equal(await toggle.count(), 0, "tentativa ilimitada não tem controle sem significado");
+    assert.deepEqual(c.errors, []);
+  } finally { await c.close(); }
+});
+
+test("primeira configuração tem nomes neutros; retomada mantém a tentativa e nova tentativa depende do histórico deste simulado", async () => {
+  const c = await open(), { page } = c;
+  try {
+    await page.getByRole("button", { name: "Configurar simulado", exact: true }).click();
+    assert.deepEqual(await page.locator(".practice-mode-copy > strong").allTextContents(), ["Modo de prática", "Modo de exame"]);
+    assert.doesNotMatch(await page.locator("#practice-setup").innerText(), /Repetir/);
+    assert.equal(await page.getByRole("button", { name: "Iniciar prática", exact: true }).count(), 1);
+    await page.locator("#practice-mode-exam").check();
+    await page.getByRole("button", { name: "Iniciar exame", exact: true }).click();
+    const id = (await saved(page)).current.id;
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    assert.equal((await saved(page)).current.id, id);
+    await finish(page);
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    assert.equal(await page.getByRole("button", { name: "Nova tentativa", exact: true }).count(), 1);
+    await page.locator("#practice-exam").selectOption(practiceExams[1].id);
+    assert.equal(await page.getByRole("button", { name: "Configurar simulado", exact: true }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Nova tentativa", exact: true }).count(), 0);
+  } finally { await c.close(); }
+});
+
+test("modo foco reutiliza a navegação modal, preserva questão e prazo e restaura o portal ao sair", async () => {
+  for (const options of [{ width: 1440 }, { width: 390 }, { width: 320, text: 2 }]) {
+    const c = await open(options), { page } = c;
+    try {
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      await startStudy(page);
+      await page.locator("#practice-option-A").check();
+      await page.getByRole("button", { name: "Marcar para revisar", exact: true }).click();
+      const before = (await saved(page)).current;
+      if (options.width === 1440) await evidence(page, "focus-desktop");
+      if (options.width === 390) await evidence(page, "focus-mobile");
+      await page.evaluate(() => { window.practiceQuestionNode = document.querySelector(".practice-question"); });
+      const trigger = page.getByRole("button", { name: "Abrir menu de navegação", exact: true });
+      const dialog = page.getByRole("dialog", { name: "Navegação do portal", exact: true });
+      await trigger.click();
+      if (options.width === 390) await evidence(page, "menu-mobile");
+      assert.equal(await trigger.getAttribute("aria-expanded"), "true");
+      assert.equal(await dialog.evaluate((el) => el.matches(":modal")), true);
+      assert.equal(await page.locator(".sidebar").count(), 1, "não duplica a navegação");
+      const menuMetrics = await dialog.evaluate((el) => ({ width: el.clientWidth, scroll: el.scrollWidth,
+        labels: [...el.querySelectorAll(".nav-label")].map((label) => { const rect = label.getBoundingClientRect(); return { text: label.textContent, width: rect.width, height: rect.height }; }) }));
+      assert.ok(menuMetrics.scroll <= menuMetrics.width + 1, JSON.stringify(menuMetrics));
+      assert.ok(menuMetrics.labels.every((label) => label.width > 5 && label.height > 5), "rótulos completos do menu ficam visíveis também no celular");
+      for (let i = 0; i < 20; i++) {
+        await page.keyboard.press("Tab");
+        assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true);
+      }
+      await page.evaluate(() => document.getElementById("practice-option-B").focus());
+      assert.equal(await dialog.evaluate((el) => el.contains(document.activeElement)), true, "conteúdo de fundo é inerte");
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => document.getElementById("practice-menu-toggle").getAttribute("aria-expanded") === "false");
+      assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+      assert.equal(await trigger.evaluate((el) => el === document.activeElement), true);
+      assert.equal(await page.evaluate(() => window.practiceQuestionNode === document.querySelector(".practice-question")), true);
+      assert.deepEqual((await saved(page)).current, before);
+      await trigger.click(); await page.getByRole("button", { name: "Fechar menu", exact: true }).click();
+      await page.waitForFunction(() => document.getElementById("practice-menu-toggle").getAttribute("aria-expanded") === "false");
+      assert.equal(await trigger.evaluate((el) => el === document.activeElement), true);
+      await trigger.click(); await dialog.getByRole("button", { name: "Guia do curso", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      assert.equal(await page.locator(".layout > .sidebar").count(), 1);
+      await page.getByRole("button", { name: "Simulados AWS", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 1);
+      assert.deepEqual((await saved(page)).current, before);
+      await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 1);
+      assert.deepEqual((await saved(page)).current, before);
+      await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+      assert.equal(await page.locator(".practice-focus").count(), 0);
+      assert.equal(await page.locator(".layout > .sidebar").count(), 1);
+      assert.deepEqual(c.errors, []);
+    } finally { await c.close(); }
+  }
+});
 
 test("estudo corrige seleção dupla, mantém respostas, revisa erros e inicia novo estudo com os erros", async () => {
   const c = await open(), { page } = c;
@@ -105,10 +335,14 @@ test("estudo corrige seleção dupla, mantém respostas, revisa erros e inicia n
     assert.equal(await page.locator("#practice-explanation").count(), 0, "sem correção enquanto a seleção está incompleta");
     await page.locator("#practice-option-B").check();
     assert.equal(await page.locator("#practice-option-C").isDisabled(), true);
+    assert.equal(await page.locator("#practice-explanation").count(), 0, "selecionar não revela o gabarito");
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
     await page.getByRole("heading", { name: "Resposta correta", exact: true }).waitFor();
     assert.equal(await page.evaluate(() => document.activeElement.id), "practice-explanation");
+    await evidence(page, "feedback-desktop");
     await page.getByRole("button", { name: "Próxima questão", exact: true }).click();
     await page.locator("#practice-option-C").check();
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
     await page.getByRole("heading", { name: "Resposta correta", exact: true }).waitFor();
     await page.getByRole("button", { name: "Questão anterior", exact: true }).click();
     assert.equal(await page.locator("#practice-option-A").isChecked(), true);
@@ -124,13 +358,13 @@ test("estudo corrige seleção dupla, mantém respostas, revisa erros e inicia n
     await page.getByRole("button", { name: "Repetir estas questões", exact: true }).click();
     await page.getByRole("heading", { name: "Escolha seu modo de teste", exact: true }).waitFor();
     await page.locator("#practice-mode-exam").check();
-    await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+    await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
     const next = (await saved(page)).current;
     assert.equal(next.questionIds.length, 8);
     assert.equal(next.mode, "exam");
     assert.equal(next.questionIds.some((id) => [1, 2].includes(id)), false);
     assert.deepEqual(c.calls, calls);
-    await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.deepEqual((await saved(page)).current.questionIds, next.questionIds);
     assert.deepEqual(c.calls.slice(calls.length), ["GET /api/me", "GET /api/cohorts"]);
     assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
@@ -180,10 +414,10 @@ test("135, 180 minutos e tempo ilimitado continuam corretos após 90 minutos e r
       else assert.equal(await page.locator("#practice-clock").innerText(), `${minutes}:00`);
       await page.clock.fastForward(90 * 60000);
       assert.equal(await page.locator("#practice-question-title").isVisible(), true);
-      await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+      await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
       const resumed = (await saved(page)).current;
       assert.equal(resumed.deadline, initial.deadline); assert.equal(resumed.timeLimitMinutes, minutes);
-      assert.equal(await page.locator(".practice-explanations").count(), 0);
+      assert.equal(await page.locator(".practice-option-feedback").count(), 0);
       if (minutes === null) {
         await page.clock.fastForward(4 * 60 * 60000);
         assert.equal((await saved(page)).current.completedAt, null);
@@ -212,9 +446,9 @@ test("simulado retoma o mesmo prazo, mantém foco durante o relógio e conclui u
     await page.clock.fastForward(3000);
     assert.equal(await page.evaluate(() => document.activeElement.id), "practice-option-A");
     assert.equal(await page.getByRole("button", { name: "Conferir resposta", exact: true }).count(), 0);
-    assert.equal(await page.locator(".practice-explanations").count(), 0);
+    assert.equal(await page.locator(".practice-option-feedback").count(), 0);
     await page.reload();
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal((await saved(page)).current.deadline, initial.deadline);
     assert.equal(await page.locator("#practice-option-A").isChecked(), true);
     await page.clock.fastForward(5400001);
@@ -252,27 +486,29 @@ test("dois simulados têm seleção, gabaritos, retomada e históricos independe
     assert.equal(await page.locator("#practice-exam option").count(), 2);
     await startStudy(page);
     await page.locator("#practice-option-A").check(); await page.locator("#practice-option-B").check();
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
     await page.getByRole("heading", { name: "Resposta correta", exact: true }).waitFor();
     const firstAttempt = (await saved(page, first.id)).current;
     await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
     await page.locator("#practice-exam").selectOption(second.id);
-    assert.equal(await page.getByRole("button", { name: "Continuar tentativa", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Retomar tentativa", exact: true }).count(), 0);
     await evidence(page, "second-exam-home-desktop");
     await openSetup(page);
     assert.equal(await page.getByRole("switch", { name: "Estender tempo", exact: true }).isChecked(), false);
     assert.equal(await page.locator(".practice-time-limit").innerText(), "90 minutos (padrão)");
     await page.locator("#practice-count").selectOption("10"); await page.locator("#practice-shuffle").uncheck();
-    await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+    await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
     assert.match(await page.locator("#practice-question-title").innerText(), /failover de DNS/);
     assert.equal(await page.locator("#practice-option-D").getAttribute("type"), "radio");
     await page.locator("#practice-option-D").check();
+    await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
     await page.getByRole("heading", { name: "Resposta correta", exact: true }).waitFor();
-    const url = await page.locator("#practice-explanation a").getAttribute("href");
+    const url = await page.locator('.practice-option:has(#practice-option-D) a').getAttribute("href");
     assert.match(url, /^https:\/\/docs\.aws\.amazon\.com\/pt_br\//);
     await evidence(page, "second-exam-explanation-desktop");
     await page.reload();
     assert.equal(await page.locator("#practice-exam").inputValue(), second.id);
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal(await page.locator("#practice-option-D").isChecked(), true);
     await finish(page);
     await page.getByRole("heading", { name: "1 de 10 questões corretas", exact: true }).waitFor();
@@ -280,7 +516,7 @@ test("dois simulados têm seleção, gabaritos, retomada e históricos independe
     assert.equal(await page.locator(".practice-history li").count(), 1);
     await page.locator("#practice-exam").selectOption(first.id);
     assert.equal(await page.locator(".practice-history li").count(), 0);
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal(await page.locator("#practice-option-A").isChecked(), true);
     assert.equal(await page.locator("#practice-option-B").isChecked(), true);
     assert.equal((await saved(page, first.id)).current.id, firstAttempt.id);
@@ -300,6 +536,7 @@ test("falha de storage e registro corrompido não impedem responder", async () =
     try {
       await startStudy(c.page);
       await c.page.locator("#practice-option-A").check(); await c.page.locator("#practice-option-B").check();
+      await c.page.getByRole("button", { name: "Confirmar resposta", exact: true }).click();
       await c.page.getByRole("heading", { name: "Resposta correta", exact: true }).waitFor();
       if (options.blockedStorage) assert.match(await c.page.locator(".practice-content-note").innerText(), /não pôde ser salvo/);
       assert.deepEqual(c.errors, []);
@@ -337,10 +574,15 @@ test("interface em celular e texto ampliado não transborda no início, configur
       if (options.width === 390) await evidence(page, "setup-mobile-extended");
       await page.locator("#practice-count").selectOption("10");
       await page.locator("#practice-shuffle").uncheck();
-      await page.getByRole("button", { name: "Iniciar teste", exact: true }).click(); await fits();
+      await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click(); await fits();
       if (options.width === 390) await evidence(page, "question-mobile");
       await page.locator("#practice-option-A").check(); await page.locator("#practice-option-B").check();
+      await page.getByRole("button", { name: "Confirmar resposta", exact: true }).click(); await fits();
+      if (options.width === 390) await evidence(page, "feedback-mobile");
+      if (options.width === 1440) await evidence(page, "feedback-desktop-text-200");
       await finish(page); await fits();
+      await page.getByRole("button", { name: "Todas (10)", exact: true }).click();
+      await page.locator(".practice-review details").first().locator("summary").click(); await fits();
       if (options.width === 390) await evidence(page, "result-mobile");
       assert.deepEqual(c.errors, []);
     } finally { await c.close(); }

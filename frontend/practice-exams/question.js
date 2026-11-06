@@ -21,8 +21,20 @@ export const aws = (service) => `https://aws.amazon.com/pt/${service}/`;
 export const shared = aws("compliance/shared-responsibility-model");
 export const caf = "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/foundational-capabilities.html";
 export const wa = aws("architecture/well-architected");
-export const q = (id, task, prompt, correct, labels, explanations, source, note = "") => ({
-  id, task, domain: task[0], prompt, correct: correct.split(""),
-  options: labels.map((text, index) => ({ id: "ABCDE"[index], text, explanation: explanations[index] })),
-  source: ptBrSource(source), note,
-});
+export function isOfficialReference(reference) {
+  if (!reference || typeof reference.title !== "string" || !reference.title.trim() || typeof reference.url !== "string") return false;
+  try {
+    const url = new URL(reference.url);
+    return url.protocol === "https:" && !url.username && !url.password && !url.port &&
+      ["aws.amazon.com", "docs.aws.amazon.com"].includes(url.hostname);
+  } catch { return false; }
+}
+// O formato antigo continua aceito. Nos novos bancos, cada objeto leva ID, chave editorial,
+// texto, explicação e referências juntos; reordenar alternativas não desfaz a associação.
+export function q(id, task, prompt, correct, items, explanationsOrSource, sourceOrNote = "", note = "") {
+  const legacy = Array.isArray(explanationsOrSource);
+  const options = legacy ? items.map((text, index) => ({ id: "ABCDE"[index], text, explanation: explanationsOrSource[index] })) :
+    items.map((option) => ({ ...option, references: option.references?.map((reference) => ({ ...reference, url: ptBrSource(reference.url) })) }));
+  return { id, task, domain: task[0], prompt, correct: correct.split(""), options,
+    source: ptBrSource(legacy ? sourceOrNote : explanationsOrSource), note: legacy ? note : sourceOrNote };
+}

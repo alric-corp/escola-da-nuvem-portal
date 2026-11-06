@@ -7,6 +7,7 @@ import * as feedbackHandlers from "./handlers/feedback.js";
 import * as remindersHandlers from "./handlers/reminders.js";
 import * as signupConfirmationHandlers from "./handlers/signup-confirmation.js";
 import * as practiceHandlers from "./handlers/practice.js";
+import { closePracticeNavigation, mountPracticeNavigation, openPracticeNavigation } from "./practice-focus.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { isWithdrawn } from "./participation.js";
@@ -146,6 +147,11 @@ function syncShell() {
   const sidebar = $(".sidebar"), nav = sidebar?.querySelector("nav"), bottom = sidebar?.querySelector(".sidebar-bottom");
   if (!nav || !bottom) return;
   const root = document.documentElement, mobile = matchMedia("(max-width: 760px)").matches;
+  if ($(".layout.practice-focus")) {
+    root.dataset.bottomNav = "fluxo"; root.dataset.sidebar = "rola"; root.dataset.header = "linha";
+    root.style.setProperty("--bottom-nav-height", "0px");
+    return;
+  }
   // Quem já passou do cabeçalho não deve ver o conteúdo saltar quando o menu entra ou sai do fluxo acima dele.
   const main = $("#main-content"), readingTop = main?.getBoundingClientRect().top ?? 0;
   const navStyle = getComputedStyle(nav), rows = nav.getBoundingClientRect().height - parseFloat(navStyle.paddingTop) - parseFloat(navStyle.paddingBottom);
@@ -226,6 +232,9 @@ function render() {
   guideTabsObserver?.disconnect();
   if (!state.me) return publicPage();
   if (state.classReport) return renderClassReport();
+  const practice = state.view === "practice" ? practiceHandlers.view() : null;
+  const focusMode = practice?.screen === "attempt" && practice.model.current && !practice.model.current.completedAt;
+  closePracticeNavigation();
   const focused = document.activeElement;
   const focusId = focused?.id;
   const selection = focused?.selectionStart;
@@ -246,13 +255,15 @@ function render() {
   const accountName = state.studentView ? state.me.email.split("@")[0] : name;
   $("#app").innerHTML =
     `${demo ? `<div class="demo-bar">Demonstração · dados fictícios <button data-action="demo-role">Ver como ${demoRole === "student" ? "instrutor" : "aluno"} ${icon("arrow", 14)}</button><a href="./">Sair da demonstração</a></div>` : ""}
-  <a class="skip-link" href="#main-content">Pular para o conteúdo</a><div class="layout"><aside class="sidebar"><a href="./" class="brand"><img class="brand-logo" src="./logo.png" alt="Escola da Nuvem" width="112" height="112" /></a><div class="workspace-label">PORTAL AWS RE/START</div>
+  <a class="skip-link" href="#main-content">Pular para o conteúdo</a><div class="layout${focusMode ? " practice-focus" : ""}"><aside class="sidebar"><a href="./" class="brand"><img class="brand-logo" src="./logo.png" alt="Escola da Nuvem" width="112" height="112" /></a><div class="workspace-label">PORTAL AWS RE/START</div>
   <label class="cohort-label" for="cohort">${teacher() || admin() ? "Turma selecionada" : "Minha turma"}</label><select id="cohort">${state.cohorts.length ? state.cohorts.map((c) => `<option value="${e(c.code)}" ${c.code === state.code ? "selected" : ""}>${e(c.code)}</option>`).join("") : "<option>Nenhuma turma vinculada</option>"}</select>
   <nav aria-label="Menu principal">${nav("overview", teacher() ? "Painel do instrutor" : "Meu desempenho", "grid", teacher() ? "Painel" : "Desempenho")}${!teacher() ? nav("activities", "Minhas atividades", "book", "Atividades") : ""}${nav("history", teacher() ? "Publicações da turma" : "Meu histórico", "clock", teacher() ? "Publicações" : "Histórico")}${teacher() ? nav("import", "Atualizar notas", "upload", "Notas") + nav("reminders", "Lembretes", "out") : ""}${studentOnly() && !state.studentView ? nav("feedback", "Feedback", "message") : ""}${admin() && !state.studentView ? nav("access", "Turmas e acessos", "users", "Acessos") + nav("admin-feedback", "Feedbacks", "inbox") : ""}${!state.studentView ? nav("practice", "Simulados AWS", "book", "Simulados") : ""}${nav("course-guide", "Guia do curso", "book", "Guia")}</nav>
   <div class="sidebar-bottom"><div class="support-card">${icon("network", 28)}<strong>Aprender abre caminhos.</strong><p>Cada atividade é mais um passo na sua jornada.</p></div><div class="account"><span class="avatar">${e(accountName.slice(0, 2).toUpperCase())}</span><div><strong>${e(accountName)}</strong><small>${roleLabel()}</small></div><button class="icon-button" data-action="logout" aria-label="Sair da conta">${icon("out")}</button></div></div></aside>
-  <main class="main" id="main-content" tabindex="-1"><header class="topline"><div class="location-context"><span>${state.view === "access" || state.view === "admin-feedback" ? "Administração do portal" : state.code ? `Turma ${e(state.code)}` : "Minha conta"}${demo ? " · Demonstração" : ""}</span><strong>${e(pageLabel())}</strong></div>${sessionContext()}</header>
+  ${focusMode ? `<dialog id="practice-navigation" class="practice-navigation-dialog" aria-modal="true" aria-labelledby="practice-menu-title"><div class="practice-menu-heading"><h2 id="practice-menu-title">Navegação do portal</h2><button type="button" class="button secondary" data-practice-menu-close>Fechar menu</button></div></dialog>` : ""}
+  <main class="main" id="main-content" tabindex="-1"><header class="topline">${focusMode ? `<button type="button" class="button secondary" id="practice-menu-toggle" data-practice-menu-open aria-label="Abrir menu de navegação" aria-controls="practice-navigation" aria-expanded="false">${icon("grid", 18)} Menu</button>` : ""}<div class="location-context"><span>${state.view === "access" || state.view === "admin-feedback" ? "Administração do portal" : state.code ? `Turma ${e(state.code)}` : "Minha conta"}${demo ? " · Demonstração" : ""}</span><strong>${e(pageLabel())}</strong></div>${sessionContext()}</header>
   ${studentViewBanner()}${content(name)}<footer class="main-footer"><span>Escola da Nuvem · AWS re/Start</span>${!studentOnly() && !state.studentView && state.view !== "feedback" ? '<button type="button" class="text-link footer-feedback" data-view="feedback">Enviar feedback</button>' : ""}<span>Seu aprendizado, uma semana de cada vez.</span></footer></main></div>`;
   fitFeedbackMessages();
+  mountPracticeNavigation();
   // Foco que continua na página depois do render (fora de #app, como o aviso) é escolha do usuário: não muda.
   const lost = focused === document.body || !focused?.isConnected;
   if (changedView || titleFocused) {
@@ -1187,15 +1198,20 @@ function focusPractice(destination) {
   target?.focus({ preventScroll: true });
   target?.scrollIntoView({ block: "nearest" });
 }
-setInterval(() => {
+function updatePracticeClock() {
   const tick = practiceHandlers.tick();
   if (state.view !== "practice" || !tick) return;
   if (tick.expired) { render(); focusPractice("question"); }
   else if ($("#practice-clock")) $("#practice-clock").textContent = tick.remaining;
-}, 1000);
+}
+setInterval(updatePracticeClock, 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) updatePracticeClock(); });
+window.addEventListener("pageshow", updatePracticeClock);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
+  if (button.hasAttribute("data-practice-menu-open")) return openPracticeNavigation();
+  if (button.hasAttribute("data-practice-menu-close")) return closePracticeNavigation();
   if (state.studentView && !allowedWhileViewing(button)) return;
   if (button.dataset.practiceAction) {
     const destination = practiceHandlers.action(button.dataset.practiceAction, button.dataset.practiceValue);
@@ -1344,6 +1360,16 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.practiceSetting === "timerVisible") {
+    if (practiceHandlers.setting("timerVisible", target.checked)) {
+      updatePracticeClock();
+      if (!$("#practice-clock-region")) return;
+      target.setAttribute("aria-checked", String(target.checked));
+      $("#practice-clock-region").hidden = !target.checked;
+      $("#practice-time-hidden").hidden = target.checked;
+    } else { render(); focusPractice("question"); }
+    return;
+  }
   if (target.dataset.practiceSetting) return practiceHandlers.setting(target.dataset.practiceSetting, target.type === "checkbox" ? target.checked : target.value);
   if (target.dataset.practiceOption) {
     const destination = practiceHandlers.answer(target.dataset.practiceOption);

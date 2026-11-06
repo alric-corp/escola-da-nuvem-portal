@@ -1,0 +1,1798 @@
+{
+  "reviewedAt": "2026-11-06",
+  "questions": 130,
+  "options": 542,
+  "method": "Revisão editorial do texto e dos trechos das fontes oficiais; disponibilidade HTTP não é usada como prova de pertinência. As alternativas incorretas contrastam a função documentada com o requisito do enunciado. O CI valida apenas a estrutura e a associação offline.",
+  "sources": [
+    {
+      "key": "cloud",
+      "title": "Benefícios da computação em nuvem",
+      "url": "https://aws.amazon.com/pt/what-is-cloud-computing/",
+      "pageTitle": "O que é a computação em nuvem? – Serviços, benefícios e tipos de computação em nuvem – AWS",
+      "section": "Benefícios da computação em nuvem: agilidade, elasticidade, custo e implantação global",
+      "excerpt": "A computação em nuvem é a entrega de recursos de TI sob demanda por meio da Internet com preço conforme",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "pricing",
+      "title": "Preços e pagamento conforme o uso",
+      "url": "https://aws.amazon.com/pt/pricing/",
+      "pageTitle": "Preços de produtos e serviços da AWS | Amazon Web Services",
+      "section": "Preços da AWS",
+      "excerpt": "A AWS oferece uma abordagem de pagamento conforme o uso para preços na grande maioria dos nossos serviços em nuvem.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "shared",
+      "title": "Modelo de responsabilidade compartilhada",
+      "url": "https://aws.amazon.com/pt/compliance/shared-responsibility-model/",
+      "pageTitle": "Modelo de responsabilidade compartilhada – Amazon Web Services (AWS)",
+      "section": "Segurança da/na nuvem; controles herdados, compartilhados e específicos do cliente",
+      "excerpt": "Segurança e conformidade constituem uma responsabilidade compartilhada entre a AWS e o cliente. Esse modelo compartilhado pode auxiliar a reduzir",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "backup",
+      "title": "AWS Backup e proteção de dados",
+      "url": "https://aws.amazon.com/pt/backup/",
+      "pageTitle": "Backup como serviço – Backups centralizados – AWS Backup – AWS",
+      "section": "AWS Backup",
+      "excerpt": "O AWS Backup é um serviço totalmente gerenciado que centraliza e automatiza a proteção de dados em serviços da AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cost",
+      "title": "Pilar de otimização de custos",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/cost-optimization-pillar/welcome.html",
+      "pageTitle": "Pilar Otimização de custos: AWS Well-Architected Framework - Pilar Otimização de custos",
+      "section": "Pilar Otimização de custos: AWS Well-Architected Framework",
+      "excerpt": "Uma workload com custo otimizado utiliza integralmente todos os recursos, alcança um resultado com o menor preço possível e atende",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "costPrinciples",
+      "title": "Princípios de otimização de custos",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/cost-dp.html",
+      "pageTitle": "Princípios de design - Framework Well-Architected da AWS",
+      "section": "Adotar modelo de consumo; medir eficiência; analisar e atribuir despesas",
+      "excerpt": "Meça a eficiência geral: meça o resultado de negócios da workload e os custos associados à sua entrega. Use essa",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "isolation",
+      "title": "Isolamento de falhas em várias zonas e Regiões",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/rel_fault_isolation_multiaz_region_system.html",
+      "pageTitle": "REL10-BP01 Implantar a workload em vários locais - Framework Well-Architected da AWS",
+      "section": "REL10-BP01 Implantar a workload em vários locais",
+      "excerpt": "Distribua os dados e os recursos da workload por várias zonas de disponibilidade ou, quando necessário, por Regiões da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "performancePrinciples",
+      "title": "Princípios de eficiência de desempenho",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/perf-dp.html",
+      "pageTitle": "Princípios de design - Framework Well-Architected da AWS",
+      "section": "Princípios de design",
+      "excerpt": "Tenha alcance global em poucos minutos: a implantação de sua workload em várias regiões da AWS em todo o mundo",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "reliability",
+      "title": "Princípios de confiabilidade e recuperação",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/reliability-pillar/design-principles.html",
+      "pageTitle": "Princípios de design - Pilar Confiabilidade",
+      "section": "Princípios de design",
+      "excerpt": "Recupere-se de falhas automaticamente: ao monitorar os indicadores-chave de performance (KPIs) de uma workloads, você pode executar a automação quando",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "looseCoupling",
+      "title": "Confiabilidade: dependências com acoplamento fraco",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/reliability-pillar/rel_prevent_interaction_failure_loosely_coupled_system.html",
+      "pageTitle": "REL04-BP02 Implementar dependências com acoplamento fraco - Pilar Confiabilidade",
+      "section": "REL04-BP02 Implementar dependências com acoplamento fraco",
+      "excerpt": "As dependências, como sistemas de enfileiramento, sistemas de streaming, fluxos de trabalho e balanceadores de carga, têm acoplamento fraco. O",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "performance",
+      "title": "Eficiência de desempenho",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/performance-efficiency.html",
+      "pageTitle": "Eficiência de performance - Framework Well-Architected da AWS",
+      "section": "Eficiência de performance",
+      "excerpt": "O pilar Eficiência de performance inclui a capacidade de usar recursos de nuvem de maneira eficiente para atender aos requisitos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "security",
+      "title": "Princípios de segurança",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/sec-design.html",
+      "pageTitle": "Princípios de design - Framework Well-Architected da AWS",
+      "section": "Princípios de design",
+      "excerpt": "Manter a rastreabilidade: monitore, alerte e examine ações e alterações em seu ambiente em tempo real. Integre a coleta de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sustainability",
+      "title": "Pilar de sustentabilidade",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/sustainability.html",
+      "pageTitle": "Sustentabilidade - Framework Well-Architected da AWS",
+      "section": "Sustentabilidade",
+      "excerpt": "O pilar Sustentabilidade foca os impactos ambientais, especialmente a eficiência e o consumo de energia, que são fatores importantes para",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "operations",
+      "title": "Princípios de excelência operacional",
+      "url": "https://docs.aws.amazon.com/pt_br/wellarchitected/latest/framework/oe-design-principles.html",
+      "pageTitle": "Princípios de design - Framework Well-Architected da AWS",
+      "section": "Princípios de design",
+      "excerpt": "Faça alterações frequentes, pequenas e reversíveis: projete workloads escaláveis e com acoplamento fraco para permitir que os componentes sejam atualizados",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "wa",
+      "title": "AWS Well-Architected Framework e seus pilares",
+      "url": "https://aws.amazon.com/pt/architecture/well-architected/",
+      "pageTitle": "AWS Well-Architected – Crie aplicações para a nuvem seguras e eficientes",
+      "section": "AWS Well-Architected",
+      "excerpt": "O AWS Well-Architected ajuda arquitetos de nuvem a criar infraestruturas seguras, resilientes, eficientes e de alta performance para aplicações e",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "waTool",
+      "title": "AWS Well-Architected Tool: revisão de arquiteturas",
+      "url": "https://aws.amazon.com/pt/well-architected-tool/",
+      "pageTitle": "Ferramentas de arquitetura de TI otimizadas | AWS Well-Architected Tool | Amazon Web Services",
+      "section": "AWS Well-Architected Tool",
+      "excerpt": "Disponível no Console de Gerenciamento da AWS, o AWS Well-Architected Tool fornece uma estrutura confiável para você avaliar sua arquitetura",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "caf",
+      "title": "Capacidades do AWS Cloud Adoption Framework",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/foundational-capabilities.html",
+      "pageTitle": "Capacidades fundamentais - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Capacidades fundamentais",
+      "excerpt": "Cada um dos domínios de transformação descritos na seção anterior é habilitado por um conjunto de capacidades fundamentais, mostradas na",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cafPeople",
+      "title": "AWS CAF: perspectiva de pessoas",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/people-perspective.html",
+      "pageTitle": "Perspectiva de pessoas: cultura e mudança - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Perspectiva de pessoas: cultura e mudança",
+      "excerpt": "A perspectiva de pessoas serve como uma ponte entre tecnologia e negócios, acelerando a jornada para a nuvem para ajudar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cafGovernance",
+      "title": "AWS CAF: perspectiva de governança",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/governance-perspective.html",
+      "pageTitle": "Perspectiva de governança: controle e supervisão - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Gerenciamento de benefícios, portfólio de aplicações, riscos e finanças na nuvem",
+      "excerpt": "Gerenciamento de benefícios: garanta que os benefícios empresariais associados aos seus investimentos em nuvem sejam realizados e sustentados. O sucesso",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cafOperations",
+      "title": "AWS CAF: perspectiva de operações",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/operations-perspective.html",
+      "pageTitle": "Perspectiva de operações: integridade e disponibilidade - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Gerenciamento de desempenho e capacidade",
+      "excerpt": "Gerenciamento de desempenho e capacidade: monitore a performance da workload e garanta que a capacidade atenda às demandas atuais e",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cafSecurity",
+      "title": "AWS CAF: perspectiva de segurança",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/security-perspective.html",
+      "pageTitle": "Perspectiva de segurança: conformidade e garantia - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Perspectiva de segurança: conformidade e garantia",
+      "excerpt": "A perspectiva de segurança ajuda você a alcançar a confidencialidade, a integridade e a disponibilidade de seus dados e workloads",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cafBusiness",
+      "title": "AWS CAF: perspectiva de negócios",
+      "url": "https://docs.aws.amazon.com/pt_br/whitepapers/latest/overview-aws-cloud-adoption-framework/business-perspective.html",
+      "pageTitle": "Perspectiva de negócios: estratégia e resultados - An Overview of the AWS Cloud Adoption Framework",
+      "section": "Perspectiva de negócios: estratégia e resultados",
+      "excerpt": "Gerenciamento de produtos: gerencie ofertas habilitadas para dados e nuvem que ofereçam valor repetível para clientes internos e externos como",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "support",
+      "title": "Comparação dos planos do AWS Support",
+      "url": "https://aws.amazon.com/pt/premiumsupport/plans/",
+      "pageTitle": "Comparação dos planos do AWS Support - Recursos do AWS Support - AWS",
+      "section": "Comparar planos: especialista da AWS e acesso a suporte técnico",
+      "excerpt": "24 horas/7 dias por semana por telefone, chat, e-mail e pela internet",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "supportPricing",
+      "title": "Preços dos planos do AWS Support",
+      "url": "https://aws.amazon.com/pt/premiumsupport/pricing/",
+      "pageTitle": "Preços do AWS Support – Recursos do AWS Support – AWS",
+      "section": "Visão geral dos preços de planos",
+      "excerpt": "USD 29/mês por conta",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "trusted",
+      "title": "Verificações do AWS Trusted Advisor",
+      "url": "https://aws.amazon.com/pt/premiumsupport/technology/trusted-advisor/",
+      "pageTitle": "Orientação de melhores práticas para otimização da AWS - AWS Trusted Advisor ",
+      "section": "AWS Trusted Advisor",
+      "excerpt": "O AWS Trusted Advisor ajuda você a otimizar custos, aumentar a performance, melhorar a segurança e a resiliência e operar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "trustedSecurity",
+      "title": "Trusted Advisor: verificações de segurança",
+      "url": "https://docs.aws.amazon.com/pt_br/awssupport/latest/user/security-checks.html",
+      "pageTitle": "Segurança - AWS Support",
+      "section": "Permissões do bucket do Amazon S3; MFA na conta raiz",
+      "excerpt": "Permissões do bucket do Amazon S3",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "trustedLimits",
+      "title": "Trusted Advisor: verificações de cotas",
+      "url": "https://docs.aws.amazon.com/pt_br/awssupport/latest/user/service-limits.html",
+      "pageTitle": "Limites do serviço - AWS Support",
+      "section": "Limites do serviço",
+      "excerpt": "80% do limite atingido.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "health",
+      "title": "AWS Health Dashboard",
+      "url": "https://aws.amazon.com/pt/premiumsupport/technology/aws-health-dashboard/",
+      "pageTitle": "Status dos recursos da Nuvem AWS | AWS Health | AWS",
+      "section": "AWS Health",
+      "excerpt": "O AWS Health é a fonte de dados confiável para eventos e mudanças que afetam seus recursos da Nuvem AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ec2",
+      "title": "Computação com Amazon EC2",
+      "url": "https://aws.amazon.com/pt/ec2/",
+      "pageTitle": "Computação na nuvem segura e redimensionável – Amazon EC2 – Amazon Web Services",
+      "section": "Amazon EC2",
+      "excerpt": "O Amazon Elastic Compute Cloud (Amazon EC2) oferece a plataforma de computação mais ampla e profunda, com mais de mil",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "onDemand",
+      "title": "Instâncias EC2 sob demanda",
+      "url": "https://aws.amazon.com/pt/ec2/pricing/on-demand/",
+      "pageTitle": "Definição de preço de instância sob demanda do EC2",
+      "section": "Preço sob demanda do Amazon EC2",
+      "excerpt": "As instâncias sob demanda permitem pagar a capacidade computacional por hora ou por segundo (mínimo de 60 segundos), sem compromissos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "spot",
+      "title": "Instâncias Spot e interrupções",
+      "url": "https://aws.amazon.com/pt/ec2/spot/",
+      "pageTitle": "Economize até 90% em preços sob demanda — Instâncias spot do Amazon EC2 — Amazon Web Services",
+      "section": "Instâncias spot do Amazon EC2",
+      "excerpt": "Aproveite a enorme escala operacional da AWS e execute cargas de trabalho em grande escala com uma economia significativa de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "reserved",
+      "title": "Instâncias reservadas do EC2",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/ec2-reserved-instances.html",
+      "pageTitle": "Visão geral de instâncias reservadas para o Amazon EC2 - Amazon Elastic Compute Cloud",
+      "section": "Visão geral de instâncias reservadas para o Amazon EC2",
+      "excerpt": "As instâncias reservadas não são instâncias físicas, mas um desconto na fatura aplicado na sua conta pelo uso de instâncias",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "dedicatedHost",
+      "title": "Hosts dedicados do EC2 e licenciamento",
+      "url": "https://aws.amazon.com/pt/ec2/dedicated-hosts/",
+      "pageTitle": "Hospedagem de servidores dedicados | Hosts dedicados do Amazon EC2 | AWS",
+      "section": "Hosts dedicados do Amazon EC2",
+      "excerpt": "Hardware dedicado para oferecer suporte a licenças de software existentes e melhorar a conformidade",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "hostPricing",
+      "title": "Preços e reservas de hosts dedicados",
+      "url": "https://aws.amazon.com/pt/ec2/dedicated-hosts/pricing/",
+      "pageTitle": "Preço do host dedicado do Amazon EC2",
+      "section": "Preço da reserva: pagamento adiantado integral, parcial e sem pagamento adiantado",
+      "excerpt": "Com a opção de pagamento adiantado integral, você paga por toda a reserva de host dedicado em um único pagamento",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "dedicated",
+      "title": "Instâncias dedicadas do EC2",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/dedicated-instance.html",
+      "pageTitle": "Instâncias dedicadas do Amazon EC2 - Amazon Elastic Compute Cloud",
+      "section": "Instâncias dedicadas do Amazon EC2",
+      "excerpt": "Por padrão, as instâncias EC2 são executadas em hardware de locação compartilhada. Isso significa que várias contas da AWS podem",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "capacity",
+      "title": "Reservas de capacidade sob demanda",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/ec2-capacity-reservations.html",
+      "pageTitle": "Reservar capacidade computacional com reservas de capacidade sob demanda do EC2 - Amazon Elastic Compute Cloud",
+      "section": "Reservar capacidade computacional com reservas de capacidade sob demanda do EC2",
+      "excerpt": "As reservas de capacidade do Amazon EC2 permitem que você reserve capacidade computacional para instâncias do Amazon EC2 em uma",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "savings",
+      "title": "Compromissos e descontos com Savings Plans",
+      "url": "https://docs.aws.amazon.com/pt_br/savingsplans/latest/userguide/what-is-savings-plans.html",
+      "pageTitle": "O que são Savings Plans? - Savings Plans",
+      "section": "O que são Savings Plans?",
+      "excerpt": "Os Savings Plans oferecem economias além das taxas sob demanda em troca do compromisso de usar uma quantidade específica de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "fleet",
+      "title": "EC2 Fleet e tipos de capacidade",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/Fleets.html",
+      "pageTitle": "Frota do EC2 e frota spot - Amazon Elastic Compute Cloud",
+      "section": "Frota do EC2 e frota spot",
+      "excerpt": "A frota do EC2 e a frota spot se destinam a constituírem uma forma útil de inicializar uma frota de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "placement",
+      "title": "Grupos de posicionamento do EC2",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/placement-groups.html",
+      "pageTitle": "Grupos de posicionamento para as instâncias do Amazon EC2 - Amazon Elastic Compute Cloud",
+      "section": "Grupos de posicionamento para as instâncias do Amazon EC2",
+      "excerpt": "Para atender às necessidades de sua workload, você pode iniciar um grupo de instâncias do EC2 interdependentes em um grupo",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "az",
+      "title": "Regiões e zonas de disponibilidade",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/using-regions-availability-zones.html",
+      "pageTitle": "A VPC abrange as zonas de disponibilidade e a zona Wavelength. - Amazon Elastic Compute Cloud",
+      "section": "A VPC abrange as zonas de disponibilidade e a zona Wavelength.",
+      "excerpt": "O Amazon EC2 está hospedado em vários locais no mundo todo. Esses locais são compostos por Regiões da AWS, zonas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "global",
+      "title": "Infraestrutura global da AWS",
+      "url": "https://aws.amazon.com/pt/about-aws/global-infrastructure/",
+      "pageTitle": "Infraestrutura global — AWS",
+      "section": "Infraestrutura global da AWS",
+      "excerpt": "Crie suas aplicações com confiança na infraestrutura de nuvem global mais segura, confiável e abrangente",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "directConnect",
+      "title": "AWS Direct Connect",
+      "url": "https://aws.amazon.com/pt/directconnect/",
+      "pageTitle": "Conexões de rede dedicadas | AWS Direct Connect | AWS",
+      "section": "AWS Direct Connect",
+      "excerpt": "Melhore a performance da aplicação conectando-se diretamente à AWS e ignorando a internet pública.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "directEncryption",
+      "title": "Criptografia em trânsito no Direct Connect",
+      "url": "https://docs.aws.amazon.com/pt_br/directconnect/latest/UserGuide/encryption-in-transit.html",
+      "pageTitle": "Criptografia em AWS Direct Connect - AWS Direct Connect",
+      "section": "Criptografia em AWS Direct Connect",
+      "excerpt": "AWS Direct Connect não criptografa o tráfego que está em trânsito por padrão. Para criptografar os dados em trânsito que",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "peering",
+      "title": "Peering de VPC",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/peering/what-is-vpc-peering.html",
+      "pageTitle": "O que é emparelhamento de VPC? - Amazon Virtual Private Cloud",
+      "section": "O que é emparelhamento de VPC?",
+      "excerpt": "Uma nuvem privada virtual (VPC) é uma rede virtual dedicada à sua Conta da AWS. Ela é isolada de maneira",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "acl",
+      "title": "ACLs de rede e regras de permissão e negação",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/vpc-network-acls.html",
+      "pageTitle": "Controlar o tráfego da sub-rede com listas de controle de acesso à rede - Amazon Virtual Private Cloud",
+      "section": "Controlar o tráfego da sub-rede com listas de controle de acesso à rede",
+      "excerpt": "Uma lista de controle de acesso (ACL) de rede permite ou não determinado tráfego de entrada ou de saída no",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sg",
+      "title": "Grupos de segurança",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/vpc-security-groups.html",
+      "pageTitle": "Controle o tráfego para seus recursos da AWS usando grupos de segurança - Amazon Virtual Private Cloud",
+      "section": "Controle o tráfego para seus recursos da AWS usando grupos de segurança",
+      "excerpt": "Um grupo de segurança controla o tráfego que tem permissão para acessar e sair dos recursos aos quais está associado.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "eni",
+      "title": "Interfaces de rede elásticas",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/using-eni.html",
+      "pageTitle": "Interfaces de rede elástica - Amazon Elastic Compute Cloud",
+      "section": "Interfaces de rede elástica",
+      "excerpt": "Uma interface de rede elástica é um componente lógico de redes em uma VPC que representa uma cartão de rede",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "routes",
+      "title": "Tabelas de rotas da VPC",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/VPC_Route_Tables.html",
+      "pageTitle": "Configurar tabelas de rotas - Amazon Virtual Private Cloud",
+      "section": "Configurar tabelas de rotas",
+      "excerpt": "Uma tabela de rotas serve como controlador de tráfego para sua nuvem privada virtual (VPC). Cada tabela de rotas contém",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "flowLogs",
+      "title": "Logs de fluxo da VPC",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/flow-logs.html",
+      "pageTitle": "Como registrar tráfego IP em log com logs de fluxo da VPC - Amazon Virtual Private Cloud",
+      "section": "Como registrar tráfego IP em log com logs de fluxo da VPC",
+      "excerpt": "O VPC Flow Logs é um recurso que possibilita que você capture informações sobre o tráfego de IP para e",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "route53",
+      "title": "DNS e Amazon Route 53",
+      "url": "https://aws.amazon.com/pt/route53/",
+      "pageTitle": "Amazon Route 53 | Serviço de DNS | AWS",
+      "section": "Amazon Route 53 | Serviço de DNS",
+      "excerpt": "Roteie os usuários finais para o seu site de maneira confiável com os servidores de Sistema de Nomes de Domínio",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "failover",
+      "title": "Route 53: roteamento de failover",
+      "url": "https://docs.aws.amazon.com/pt_br/Route53/latest/DeveloperGuide/dns-failover-types.html",
+      "pageTitle": "Active-active e failover ativo-passivo - Amazon Route 53",
+      "section": "Active-active e failover ativo-passivo",
+      "excerpt": "Você pode usar a verificação de integridade do Route 53 para definir configurações de failover ativo-ativo e ativo-passivo. Você configura",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "accelerator",
+      "title": "AWS Global Accelerator",
+      "url": "https://aws.amazon.com/pt/global-accelerator/",
+      "pageTitle": "Serviço de aceleração de rede – AWS Global Accelerator – AWS",
+      "section": "AWS Global Accelerator",
+      "excerpt": "Melhore a disponibilidade, a performance e a segurança de aplicações usando a rede global da AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "vpn",
+      "title": "Serviços AWS VPN",
+      "url": "https://aws.amazon.com/pt/vpn/",
+      "pageTitle": "Rede privada virtual (VPN) | AWS VPN | Amazon Web Services",
+      "section": "AWS VPN",
+      "excerpt": "Obtenha disponibilidade abrangente para AWS Site-to-Site VPN com diversas zonas de disponibilidade globais da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "siteVpn",
+      "title": "AWS Site-to-Site VPN e gateways",
+      "url": "https://docs.aws.amazon.com/pt_br/vpn/latest/s2svpn/VPC_VPN.html",
+      "pageTitle": "O que AWS Site-to-Site VPNé - AWS Site-to-Site VPN",
+      "section": "O que AWS Site-to-Site VPNé",
+      "excerpt": "Por padrão, uma instância que você executa na Amazon VPC não pode se comunicar com uma rede local (Nuvem AWS)",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "clientVpn",
+      "title": "AWS Client VPN para usuários remotos",
+      "url": "https://docs.aws.amazon.com/pt_br/vpn/latest/clientvpn-admin/what-is.html",
+      "pageTitle": "O que é AWS Client VPN? - AWS Client VPN",
+      "section": "O que é AWS Client VPN?",
+      "excerpt": "AWS Client VPN é um serviço VPN gerenciado baseado em cliente que permite que você acesse com segurança seus AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "internetGateway",
+      "title": "Gateways de internet da VPC",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/VPC_Internet_Gateway.html",
+      "pageTitle": "Habilitar o acesso à internet usando gateways da internet - Amazon Virtual Private Cloud",
+      "section": "Habilitar o acesso à internet usando gateways da internet",
+      "excerpt": "Um gateway da Internet é um componente da VPC horizontalmente dimensionado, redundante e altamente disponível que permite a comunicação entre",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "nat",
+      "title": "Gateways NAT",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/userguide/vpc-nat-gateway.html",
+      "pageTitle": "Gateways NAT - Amazon Virtual Private Cloud",
+      "section": "Gateways NAT",
+      "excerpt": "Um gateway NAT é um serviço de Network Address Translation (NAT – Conversão de endereços de rede). Você pode usar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "directGateway",
+      "title": "Gateways do Direct Connect",
+      "url": "https://docs.aws.amazon.com/pt_br/directconnect/latest/UserGuide/direct-connect-gateways-intro.html",
+      "pageTitle": "Direct Connect gateways - AWS Direct Connect",
+      "section": "Direct Connect gateways",
+      "excerpt": "Use o Direct Connect gateway para conectar suas VPCs. Você associa um Direct Connect gateway a qualquer um dos seguintes:",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "transit",
+      "title": "AWS Transit Gateway",
+      "url": "https://docs.aws.amazon.com/pt_br/vpc/latest/tgw/what-is-transit-gateway.html",
+      "pageTitle": "O que é AWS Transit Gateway para Amazon VPC? - Amazon VPC",
+      "section": "O que é AWS Transit Gateway para Amazon VPC?",
+      "excerpt": "AWS O Transit Gateway é um hub de trânsito de rede usado para interconectar nuvens privadas virtuais (VPCs) e redes",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "connect",
+      "title": "Amazon Connect: central de atendimento",
+      "url": "https://docs.aws.amazon.com/pt_br/connect/latest/adminguide/what-is-amazon-connect.html",
+      "pageTitle": "O que é Connect Customer? - Amazon Connect Customer",
+      "section": "O que é Connect Customer?",
+      "excerpt": "Crie e gerencie experiências de comunicação com o cliente. Conecte clientes a agentes, habilite o roteamento inteligente e acompanhe o",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "storageGateway",
+      "title": "AWS Storage Gateway: armazenamento híbrido",
+      "url": "https://aws.amazon.com/pt/storagegateway/",
+      "pageTitle": "AWS Storage Gateway | Amazon Web Services",
+      "section": "AWS Storage Gateway",
+      "excerpt": "Oferece aplicações on-premises com acesso a armazenamento virtual na nuvem praticamente ilimitado",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "lightsail",
+      "title": "Amazon Lightsail",
+      "url": "https://aws.amazon.com/pt/lightsail/",
+      "pageTitle": "Servidor privado virtual e hospedagem na Web –Amazon Lightsail –Amazon Web Services",
+      "section": "Amazon Lightsail",
+      "excerpt": "O Amazon Lightsail oferece instâncias de servidor privado virtual (VPS) fáceis de usar, contêineres, armazenamento, bancos de dados e muito",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "aurora",
+      "title": "Amazon Aurora: banco de dados relacional",
+      "url": "https://aws.amazon.com/pt/rds/aurora/",
+      "pageTitle": "Banco de dados relacional | Amazon Aurora para MySQL e PostgreSQL | AWS",
+      "section": "Amazon Aurora",
+      "excerpt": "O Aurora tem um throughput cinco vezes maior que o do MySQL e três vezes maior que o do PostgreSQL,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "dynamodb",
+      "title": "Amazon DynamoDB: banco de dados NoSQL",
+      "url": "https://aws.amazon.com/pt/dynamodb/",
+      "pageTitle": "Banco de dados de chave-valor NoSQL rápido | Amazon DynamoDB | AWS",
+      "section": "Amazon DynamoDB",
+      "excerpt": "NoSQL distribuído, baseado em tecnologia sem servidor, totalmente gerenciado e com performance de um dígito em milissegundos em qualquer escala",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "redshift",
+      "title": "Amazon Redshift: data warehouse",
+      "url": "https://aws.amazon.com/pt/redshift/",
+      "pageTitle": "Data warehouse em nuvem | Amazon Redshift | AWS",
+      "section": "Amazon Redshift",
+      "excerpt": "data warehouse em nuvem que oferece uma relação preço/performance incomparável para analytics e IA agêntica",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "spectrum",
+      "title": "Redshift Spectrum: consultas ao data lake S3",
+      "url": "https://docs.aws.amazon.com/pt_br/redshift/latest/dg/c-using-spectrum.html",
+      "pageTitle": "Amazon Redshift Spectrum - Amazon Redshift",
+      "section": "Amazon Redshift Spectrum",
+      "excerpt": "Usando o Amazon Redshift Spectrum, é possível executar consultas e recuperar dados estruturados e semiestruturados dos arquivos no Amazon S3",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "neptune",
+      "title": "Amazon Neptune: banco de dados de grafos",
+      "url": "https://aws.amazon.com/pt/neptune/",
+      "pageTitle": "Banco de dados de grafos gerenciado | Amazon Neptune | AWS",
+      "section": "Amazon Neptune",
+      "excerpt": "O Neptune escala instantaneamente as workloads de grafos, eliminando a necessidade de gerenciar a capacidade. Ao modelar os dados como",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "rds",
+      "title": "Amazon RDS: bancos de dados relacionais gerenciados",
+      "url": "https://aws.amazon.com/pt/rds/",
+      "pageTitle": "Banco de dados relacional totalmente gerenciado | Amazon RDS | AWS",
+      "section": "Amazon RDS",
+      "excerpt": "O Amazon Relational Database Service (Amazon RDS) é um serviço de banco de dados relacional de fácil gerenciamento e otimizado",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "documentdb",
+      "title": "Amazon DocumentDB: banco de dados de documentos",
+      "url": "https://aws.amazon.com/pt/documentdb/",
+      "pageTitle": "O Amazon DocumentDB é um serviço de banco de dados de documentos sem servidor, totalmente gerenciado e compatível com a API do MongoDB.",
+      "section": "Amazon DocumentDB (compatível com MongoDB)",
+      "excerpt": "Serviço de banco de dados de documentos totalmente gerenciado, sem servidor e compatível com MongoDB-API",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "elasticache",
+      "title": "Amazon ElastiCache: cache em memória",
+      "url": "https://aws.amazon.com/pt/elasticache/",
+      "pageTitle": "O Amazon ElastiCache é compatível com Valkey, Memcached e Redis OSS – Amazon ElastiCache – AWS",
+      "section": "Amazon ElastiCache",
+      "excerpt": "armazenando em cache os dados usados com frequência na memória.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "timestream",
+      "title": "Amazon Timestream: dados de séries temporais",
+      "url": "https://aws.amazon.com/pt/timestream/",
+      "pageTitle": "Banco de dados de séries temporais — Amazon Timestream — AWS",
+      "section": "Amazon Timestream",
+      "excerpt": "O Timestream oferece mecanismos de banco de dados de séries temporais totalmente gerenciados e criados especificamente para workloads, desde consultas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "kinesis",
+      "title": "Amazon Kinesis Data Streams",
+      "url": "https://aws.amazon.com/pt/kinesis/data-streams/",
+      "pageTitle": "Serviço de dados de streaming gerenciado – Amazon Kinesis Data Streams – AWS",
+      "section": "Amazon Kinesis Data Streams",
+      "excerpt": "Com o Amazon Kinesis Data Streams, não há servidores a gerenciar. O modo sob demanda elimina a necessidade de provisionar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "kinesisConcepts",
+      "title": "Kinesis: shards, partições e números de sequência",
+      "url": "https://docs.aws.amazon.com/pt_br/streams/latest/dev/key-concepts.html",
+      "pageTitle": "Terminologia e conceitos do Amazon Kinesis Data Streams - Amazon Kinesis Data Streams",
+      "section": "Chave de partição; número de sequência",
+      "excerpt": "número de sequência depois que um registro é gravado no fluxo com client.putRecords ou client.putRecord. Geralmente, os números de sequência",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "athena",
+      "title": "Amazon Athena: consultas SQL",
+      "url": "https://aws.amazon.com/pt/athena/",
+      "pageTitle": "SQL interativo – Serviço de consultas sem servidor – Amazon Athena – AWS",
+      "section": "Amazon Athena",
+      "excerpt": "O Amazon Athena é um serviço de consultas interativas que facilita a análise de dados no Amazon S3 ao usar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "codebuild",
+      "title": "AWS CodeBuild: compilações e testes",
+      "url": "https://aws.amazon.com/pt/codebuild/",
+      "pageTitle": "Servidor de compilação gerenciado – AWS CodeBuild – AWS",
+      "section": "AWS CodeBuild",
+      "excerpt": "Com o AWS CodeBuild, não é necessário provisionar, gerenciar e escalar os próprios servidores de compilação. Basta especificar a localização",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "organizations",
+      "title": "AWS Organizations: gerenciamento de contas",
+      "url": "https://aws.amazon.com/pt/organizations/",
+      "pageTitle": "Administração na nuvem | AWS Organizations | Amazon Web Services",
+      "section": "AWS Organizations",
+      "excerpt": "O AWS Organizations oferece gerenciamento baseado em políticas para várias contas da AWS. Saiba como o Organizations ajuda você a",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "consolidated",
+      "title": "Cobrança consolidada no AWS Organizations",
+      "url": "https://docs.aws.amazon.com/pt_br/awsaccountbilling/latest/aboutv2/consolidated-billing.html",
+      "pageTitle": "Consolidando o faturamento de AWS Organizations - AWS Faturamento",
+      "section": "Consolidando o faturamento de AWS Organizations",
+      "excerpt": "Você pode usar o recurso de cobrança consolidada no AWS Organizations para consolidar o faturamento e o pagamento de vários",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "reservedSharing",
+      "title": "Compartilhamento de descontos de instâncias reservadas",
+      "url": "https://docs.aws.amazon.com/pt_br/awsaccountbilling/latest/aboutv2/ri-turn-off.html",
+      "pageTitle": "Compartilhamento de descontos de instâncias reservadas e Savings Plans - AWS Faturamento",
+      "section": "Compartilhamento de descontos de instâncias reservadas e Savings Plans",
+      "excerpt": "A conta de gerenciamento de uma organização pode controlar o desconto de instância reservada e o compartilhamento de descontos em",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "config",
+      "title": "AWS Config: configurações e histórico de recursos",
+      "url": "https://aws.amazon.com/pt/config/",
+      "pageTitle": "Ferramenta de configuração – AWS Config – Amazon Web Services",
+      "section": "AWS Config",
+      "excerpt": "Avalie, audite e avalie as configurações de seus recursos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudformation",
+      "title": "AWS CloudFormation: infraestrutura como código",
+      "url": "https://aws.amazon.com/pt/cloudformation/",
+      "pageTitle": "Provisionamento de infraestrutura como código | AWS CloudFormation | AWS",
+      "section": "AWS CloudFormation",
+      "excerpt": "Escale sua infraestrutura globalmente e gerencie recursos em todas as contas e regiões da AWS por meio de uma única",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "partners",
+      "title": "Rede de Parceiros da AWS",
+      "url": "https://aws.amazon.com/pt/partners/",
+      "pageTitle": "Seja um parceiro da AWS | Rede de Parceiros da AWS",
+      "section": "Rede de parceiros da AWS",
+      "excerpt": "A Rede de Parceiros da AWS (APN) é uma comunidade global que usa tecnologias, programas, financiamento e ferramentas da AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cdk",
+      "title": "AWS Cloud Development Kit",
+      "url": "https://docs.aws.amazon.com/pt_br/cdk/v2/guide/home.html",
+      "pageTitle": "O que é o AWS CDK? - AWS Kit de desenvolvimento em nuvem (AWS CDK) v2",
+      "section": "O que é o AWS CDK?",
+      "excerpt": "O kit de desenvolvimento em nuvem da da AWS (CDK da AWS) é uma estrutura de desenvolvimento de software de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "migrationEvaluator",
+      "title": "Migration Evaluator: avaliação da migração",
+      "url": "https://aws.amazon.com/pt/migration-evaluator/",
+      "pageTitle": "Plano de migração e caso de negócios na nuvem | Amazon Migration Evaluator | AWS",
+      "section": "Migration Evaluator",
+      "excerpt": "Rastreie com facilidade a tomada de decisão de migração para a nuvem com uma avaliação personalizada para reduzir os custos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "apiGateway",
+      "title": "Amazon API Gateway",
+      "url": "https://aws.amazon.com/pt/api-gateway/",
+      "pageTitle": "Amazon API Gateway | Gerenciamento de APIs | Amazon Web Services",
+      "section": "Amazon API Gateway",
+      "excerpt": "O Amazon API Gateway é um serviço totalmente gerenciado que simplifica para os desenvolvedores as atividades de criação, publicação, manutenção,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudhsm",
+      "title": "AWS CloudHSM: HSMs dedicados",
+      "url": "https://aws.amazon.com/pt/cloudhsm/",
+      "pageTitle": "HSM de segurança - AWS CloudHSM - AWS",
+      "section": "AWS CloudHSM",
+      "excerpt": "Gerencie Hardware Security Modules (HSMs – Módulos de segurança de hardware) monolocatário na AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "kms",
+      "title": "AWS KMS: gerenciamento de chaves de criptografia",
+      "url": "https://aws.amazon.com/pt/kms/",
+      "pageTitle": "Assinatura de criptografia - AWS Key Management Service - AWS",
+      "section": "AWS Key Management Service",
+      "excerpt": "Gerencie chaves de maneira centralizada e defina políticas em serviços e aplicações integrados a partir de um único ponto.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "directory",
+      "title": "AWS Directory Service",
+      "url": "https://aws.amazon.com/pt/directoryservice/",
+      "pageTitle": "Active Directory - AWS Directory Service - AWS",
+      "section": "AWS Directory Service",
+      "excerpt": "Integre facilmente seu Active Directory (AD) existente aos serviços de nuvem da AWS, como Amazon RDS, FSx e EC2. Crie,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "secrets",
+      "title": "AWS Secrets Manager",
+      "url": "https://aws.amazon.com/pt/secrets-manager/",
+      "pageTitle": "Gerenciamento de segredos na nuvem – AWS Secrets Manager – AWS",
+      "section": "AWS Secrets Manager",
+      "excerpt": "O Secrets Manager ajuda você a gerenciar o acesso a aplicações, serviços e recursos de TI. Para assistir em seu",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "iam",
+      "title": "AWS IAM: identidades e permissões",
+      "url": "https://aws.amazon.com/pt/iam/",
+      "pageTitle": "Access Management - AWS Identity and Access Management (IAM) - AWS",
+      "section": "AWS Identity and Access Management",
+      "excerpt": "Use o AWS Identity and Access Management (IAM) para gerenciar e escalar a workload e o acesso da força de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "iamPractices",
+      "title": "Práticas recomendadas de segurança no IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/best-practices.html",
+      "pageTitle": "Práticas recomendadas de segurança no IAM - AWS Identity and Access Management",
+      "section": "Práticas recomendadas de segurança no IAM",
+      "excerpt": "Exija que as workloads usem credenciais temporárias com perfis do IAM para acessar a AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "iamPolicies",
+      "title": "Políticas e permissões no IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/access_policies.html",
+      "pageTitle": "Políticas e permissões no AWS Identity and Access Management - AWS Identity and Access Management",
+      "section": "Políticas e permissões no AWS Identity and Access Management",
+      "excerpt": "Gerencie o acesso na AWS criando políticas e anexando-as a identidades do IAM (usuários, grupos de usuários ou perfis) ou",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "iamRoles",
+      "title": "Funções do IAM e credenciais temporárias",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_roles.html",
+      "pageTitle": "Perfis do IAM - AWS Identity and Access Management",
+      "section": "Perfis do IAM",
+      "excerpt": "Uma função do IAM é uma identidade do IAM que você pode criar em sua conta que tem permissões específicas.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "iamPolicyTypes",
+      "title": "Políticas gerenciadas e políticas inline",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/access_policies_managed-vs-inline.html",
+      "pageTitle": "Políticas gerenciadas e em linha - AWS Identity and Access Management",
+      "section": "Políticas gerenciadas e em linha",
+      "excerpt": "Ao definir as permissões para uma identidade no IAM, você deve decidir se deseja usar uma política gerenciada pela AWS,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "accessKeys",
+      "title": "Chaves de acesso do IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_credentials_access-keys.html",
+      "pageTitle": "Gerenciar chaves de acesso para usuários do IAM - AWS Identity and Access Management",
+      "section": "Gerenciar chaves de acesso para usuários do IAM",
+      "excerpt": "Como prática recomendada, use credenciais de segurança temporárias (como perfis do IAM), em vez de criar credenciais de longo prazo,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "passwords",
+      "title": "Política de senhas de usuários IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_credentials_passwords_account-policy.html",
+      "pageTitle": "Definir uma política de senhas de contas para usuários do IAM - AWS Identity and Access Management",
+      "section": "Definir uma política de senhas de contas para usuários do IAM",
+      "excerpt": "Você pode definir uma política de senha personalizada em sua Conta da AWS para especificar requisitos de complexidade e períodos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "root",
+      "title": "Práticas recomendadas para o usuário-raiz",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/root-user-best-practices.html",
+      "pageTitle": "As práticas recomendadas do usuário-raiz para o Conta da AWS - AWS Identity and Access Management",
+      "section": "Não compartilhar credenciais; MFA; proteção de senhas e chaves de acesso",
+      "excerpt": "Não crie chaves de acesso para o usuário-raiz",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "rootTasks",
+      "title": "Tarefas que exigem credenciais do usuário-raiz",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_root-user.html#root-user-tasks",
+      "pageTitle": "Usuário raiz da conta da AWS - AWS Identity and Access Management",
+      "section": "Tarefas que exigem credenciais de usuário-raiz / restaurar permissões do usuário IAM",
+      "excerpt": "Restaurar permissões do usuário do IAM. Se o único administrador do IAM revogar acidentalmente suas próprias permissões, será possível fazer",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "mfa",
+      "title": "Autenticação multifator no IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_credentials_mfa.html",
+      "pageTitle": "AWSCódigo da autenticação multifator no IAM da - AWS Identity and Access Management",
+      "section": "AWSCódigo da autenticação multifator no IAM da",
+      "excerpt": "Para obter mais segurança, recomendamos que você configure a autenticação multifator (MFA) para ajudar a proteger seus recursos da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ec2Role",
+      "title": "Funções do IAM para instâncias EC2",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_roles_use_switch-role-ec2.html",
+      "pageTitle": "Use um perfil do IAM para conceder permissões a aplicações em execução em instâncias do Amazon EC2 - AWS Identity and Access Management",
+      "section": "Use um perfil do IAM para conceder permissões a aplicações em execução em instâncias do Amazon EC2",
+      "excerpt": "associar à instância. Os aplicativos que são executados na instância, por sua vez, usam as credenciais temporárias fornecidas pela função",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "groups",
+      "title": "Grupos de usuários do IAM",
+      "url": "https://docs.aws.amazon.com/pt_br/IAM/latest/UserGuide/id_groups.html",
+      "pageTitle": "Grupos de usuários do IAM - AWS Identity and Access Management",
+      "section": "Características dos grupos de usuários: vários grupos, sem aninhamento nem grupo padrão",
+      "excerpt": "Não existe um grupo de usuários padrão que inclua automaticamente todos os usuários da Conta da AWS. Se você deseja",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "keyPairs",
+      "title": "Pares de chaves e acesso SSH ao EC2",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/ec2-key-pairs.html",
+      "pageTitle": "Pares de chaves do Amazon EC2 e instâncias do Amazon EC2 - Amazon Elastic Compute Cloud",
+      "section": "Pares de chaves do Amazon EC2 e instâncias do Amazon EC2",
+      "excerpt": "Um par de chaves, que consiste em uma chave pública e uma chave privada, trata-se de um conjunto de credenciais",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "beanstalk",
+      "title": "Implantações com AWS Elastic Beanstalk",
+      "url": "https://aws.amazon.com/pt/elasticbeanstalk/",
+      "pageTitle": "Implantação de sites e aplicações Web | AWS Elastic Beanstalk | AWS",
+      "section": "AWS Elastic Beanstalk",
+      "excerpt": "Implante aplicações full-stack simplesmente carregando seu código sem provisionar recursos e gerenciar as configurações da plataforma",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "batch",
+      "title": "AWS Batch: ambientes EC2 e Fargate",
+      "url": "https://docs.aws.amazon.com/pt_br/batch/latest/userguide/batch_components.html",
+      "pageTitle": "Componentes do AWS Batch - AWS Batch",
+      "section": "Componentes do AWS Batch",
+      "excerpt": "AWS Batch simplifica a execução de trabalhos em lote em várias zonas de disponibilidade em uma região. Você pode criar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "fargate",
+      "title": "AWS Fargate: computação sem servidor para contêineres",
+      "url": "https://aws.amazon.com/pt/fargate/",
+      "pageTitle": "Mecanismo de computação sem servidor | AWS Fargate | AWS",
+      "section": "AWS Fargate",
+      "excerpt": "O AWS Fargate é um mecanismo de computação sem servidor e com pagamento conforme o uso que permite que você",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "inspector",
+      "title": "Amazon Inspector: gerenciamento de vulnerabilidades",
+      "url": "https://aws.amazon.com/pt/inspector/",
+      "pageTitle": "Gerenciamento automatizado de vulnerabilidades de software – Amazon Inspector – AWS",
+      "section": "Amazon Inspector",
+      "excerpt": "O Amazon Inspector descobre automaticamente workloads, como instâncias do Amazon Elastic Compute Cloud (Amazon EC2), imagens de contêineres e funções",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "artifact",
+      "title": "AWS Artifact: relatórios de segurança e conformidade",
+      "url": "https://aws.amazon.com/pt/artifact/",
+      "pageTitle": "Gerenciamento de conformidade de segurança | AWS Artifact | AWS",
+      "section": "AWS Artifact",
+      "excerpt": "Economize tempo com acesso sob demanda aos relatórios de conformidade de provedores de software independente (ISV) e da AWS em",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "guardduty",
+      "title": "Amazon GuardDuty: detecção de ameaças",
+      "url": "https://aws.amazon.com/pt/guardduty/",
+      "pageTitle": "Detecção de ameaças inteligente – Amazon GuardDuty – AWS",
+      "section": "Amazon GuardDuty",
+      "excerpt": "Mantenha suas contas, workloadas e dados seguros monitorando continuamente possíveis ameaças em todo o seu ambiente da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "waf",
+      "title": "AWS WAF: firewall de aplicações web",
+      "url": "https://aws.amazon.com/pt/waf/",
+      "pageTitle": "Web Application Firewall – Proteção de APIs Web – AWS WAF - AWS",
+      "section": "AWS WAF",
+      "excerpt": "Economize tempo com as regras gerenciadas para que seja possível gastar mais tempo construindo aplicações.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "wafSql",
+      "title": "AWS WAF: regras contra injeção SQL",
+      "url": "https://docs.aws.amazon.com/pt_br/waf/latest/developerguide/waf-rule-statement-type-sqli-match.html",
+      "pageTitle": "Instrução de regra de ataque de injeção de SQL - AWS WAF, AWS Firewall Manager, AWS Shield Advanced e AWS Shield diretor de segurança de rede",
+      "section": "Instrução de regra de ataque de injeção de SQL",
+      "excerpt": "Uma instrução de regra de injeção de SQL que inspeciona códigos SQL mal-intencionados. Invasores às vezes inserem código SQL mal-intencionado",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "wafResources",
+      "title": "Recursos que podem ser associados ao AWS WAF",
+      "url": "https://docs.aws.amazon.com/pt_br/waf/latest/developerguide/how-aws-waf-works-resources.html",
+      "pageTitle": "Recursos que você pode proteger com AWS WAF - AWS WAF, AWS Firewall Manager, AWS Shield Advanced e AWS Shield diretor de segurança de rede",
+      "section": "Application Load Balancers",
+      "excerpt": "Você pode usar um pacote de AWS WAF proteção (Web ACL) para proteger tipos de recursos globais ou regionais. Isso",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "shield",
+      "title": "AWS Shield: proteção contra DDoS",
+      "url": "https://aws.amazon.com/pt/shield/",
+      "pageTitle": "Análise da postura de rede e proteção gerenciada contra DDoS – AWS Shield – AWS",
+      "section": "AWS Shield",
+      "excerpt": "Protege redes e aplicações através da análise das configurações de segurança da rede e fornecendo proteção DDoS gerenciada.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "controlTower",
+      "title": "AWS Control Tower: ambientes com várias contas",
+      "url": "https://aws.amazon.com/pt/controltower/",
+      "pageTitle": "Governança de segurança na nuvem | AWS Control Tower | AWS",
+      "section": "AWS Control Tower",
+      "excerpt": "Integre com facilidade software de terceiros em grande escala para aprimorar seu ambiente da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "costExplorer",
+      "title": "Análise de custos com Cost Explorer",
+      "url": "https://docs.aws.amazon.com/pt_br/cost-management/latest/userguide/ce-what-is.html",
+      "pageTitle": "Analisando seus custos e uso com AWS Explorador de Custos - AWS Gerenciamento de custos",
+      "section": "Analisando seus custos e uso com AWS Explorador de Custos",
+      "excerpt": "AWS O Cost Explorer é uma ferramenta que permite visualizar e analisar seus custos e uso. Você pode explorar seu",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "budgets",
+      "title": "Orçamentos e alertas com AWS Budgets",
+      "url": "https://docs.aws.amazon.com/pt_br/cost-management/latest/userguide/budgets-managing-costs.html",
+      "pageTitle": "Gerenciando seus custos com AWS Orçamentos - AWS Gerenciamento de custos",
+      "section": "Gerenciando seus custos com AWS Orçamentos",
+      "excerpt": "Você pode usar AWS Orçamentos para monitorar e executar ações em seu AWS custos e uso. Você pode usar AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "optimizer",
+      "title": "Recomendações do AWS Compute Optimizer",
+      "url": "https://aws.amazon.com/pt/compute-optimizer/",
+      "pageTitle": "Otimizador da Web | Dimensionamento correto da workload | AWS Compute Optimizer | AWS",
+      "section": "AWS Compute Optimizer",
+      "excerpt": "Dimensione corretamente as workloads de acordo com suas preferências de workload por meio de inteligência artificial e analytics baseado em",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "textract",
+      "title": "Amazon Textract: extração de texto de documentos",
+      "url": "https://aws.amazon.com/pt/textract/",
+      "pageTitle": "Extração de texto e dados de forma inteligente com o OCR | Amazon Textract | Amazon Web Services",
+      "section": "Amazon Textract",
+      "excerpt": "Extraia automaticamente texto impresso, manuscrito, elementos de layout e dados de qualquer documento",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "comprehend",
+      "title": "Amazon Comprehend: análise de linguagem natural",
+      "url": "https://aws.amazon.com/pt/comprehend/",
+      "pageTitle": "Processamento de linguagem natural – Amazon Comprehend – AWS",
+      "section": "Amazon Comprehend",
+      "excerpt": "Descubra informações valiosas de texto em documentos, tíquetes de suporte ao cliente, análises de produtos, e-mails, feeds de mídia social",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "transcribe",
+      "title": "Amazon Transcribe: conversão de áudio em texto",
+      "url": "https://aws.amazon.com/pt/transcribe/",
+      "pageTitle": "Amazon Transcribe – Conversão de fala para texto - AWS",
+      "section": "Amazon Transcribe",
+      "excerpt": "O Amazon Transcribe é um serviço de reconhecimento automático de fala (ASR) que facilita para os desenvolvedores adicionar recursos de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "polly",
+      "title": "Amazon Polly: conversão de texto em fala",
+      "url": "https://aws.amazon.com/pt/polly/",
+      "pageTitle": "Gerador de voz com IA e ferramenta de conversão de texto em fala | Amazon Polly | AWS",
+      "section": "Amazon Polly | Gerador de voz com IA",
+      "excerpt": "O Amazon Polly é um serviço totalmente gerenciado que gera voz sob demanda, convertendo qualquer texto em uma transmissão de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "outposts",
+      "title": "AWS Outposts: infraestrutura AWS no local",
+      "url": "https://aws.amazon.com/pt/outposts/",
+      "pageTitle": "Nuvem privada on premises - AWS Outposts - AWS",
+      "section": "Família AWS Outposts",
+      "excerpt": "Execute a infraestrutura e os serviços da AWS on-premises para obter uma experiência híbrida verdadeiramente consistente",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ses",
+      "title": "Amazon SES: envio de e-mails",
+      "url": "https://aws.amazon.com/pt/ses/",
+      "pageTitle": "Provedor de serviço de e-mails | Amazon Simple Email Service (Amazon SES) | AWS",
+      "section": "Amazon Simple Email Service",
+      "excerpt": "Otimize sua comunicação por e-mail com soluções confiáveis, escaláveis e seguras que garantem a conformidade e eficiência a preços competitivos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "s3",
+      "title": "Amazon S3: armazenamento de objetos",
+      "url": "https://aws.amazon.com/pt/s3/",
+      "pageTitle": "Armazenamento de objetos na nuvem | Amazon S3 | Amazon Web Services",
+      "section": "Amazon S3",
+      "excerpt": "O Amazon Simple Storage Service (Amazon S3) é um serviço de armazenamento de objetos que oferece escalabilidade, disponibilidade de dados,",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sqs",
+      "title": "Amazon SQS: filas de mensagens",
+      "url": "https://aws.amazon.com/pt/sqs/",
+      "pageTitle": "Enfileiramento de mensagens totalmente gerenciado | Amazon Simple Queue Service | Amazon Web Services",
+      "section": "Amazon Simple Queue Service",
+      "excerpt": "Filas de mensagens gerenciadas para microsserviços, sistemas distribuídos e aplicações sem servidor",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "fifo",
+      "title": "Filas FIFO do Amazon SQS",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-fifo-queues.html",
+      "pageTitle": "Filas FIFO do Amazon SQS - Amazon Simple Queue Service",
+      "section": "Entrega FIFO e processamento exatamente uma vez",
+      "excerpt": "As filas FIFO (primeiro a entrar, primeiro a sair) têm todos os recursos das filas padrão, mas são projetadas para",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sns",
+      "title": "Tópicos FIFO do Amazon SNS",
+      "url": "https://docs.aws.amazon.com/pt_br/sns/latest/dg/sns-fifo-topics.html",
+      "pageTitle": "Ordenação de mensagens e estratégias de desduplicação usando tópicos FIFO do Amazon SNS - Amazon Simple Notification Service",
+      "section": "Ordenação de mensagens e estratégias de desduplicação usando tópicos FIFO do Amazon SNS",
+      "excerpt": "filas FIFO do Amazon SQS. Você aprenderá a usar esses serviços juntos para garantir a ordenação e a desduplicação estritas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "stepFunctions",
+      "title": "AWS Step Functions: orquestração de workflows",
+      "url": "https://aws.amazon.com/pt/step-functions/",
+      "pageTitle": "Orquestração de fluxos de trabalho com tecnologia sem servidor | AWS Step Functions | Amazon Web Services",
+      "section": "AWS Step Functions – orquestração de fluxos de trabalho",
+      "excerpt": "Saiba como o AWS Step Functions pode fornecer orquestração sem servidor para aplicações modernas.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cognito",
+      "title": "Amazon Cognito: autenticação de aplicações",
+      "url": "https://aws.amazon.com/pt/cognito/",
+      "pageTitle": "Amazon Cognito - Gerenciamento de identidades e acesso para clientes - Gerenciamento de identidade e acesso à máquina",
+      "section": "Amazon Cognito",
+      "excerpt": "Implemente autenticação e controle de acesso seguros e dimensionáveis para usuários, agentes de IA e microsserviços em minutos",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "autoScaling",
+      "title": "Amazon EC2 Auto Scaling",
+      "url": "https://aws.amazon.com/pt/ec2/autoscaling/",
+      "pageTitle": "Ajuste de escala automático de instâncias | Amazon EC2 Auto Scaling | AWS",
+      "section": "Amazon EC2 Auto Scaling",
+      "excerpt": "O Amazon EC2 Auto Scaling ajuda a manter a disponibilidade da aplicação e permite adicionar ou remover automaticamente instâncias do",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "codepipeline",
+      "title": "AWS CodePipeline: entrega contínua",
+      "url": "https://aws.amazon.com/pt/codepipeline/",
+      "pageTitle": "Pipeline de CI/CD – AWS CodePipeline – AWS",
+      "section": "AWS CodePipeline",
+      "excerpt": "Modele o processo de lançamento de software e mitigue a necessidade de configurar ou provisionar servidores.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "elb",
+      "title": "Funcionamento do Elastic Load Balancing",
+      "url": "https://docs.aws.amazon.com/pt_br/elasticloadbalancing/latest/userguide/how-elastic-load-balancing-works.html",
+      "pageTitle": "Como o Elastic Load Balancing funciona - Elastic Load Balancing",
+      "section": "Como o Elastic Load Balancing funciona",
+      "excerpt": "Um load balancer aceita o tráfego de entrada de clientes e roteia solicitações para seus destinos registrados (como instâncias do",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ebs",
+      "title": "Amazon EBS: armazenamento em blocos",
+      "url": "https://aws.amazon.com/pt/ebs/",
+      "pageTitle": "Armazenamento em blocos de alta performance - Amazon EBS - Amazon Web Services",
+      "section": "Amazon Elastic Block Store",
+      "excerpt": "O Amazon EBS permite que você crie volumes de armazenamento e os anexe a instâncias do Amazon EC2. Depois de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "snapshots",
+      "title": "Snapshots de volumes EBS",
+      "url": "https://docs.aws.amazon.com/pt_br/ebs/latest/userguide/ebs-snapshots.html",
+      "pageTitle": "Snapshots do Amazon EBS - Amazon EBS",
+      "section": "Snapshots do Amazon EBS",
+      "excerpt": "Você pode fazer backup dos dados nos volumes do Amazon EBS gerando cópias pontuais, conhecidas como snapshots do Amazon EBS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "efs",
+      "title": "Amazon EFS: sistema de arquivos compartilhado",
+      "url": "https://aws.amazon.com/pt/efs/",
+      "pageTitle": "Armazenamento compartilhado de arquivos — Amazon Elastic File System (EFS) — AWS",
+      "section": "Amazon Elastic File System",
+      "excerpt": "Crie e configure sistemas de arquivos compartilhados de maneira simples e rápida para os serviços de computação da AWS, sem",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudfront",
+      "title": "Amazon CloudFront: entrega de conteúdo",
+      "url": "https://aws.amazon.com/pt/cloudfront/",
+      "pageTitle": "Rede de entrega de conteúdo (CDN) de baixa latência | Amazon CloudFront | Amazon Web Services",
+      "section": "Amazon CloudFront",
+      "excerpt": "Reduza a latência ao disponibilizar dados por meio de mais de 750 pontos de presença (POPs) distribuídos globalmente com mapeamento",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "rekognition",
+      "title": "Amazon Rekognition: análise de imagens e vídeos",
+      "url": "https://aws.amazon.com/pt/rekognition/",
+      "pageTitle": "Software de reconhecimento de imagem, análises de imagens com ML, análise de vídeos – Amazon Rekognition – AWS",
+      "section": "Amazon Rekognition",
+      "excerpt": "Adicione rapidamente APIs de visão computacional pré-treinadas ou personalizáveis às suas aplicações sem precisar construir modelos de machine learning (ML)",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "quicksight",
+      "title": "Amazon QuickSight: business intelligence",
+      "url": "https://aws.amazon.com/pt/quick/quicksight/",
+      "pageTitle": "Business Intelligence baseado em IA | QuickSight | AWS",
+      "section": "Amazon QuickSight",
+      "excerpt": "O Amazon QuickSight oferece recursos de BI baseados em IA no Quick, transformando seus dados dispersos em insights estratégicos para",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "lambda",
+      "title": "AWS Lambda: execução de funções sem servidor",
+      "url": "https://aws.amazon.com/pt/lambda/",
+      "pageTitle": "Computação com tecnologia sem servidor – AWS Lambda – Amazon Web Services",
+      "section": "AWS Lambda",
+      "excerpt": "O AWS Lambda permite que você se concentre apenas no seu código, enquanto ele lida com todo o gerenciamento da",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "transfer",
+      "title": "S3 Transfer Acceleration",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/transfer-acceleration.html",
+      "pageTitle": "Configurar transferências de arquivos rápidas e seguras usando o Amazon S3 Transfer Acceleration - Amazon Simple Storage Service",
+      "section": "Configurar transferências de arquivos rápidas e seguras usando o Amazon S3 Transfer Acceleration",
+      "excerpt": "Configurar transferências de arquivos rápidas e seguras usando o Amazon S3 Transfer Acceleration",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "dataExchange",
+      "title": "AWS Data Exchange: dados de terceiros",
+      "url": "https://aws.amazon.com/pt/data-exchange/",
+      "pageTitle": "AWS Data Exchange",
+      "section": "AWS Data Exchange",
+      "excerpt": "O AWS Data Exchange tem a missão de aumentar a velocidade da obtenção de valor de conjuntos de dados de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "xray",
+      "title": "AWS X-Ray: rastreamento de aplicações",
+      "url": "https://docs.aws.amazon.com/pt_br/xray/latest/devguide/aws-xray.html",
+      "pageTitle": "O que é AWS X-Ray? - AWS X-Ray",
+      "section": "O que é AWS X-Ray?",
+      "excerpt": "AWS X-Ray é um serviço que coleta dados sobre solicitações que seu aplicativo atende e fornece ferramentas que você pode",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudwatch",
+      "title": "Amazon CloudWatch: observabilidade",
+      "url": "https://aws.amazon.com/pt/cloudwatch/",
+      "pageTitle": "Monitoramento e observabilidade da Amazon | Amazon CloudWatch | AWS",
+      "section": "Amazon CloudWatch",
+      "excerpt": "Monitore e otimize toda a sua pilha de tecnologia com o CloudWatch, um serviço de observabilidade inteligente que fornece insights",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ec2Metrics",
+      "title": "Métricas do EC2 no CloudWatch",
+      "url": "https://docs.aws.amazon.com/pt_br/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html",
+      "pageTitle": "As métricas do CloudWatch que estão disponíveis para as instâncias - Amazon Elastic Compute Cloud",
+      "section": "Métricas de instância: CPUUtilization e rede",
+      "excerpt": "CPUUtilization",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudtrail",
+      "title": "AWS CloudTrail: atividades da conta e chamadas de API",
+      "url": "https://aws.amazon.com/pt/cloudtrail/",
+      "pageTitle": "Logs de APIs – Serviço de registro em log seguro e padronizado – AWS CloudTrail – AWS",
+      "section": "AWS CloudTrail",
+      "excerpt": "Acompanhe a atividade dos usuários e o uso da API na AWS e em ambientes híbridos e multinuvem",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "cloudtrailKms",
+      "title": "Criptografia SSE-KMS de logs do CloudTrail",
+      "url": "https://docs.aws.amazon.com/pt_br/awscloudtrail/latest/userguide/encrypting-cloudtrail-log-files-with-aws-kms.html",
+      "pageTitle": "Criptografar arquivos de CloudTrail log, arquivos de resumo e armazenamentos de dados de eventos com AWS KMS chaves (SSE-KMS) - AWS CloudTrail",
+      "section": "Criptografar arquivos de CloudTrail log, arquivos de resumo e armazenamentos de dados de eventos com AWS KMS chaves (SSE-KMS)",
+      "excerpt": "Criptografar arquivos de CloudTrail log, arquivos de resumo e armazenamentos de dados de eventos com AWS KMS chaves (SSE-KMS)",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "acm",
+      "title": "AWS Certificate Manager: certificados TLS",
+      "url": "https://aws.amazon.com/pt/certificate-manager/",
+      "pageTitle": "Certificate Manager | AWS Certificate Manager | AWS",
+      "section": "AWS Certificate Manager",
+      "excerpt": "Saiba como você pode usar o AWS Certificate Manager para provisionar, gerenciar e implantar certificados SSL/TLS públicos e privados. Você",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "systems",
+      "title": "AWS Systems Manager",
+      "url": "https://aws.amazon.com/pt/systems-manager/",
+      "pageTitle": "Hub de operações centralizadas | AWS Systems Manager | Amazon Web Services",
+      "section": "AWS Systems Manager",
+      "excerpt": "O Systems Manager fornece uma visão centralizada dos nós nas contas e regiões de sua organização. Acesse rapidamente as informações",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "patch",
+      "title": "Systems Manager Patch Manager",
+      "url": "https://docs.aws.amazon.com/pt_br/systems-manager/latest/userguide/patch-manager.html",
+      "pageTitle": "AWS Systems Manager Patch Manager - AWS Systems Manager",
+      "section": "AWS Systems Manager Patch Manager",
+      "excerpt": "O Patch Manager automatiza o processo de aplicação de patches aos nós gerenciados com atualizações de relativas a segurança e",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "s3Access",
+      "title": "Controle de acesso no Amazon S3",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/access-control-overview.html",
+      "pageTitle": "Controle de acesso no Amazon S3 - Amazon Simple Storage Service",
+      "section": "Controle de acesso no Amazon S3",
+      "excerpt": "Por padrão, todos os recursos do Amazon S3 são privados. Além disso, por padrão, o usuário-raiz da Conta da AWS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "s3Encryption",
+      "title": "Criptografia de dados no Amazon S3",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/UsingEncryption.html",
+      "pageTitle": "Proteger dados com criptografia - Amazon Simple Storage Service",
+      "section": "Criptografia do lado do servidor e do lado do cliente",
+      "excerpt": "criptografia do lado do cliente. Para proteger dados em repouso no Amazon S3, você tem as seguintes opções:",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "versioning",
+      "title": "Versionamento de objetos no S3",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/Versioning.html",
+      "pageTitle": "Reter várias versões de objetos com o Versionamento do S3 - Amazon Simple Storage Service",
+      "section": "Reter várias versões de objetos com o Versionamento do S3",
+      "excerpt": "Versionamento no Amazon S3 é um meio de manter diversas variantes de um objeto no mesmo bucket. Você pode usar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "lifecycle",
+      "title": "Ciclo de vida de objetos no S3",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/object-lifecycle-mgmt.html",
+      "pageTitle": "Gerenciar o ciclo de vida dos objetos - Amazon Simple Storage Service",
+      "section": "Gerenciar o ciclo de vida dos objetos",
+      "excerpt": "O Ciclo de Vida do S3 ajuda você a armazenar objetos de forma econômica durante todo o respectivo ciclo de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "accessPoints",
+      "title": "Pontos de acesso do S3",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonS3/latest/userguide/access-points.html",
+      "pageTitle": "Gerenciar o acesso a conjuntos de dados compartilhados com pontos de acesso - Amazon Simple Storage Service",
+      "section": "Gerenciar o acesso a conjuntos de dados compartilhados com pontos de acesso",
+      "excerpt": "Os pontos de acesso do Amazon S3 simplificam o acesso a dados para qualquer produto da AWS ou aplicação de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "serviceCatalog",
+      "title": "AWS Service Catalog",
+      "url": "https://aws.amazon.com/pt/servicecatalog/",
+      "pageTitle": "Gerenciamento e governança da nuvem | AWS Service Catalog | Amazon Web Services",
+      "section": "AWS Service Catalog",
+      "excerpt": "Obtenha definições e metadados de aplicações atualizados e precisos com o AWS Service Catalog AppRegistry.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "costUsage",
+      "title": "Relatórios de Custos e Uso da AWS",
+      "url": "https://docs.aws.amazon.com/pt_br/cur/latest/userguide/what-is-cur.html",
+      "pageTitle": "O que são relatórios de AWS custo e uso? - Exportações de dados da AWS",
+      "section": "O que são relatórios de AWS custo e uso?",
+      "excerpt": "AWS Os Relatórios de AWS Custo e Uso (CUR) contêm o conjunto mais abrangente de dados de custo e uso",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "managed",
+      "title": "AWS Managed Services",
+      "url": "https://aws.amazon.com/pt/managed-services/",
+      "pageTitle": "AWS Managed Services",
+      "section": "AWS Managed Services",
+      "excerpt": "O AWS Managed Services (AMS) ajuda você a adotar a AWS em escala e a operar com mais eficiência e",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "logsInsights",
+      "title": "Consultas com CloudWatch Logs Insights",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonCloudWatch/latest/logs/AnalyzingLogData.html",
+      "pageTitle": "Análise de dados de registro com o CloudWatch Logs Insights - CloudWatch Registros da Amazon",
+      "section": "Análise de dados de registro com o CloudWatch Logs Insights",
+      "excerpt": "Com o CloudWatch Logs Insights, você pode pesquisar e analisar interativamente seus dados de log no Amazon CloudWatch Logs. Realize",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "logStreams",
+      "title": "Conceitos de grupos e fluxos de logs",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonCloudWatch/latest/logs/CloudWatchLogsConcepts.html",
+      "pageTitle": "Conceitos do Amazon CloudWatch Logs - CloudWatch Registros da Amazon",
+      "section": "Conceitos do Amazon CloudWatch Logs",
+      "excerpt": "Fluxo de logs é uma sequência de eventos de log que compartilham a mesma origem. Mais especificamente, um stream de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "eventbridge",
+      "title": "Amazon EventBridge: eventos de aplicações",
+      "url": "https://aws.amazon.com/pt/eventbridge/",
+      "pageTitle": "Roteador de eventos com tecnologia sem servidor | Amazon EventBridge | AWS",
+      "section": "Amazon EventBridge | Serviço de integração orientado por eventos",
+      "excerpt": "Desenvolva aplicações orientadas por eventos em grande escala na AWS, em sistemas existentes ou em aplicações de SaaS",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "anomaly",
+      "title": "Detecção de anomalias nas métricas do CloudWatch",
+      "url": "https://docs.aws.amazon.com/pt_br/AmazonCloudWatch/latest/monitoring/CloudWatch_Anomaly_Detection.html",
+      "pageTitle": "Usar a detecção de anomalias do CloudWatch - Amazon CloudWatch",
+      "section": "Usar a detecção de anomalias do CloudWatch",
+      "excerpt": "Quando você habilita a detecção de anomalias para uma métrica, o CloudWatch aplica algoritmos estatísticos e de machine learning. Esses",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "nlb",
+      "title": "Network Load Balancer",
+      "url": "https://docs.aws.amazon.com/pt_br/elasticloadbalancing/latest/network/introduction.html",
+      "pageTitle": "O que é um Network Load Balancer? - Elastic Load Balancing",
+      "section": "O que é um Network Load Balancer?",
+      "excerpt": "quarta camada do modelo Open Systems Interconnection (OSI - interconexão de sistemas abertos). Ele pode lidar com milhões de solicitações",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "gwlb",
+      "title": "Gateway Load Balancer",
+      "url": "https://docs.aws.amazon.com/pt_br/elasticloadbalancing/latest/gateway/introduction.html",
+      "pageTitle": "O que é um balanceador de carga de gateway? - Elastic Load Balancing",
+      "section": "O que é um balanceador de carga de gateway?",
+      "excerpt": "terceira camada do modelo Open Systems Interconnection (OSI), a camada de rede. Ele escuta todos os pacotes IP em todas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "firewall",
+      "title": "AWS Firewall Manager: gerenciamento de políticas",
+      "url": "https://aws.amazon.com/pt/firewall-manager/",
+      "pageTitle": "Gerencie centralmente as regras do firewall na nuvem - AWS Firewall Manager - AWS",
+      "section": "AWS Firewall Manager",
+      "excerpt": "Utilize uma conta central do administrador para gerenciar as regras do firewall entre as diversas contas da AWS.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "macie",
+      "title": "Amazon Macie: identificação de dados sensíveis",
+      "url": "https://aws.amazon.com/pt/macie/",
+      "pageTitle": "Descoberta e proteção de dados sensíveis – Amazon Macie – AWS",
+      "section": "Amazon Macie",
+      "excerpt": "O Amazon Macie descobre dados sensíveis por meio de machine learning e correspondência de padrões, proporciona visibilidade dos riscos à",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "session",
+      "title": "Systems Manager Session Manager",
+      "url": "https://docs.aws.amazon.com/pt_br/systems-manager/latest/userguide/session-manager.html",
+      "pageTitle": "AWS Systems Manager Session Manager - AWS Systems Manager",
+      "section": "AWS Systems Manager Session Manager",
+      "excerpt": "O Session Manager é uma ferramenta do AWS Systems Manager totalmente gerenciada. Com o Session Manager, é possível gerenciar as",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "console",
+      "title": "Console de Gerenciamento da AWS",
+      "url": "https://aws.amazon.com/pt/console/",
+      "pageTitle": "Console de Gerenciamento da AWS",
+      "section": "Console de Gerenciamento da AWS",
+      "excerpt": "Acesse e gerencie mais de 200 serviços da AWS em uma interface Web.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "codedeploy",
+      "title": "AWS CodeDeploy: implantação de aplicações",
+      "url": "https://aws.amazon.com/pt/codedeploy/",
+      "pageTitle": "Serviço de implantação de software – Amazon CodeDeploy – AWS",
+      "section": "AWS CodeDeploy",
+      "excerpt": "Automatize implantações de código para manter o tempo de atividade das aplicações",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sdk",
+      "title": "AWS SDKs e ferramentas de desenvolvimento",
+      "url": "https://docs.aws.amazon.com/pt_br/sdkref/latest/guide/overview.html",
+      "pageTitle": "O que está coberto no AWS Guia de referência de SDKs e ferramentas - AWS SDKs e ferramentas",
+      "section": "O que está coberto no AWS Guia de referência de SDKs e ferramentas",
+      "excerpt": "Muitos SDKs e ferramentas compartilham algumas funcionalidades comuns, seja por meio de especificações de design compartilhadas ou por meio de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "quotas",
+      "title": "Cotas de serviços da AWS",
+      "url": "https://docs.aws.amazon.com/pt_br/servicequotas/latest/userguide/intro.html",
+      "pageTitle": "O que são Service Quotas? - Service Quotas",
+      "section": "O que são Service Quotas?",
+      "excerpt": "Com as Service Quotas, você pode visualizar e gerenciar suas cotas paraServiços da AWSde uma localização central. Cotas, também conhecidas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "calculator",
+      "title": "Estimativas com AWS Pricing Calculator",
+      "url": "https://docs.aws.amazon.com/pt_br/pricing-calculator/latest/userguide/what-is-pricing-calculator.html",
+      "pageTitle": "O que é AWS Calculadora de Preços? - AWS Calculadora de Preços",
+      "section": "O que é AWS Calculadora de Preços?",
+      "excerpt": "AWS Calculadora de Preços é uma ferramenta gratuita de planejamento baseada na web que você pode usar para criar estimativas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "securityHub",
+      "title": "AWS Security Hub: postura de segurança",
+      "url": "https://aws.amazon.com/pt/security-hub/",
+      "pageTitle": "AWS Security Hub - AWS ",
+      "section": "AWS Security Hub",
+      "excerpt": "O AWS Security Hub prioriza seus problemas críticos de segurança e ajuda você a responder em grande escala para proteger",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ram",
+      "title": "AWS Resource Access Manager",
+      "url": "https://aws.amazon.com/pt/ram/",
+      "pageTitle": "Compartilhamento de recursos | AWS Resource Access Manager | Amazon Web Services",
+      "section": "AWS Resource Access Manager",
+      "excerpt": "Reduza as despesas gerais e custos criando os recursos uma vez e compartilhando-os entre diversas contas.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "closing",
+      "title": "Encerramento de uma conta AWS",
+      "url": "https://docs.aws.amazon.com/pt_br/accounts/latest/reference/manage-acct-closing.html",
+      "pageTitle": "Fechar um Conta da AWS - AWS Gerenciamento de contas",
+      "section": "Fechar um Conta da AWS",
+      "excerpt": "Para encerrar uma conta autônoma na página Contas",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "app2container",
+      "title": "AWS App2Container: conteinerização de aplicações (em inglês)",
+      "url": "https://docs.aws.amazon.com/pt_br/app2container/latest/UserGuide/what-is-a2c.html",
+      "pageTitle": "What is AWS App2Container? - AWS App2Container",
+      "section": "What is AWS App2Container?",
+      "excerpt": "AWS App2Container (A2C) is a command line tool to help you lift and shift applications that",
+      "reviewedAt": "2026-11-06",
+      "language": "en"
+    },
+    {
+      "key": "strategies",
+      "title": "Estratégias de migração para a AWS",
+      "url": "https://docs.aws.amazon.com/pt_br/prescriptive-guidance/latest/large-migration-guide/migration-strategies.html",
+      "pageTitle": "Sobre as estratégias de migração - AWS Recomendações",
+      "section": "Sobre as estratégias de migração",
+      "excerpt": "Uma estratégia de migração é a abordagem usada para migrar uma carga de trabalho para o. Nuvem AWS Há sete",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "ecs",
+      "title": "Amazon ECS: orquestração de contêineres",
+      "url": "https://aws.amazon.com/pt/ecs/",
+      "pageTitle": "Solução de contêiner totalmente gerenciada – Amazon Elastic Container Service (Amazon ECS) - Amazon Web Services",
+      "section": "Amazon Elastic Container Service",
+      "excerpt": "O Amazon ECS é um serviço de orquestração de contêineres totalmente gerenciado que permite às equipes criar, gerenciar e executar",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "eks",
+      "title": "Amazon EKS: Kubernetes gerenciado",
+      "url": "https://aws.amazon.com/pt/eks/",
+      "pageTitle": "Serviço gerenciado de Kubernetes — Amazon EKS — AWS",
+      "section": "Amazon Elastic Kubernetes Service",
+      "excerpt": "Crie, execute e escale aplicações do Kubernetes prontas para produção com facilidade em qualquer ambiente",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "applicationMigration",
+      "title": "AWS Application Migration Service",
+      "url": "https://aws.amazon.com/pt/application-migration-service/",
+      "pageTitle": "Ferramenta de migração de aplicações | AWS Application Migration Service | AWS",
+      "section": "AWS Application Migration Service",
+      "excerpt": "Migre as aplicações de qualquer infraestrutura de origem que execute um sistema operacional com suporte.",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "dms",
+      "title": "AWS DMS: migração de bancos de dados",
+      "url": "https://aws.amazon.com/pt/dms/",
+      "pageTitle": "Migração de banco de dados para a nuvem | AWS Database Migration Service (AWS DMS) | AWS",
+      "section": "AWS Database Migration Service",
+      "excerpt": "Usado por clientes para migrar com segurança mais de 1,5 milhão de bancos de dados com o mínimo de tempo",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    },
+    {
+      "key": "sct",
+      "title": "AWS Schema Conversion Tool",
+      "url": "https://docs.aws.amazon.com/pt_br/SchemaConversionTool/latest/userguide/CHAP_Welcome.html",
+      "pageTitle": "O que é o AWS Schema Conversion Tool? - AWS Schema Conversion Tool",
+      "section": "O que é o AWS Schema Conversion Tool?",
+      "excerpt": "É possível usar a AWS Schema Conversion Tool (AWS SCT) para converter seu esquema de bancos de dados existentes de",
+      "reviewedAt": "2026-11-06",
+      "language": "pt-BR"
+    }
+  ]
+}
