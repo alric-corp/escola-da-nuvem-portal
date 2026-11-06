@@ -82,19 +82,41 @@ const startStudy = async (page, count = "10", domain = "all") => {
   await page.locator("#practice-domain").selectOption(domain);
   await page.locator("#practice-count").selectOption(count);
   await page.locator("#practice-shuffle").uncheck();
-  await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+  await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
 };
 const startExam = async (page, minutes = 90) => {
   await openSetup(page);
   await page.locator("#practice-mode-exam").check();
   await chooseTime(page, minutes);
-  await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+  await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
 };
 async function evidence(page, name) {
   if (!process.env.PRACTICE_EVIDENCE) return;
   await mkdir(process.env.PRACTICE_EVIDENCE, { recursive: true });
   await page.screenshot({ path: path.join(process.env.PRACTICE_EVIDENCE, name + ".png"), fullPage: true });
 }
+
+test("primeira configuração tem nomes neutros; retomada mantém a tentativa e nova tentativa depende do histórico deste simulado", async () => {
+  const c = await open(), { page } = c;
+  try {
+    await page.getByRole("button", { name: "Configurar simulado", exact: true }).click();
+    assert.deepEqual(await page.locator(".practice-mode-copy > strong").allTextContents(), ["Modo de prática", "Modo de exame"]);
+    assert.doesNotMatch(await page.locator("#practice-setup").innerText(), /Repetir/);
+    assert.equal(await page.getByRole("button", { name: "Iniciar prática", exact: true }).count(), 1);
+    await page.locator("#practice-mode-exam").check();
+    await page.getByRole("button", { name: "Iniciar exame", exact: true }).click();
+    const id = (await saved(page)).current.id;
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
+    assert.equal((await saved(page)).current.id, id);
+    await finish(page);
+    await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
+    assert.equal(await page.getByRole("button", { name: "Nova tentativa", exact: true }).count(), 1);
+    await page.locator("#practice-exam").selectOption(practiceExams[1].id);
+    assert.equal(await page.getByRole("button", { name: "Configurar simulado", exact: true }).count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Nova tentativa", exact: true }).count(), 0);
+  } finally { await c.close(); }
+});
 
 test("modo foco reutiliza a navegação modal, preserva questão e prazo e restaura o portal ao sair", async () => {
   for (const options of [{ width: 1440 }, { width: 390 }, { width: 320, text: 2 }]) {
@@ -133,7 +155,7 @@ test("modo foco reutiliza a navegação modal, preserva questão e prazo e resta
       await page.getByRole("button", { name: "Simulados AWS", exact: true }).click();
       assert.equal(await page.locator(".practice-focus").count(), 1);
       assert.deepEqual((await saved(page)).current, before);
-      await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+      await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
       assert.equal(await page.locator(".practice-focus").count(), 1);
       assert.deepEqual((await saved(page)).current, before);
       await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
@@ -172,13 +194,13 @@ test("estudo corrige seleção dupla, mantém respostas, revisa erros e inicia n
     await page.getByRole("button", { name: "Repetir estas questões", exact: true }).click();
     await page.getByRole("heading", { name: "Escolha seu modo de teste", exact: true }).waitFor();
     await page.locator("#practice-mode-exam").check();
-    await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+    await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
     const next = (await saved(page)).current;
     assert.equal(next.questionIds.length, 8);
     assert.equal(next.mode, "exam");
     assert.equal(next.questionIds.some((id) => [1, 2].includes(id)), false);
     assert.deepEqual(c.calls, calls);
-    await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.deepEqual((await saved(page)).current.questionIds, next.questionIds);
     assert.deepEqual(c.calls.slice(calls.length), ["GET /api/me", "GET /api/cohorts"]);
     assert.deepEqual(c.errors, []); assert.deepEqual(c.external, []);
@@ -228,7 +250,7 @@ test("135, 180 minutos e tempo ilimitado continuam corretos após 90 minutos e r
       else assert.equal(await page.locator("#practice-clock").innerText(), `${minutes}:00`);
       await page.clock.fastForward(90 * 60000);
       assert.equal(await page.locator("#practice-question-title").isVisible(), true);
-      await page.reload(); await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+      await page.reload(); await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
       const resumed = (await saved(page)).current;
       assert.equal(resumed.deadline, initial.deadline); assert.equal(resumed.timeLimitMinutes, minutes);
       assert.equal(await page.locator(".practice-explanations").count(), 0);
@@ -262,7 +284,7 @@ test("simulado retoma o mesmo prazo, mantém foco durante o relógio e conclui u
     assert.equal(await page.getByRole("button", { name: "Conferir resposta", exact: true }).count(), 0);
     assert.equal(await page.locator(".practice-explanations").count(), 0);
     await page.reload();
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal((await saved(page)).current.deadline, initial.deadline);
     assert.equal(await page.locator("#practice-option-A").isChecked(), true);
     await page.clock.fastForward(5400001);
@@ -304,13 +326,13 @@ test("dois simulados têm seleção, gabaritos, retomada e históricos independe
     const firstAttempt = (await saved(page, first.id)).current;
     await page.getByRole("button", { name: "Voltar aos simulados", exact: true }).click();
     await page.locator("#practice-exam").selectOption(second.id);
-    assert.equal(await page.getByRole("button", { name: "Continuar tentativa", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Retomar tentativa", exact: true }).count(), 0);
     await evidence(page, "second-exam-home-desktop");
     await openSetup(page);
     assert.equal(await page.getByRole("switch", { name: "Estender tempo", exact: true }).isChecked(), false);
     assert.equal(await page.locator(".practice-time-limit").innerText(), "90 minutos (padrão)");
     await page.locator("#practice-count").selectOption("10"); await page.locator("#practice-shuffle").uncheck();
-    await page.getByRole("button", { name: "Iniciar teste", exact: true }).click();
+    await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click();
     assert.match(await page.locator("#practice-question-title").innerText(), /failover de DNS/);
     assert.equal(await page.locator("#practice-option-D").getAttribute("type"), "radio");
     await page.locator("#practice-option-D").check();
@@ -320,7 +342,7 @@ test("dois simulados têm seleção, gabaritos, retomada e históricos independe
     await evidence(page, "second-exam-explanation-desktop");
     await page.reload();
     assert.equal(await page.locator("#practice-exam").inputValue(), second.id);
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal(await page.locator("#practice-option-D").isChecked(), true);
     await finish(page);
     await page.getByRole("heading", { name: "1 de 10 questões corretas", exact: true }).waitFor();
@@ -328,7 +350,7 @@ test("dois simulados têm seleção, gabaritos, retomada e históricos independe
     assert.equal(await page.locator(".practice-history li").count(), 1);
     await page.locator("#practice-exam").selectOption(first.id);
     assert.equal(await page.locator(".practice-history li").count(), 0);
-    await page.getByRole("button", { name: "Continuar tentativa", exact: true }).click();
+    await page.getByRole("button", { name: "Retomar tentativa", exact: true }).click();
     assert.equal(await page.locator("#practice-option-A").isChecked(), true);
     assert.equal(await page.locator("#practice-option-B").isChecked(), true);
     assert.equal((await saved(page, first.id)).current.id, firstAttempt.id);
@@ -385,7 +407,7 @@ test("interface em celular e texto ampliado não transborda no início, configur
       if (options.width === 390) await evidence(page, "setup-mobile-extended");
       await page.locator("#practice-count").selectOption("10");
       await page.locator("#practice-shuffle").uncheck();
-      await page.getByRole("button", { name: "Iniciar teste", exact: true }).click(); await fits();
+      await page.getByRole("button", { name: /^Iniciar (prática|exame)$/, exact: true }).click(); await fits();
       if (options.width === 390) await evidence(page, "question-mobile");
       await page.locator("#practice-option-A").check(); await page.locator("#practice-option-B").check();
       await finish(page); await fits();
