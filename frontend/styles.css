@@ -4455,6 +4455,8 @@ details ul, .onboarding ol { padding-left: 24px; }
 .practice-focus > .sidebar { display: none; }
 .practice-focus .main { width: 100%; max-width: 80rem; padding-inline: clamp(16px, 3vw, 42px); }
 .practice-focus .practice-page { max-width: 66rem; }
+.practice-focus .practice-page .page-heading { margin-block: var(--space-5) var(--space-4); }
+.practice-focus .practice-page .practice-progress { margin-bottom: var(--space-4); }
 .practice-focus .practice-question { max-width: 72ch; margin-inline: auto; }
 .practice-focus .topline { gap: var(--space-3); }
 .practice-focus #practice-menu-toggle { min-height: 44px; flex-shrink: 0; }
@@ -4469,12 +4471,12 @@ details ul, .onboarding ol { padding-left: 24px; }
 .practice-focus .sidebar .workspace-label { display: none; }
 .practice-focus .sidebar .cohort-label { display: block; }
 .practice-focus .sidebar #cohort { width: 100%; min-width: 0; max-width: 100%; margin: 0; }
-.practice-focus .sidebar nav { display: grid; position: static; grid-template-columns: minmax(0, 1fr); width: 100%; margin: var(--space-4) 0 0; padding: var(--space-2); border: 0; background: none; font-size: .875rem; }
-.practice-focus .sidebar nav .nav-item { display: flex; flex-direction: row; justify-content: flex-start; gap: var(--space-3); min-width: 0; min-height: 44px; padding: var(--space-3); font-size: .875rem; text-align: left; white-space: normal; }
-.practice-focus .sidebar nav .nav-full { display: inline; overflow-wrap: anywhere; }
-.practice-focus .sidebar nav .nav-short { display: none; }
-.practice-focus .sidebar nav .nav-item.active::before { left: 0; top: .5rem; bottom: .5rem; width: 2px; height: auto; transform: none; }
-.practice-focus .sidebar nav .nav-item.active::after { left: 2px; top: 50%; border: 5px solid transparent; border-left: 6px solid var(--color-action); border-right: 0; transform: translateY(-50%); }
+#practice-navigation .sidebar nav { display: grid; position: static; grid-template-columns: minmax(0, 1fr); width: 100%; margin: var(--space-4) 0 0; padding: var(--space-2); border: 0; background: none; font-size: .875rem; }
+#practice-navigation .sidebar nav .nav-item { display: flex; flex-direction: row; justify-content: flex-start; gap: var(--space-3); min-width: 0; min-height: 44px; padding: var(--space-3); font-size: .875rem; text-align: left; white-space: normal; }
+#practice-navigation .sidebar nav .nav-label { display: inline; position: static; width: auto; height: auto; margin: 0; clip: auto; clip-path: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+#practice-navigation .sidebar nav .nav-short { display: none; }
+#practice-navigation .sidebar nav .nav-item.active::before { left: 0; top: .5rem; bottom: .5rem; width: 2px; height: auto; transform: none; }
+#practice-navigation .sidebar nav .nav-item.active::after { left: 2px; top: 50%; border: 5px solid transparent; border-left: 6px solid var(--color-action); border-right: 0; transform: translateY(-50%); }
 .practice-focus .sidebar .sidebar-bottom { display: block; width: auto; margin: 0; padding-top: var(--space-3); }
 .practice-focus .sidebar .support-card { display: none; }
 .practice-focus .sidebar .account { display: flex; margin-top: var(--space-3); }
