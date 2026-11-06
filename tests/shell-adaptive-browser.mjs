@@ -105,15 +105,15 @@ async function ringOnScreen(page) {
   }, { shot, points });
   return Object.entries(colors).filter(([, c]) => !c || c.some((v, i) => Math.abs(v - RING[i]) > 45)).map(([k, c]) => `${k}: ${c ? `rgb(${c})` : "fora da tela"}`);
 }
-const ADMIN = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks", "Guia"];
+const ADMIN = ["Painel", "Publicações", "Notas", "Lembretes", "Acessos", "Feedbacks", "Simulados", "Guia"];
 
 test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turma e antes da conta, sem área fixa acima de 22%", async () => {
   const o = { role: "admin", width: 320, height: 640, text: 2 };
   const { context, page, errors } = await open(o);
   const m = await layoutOf(page);
   assert.notEqual(m.position, "fixed", `${id(o)}: menu ainda fixo`);
-  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "sete destinos, na ordem");
-  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null, null], "aria-current na rota ativa");
+  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "oito destinos, na ordem");
+  assert.deepEqual(m.items.map((i) => i.current), ADMIN.map((_, index) => index === 0 ? "page" : null), "aria-current na rota ativa");
   assert.ok(m.nav.top >= m.select.bottom - 0.5 && m.nav.bottom <= m.sair.top + 0.5 && m.nav.bottom <= m.main.top + 0.5, `${id(o)}: menu entre a turma e a conta, antes do conteúdo`);
   assert.ok(m.nav.left <= 0.5 && m.nav.right >= m.vw - 0.5, "menu na largura da tela");
   assert.ok(m.fixed.every((f) => f.share <= 0.22), `${id(o)}: área fixa grande: ${JSON.stringify(m.fixed)}`);
@@ -131,10 +131,10 @@ test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turm
     return [...document.querySelectorAll(".sidebar, .sidebar *, .topline, .topline *")].filter((el) => el.getClientRects().length && seen(el) && (el.getBoundingClientRect().right > innerWidth + 0.5 || el.getBoundingClientRect().left < -0.5)).map((el) => el.className || el.tagName);
   }), [], "casca sem rolagem lateral");
   await page.evaluate(() => scrollTo(0, 0));
-  // Teclado: logo → turma → sete destinos → Sair, e o contorno de cada destino inteiro (pixels).
+  // Teclado: logo → turma → oito destinos → Sair, e o contorno de cada destino inteiro (pixels).
   await page.locator(".skip-link").focus();
   const order = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < ADMIN.length + 3; i++) {
     await page.keyboard.press("Tab");
     const name = await page.evaluate(() => { const a = document.activeElement; return a.querySelector(".nav-short")?.textContent || a.getAttribute("aria-label") || a.id || (a.matches(".brand") ? "logo" : a.tagName); });
     order.push(name);
@@ -148,7 +148,7 @@ test("N1: admin 320×640 com texto a 200% — menu no fluxo, logo abaixo da turm
   await context.close();
 });
 
-test("N2: cinco destinos do aluno têm barra compacta; sete do admin usam menu no fluxo", async () => {
+test("N2: seis destinos do aluno têm barra compacta; oito do admin usam menu no fluxo", async () => {
   for (const o of [{ role: "student", width: 390, height: 844 }, { role: "student", width: 320, height: 640 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 320, height: 640 }]) {
     const { context, page } = await open(o);
     const m = await layoutOf(page);
@@ -158,7 +158,7 @@ test("N2: cinco destinos do aluno têm barra compacta; sete do admin usam menu n
       assert.ok(m.nav.height <= 120, `${id(o)}: barra com ${m.nav.height} px`);
       assert.ok(Math.abs(m.padBottom - (Math.ceil(m.nav.height) + 16)) <= 1, `${id(o)}: reserva ${m.padBottom} para barra de ${m.nav.height}`);
     } else {
-      assert.ok(m.nav.bottom <= m.main.top + 1, `${id(o)}: sete destinos antes do conteúdo`);
+      assert.ok(m.nav.bottom <= m.main.top + 1, `${id(o)}: oito destinos antes do conteúdo`);
       assert.ok(m.padBottom <= 24, `${id(o)}: sem reserva da barra fixa`);
     }
     await context.close();
@@ -257,13 +257,13 @@ test("N7: cabeçalho do celular — uma linha quando cabe; senão logo e turma j
 
 // O sétimo destino não vira uma terceira linha fixa: admin usa o menu no fluxo mesmo
 // com altura disponível. Os testes N3/N4 mantêm a histerese da barra do aluno.
-test("N8: admin com sete destinos permanece no fluxo mesmo em janela alta, com foco e ordem preservados", async () => {
+test("N8: admin com oito destinos permanece no fluxo mesmo em janela alta, com foco e ordem preservados", async () => {
   const o = { role: "admin", width: 390, height: 844, text: 2 };
   const { context, page, errors } = await open(o);
   const m = await layoutOf(page);
   assert.deepEqual(await modeOverFrames(page), ["static"], `${id(o)}: menu no fluxo, estável`);
-  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "sete destinos, na ordem");
-  assert.deepEqual(m.items.map((i) => i.current), ["page", null, null, null, null, null, null], "aria-current na rota ativa");
+  assert.deepEqual(m.items.map((i) => i.text), ADMIN, "oito destinos, na ordem");
+  assert.deepEqual(m.items.map((i) => i.current), ADMIN.map((_, index) => index === 0 ? "page" : null), "aria-current na rota ativa");
   assert.ok(m.nav.top >= m.select.bottom - 0.5 && m.nav.bottom <= m.sair.top + 0.5 && m.nav.bottom <= m.main.top + 0.5, `${id(o)}: menu entre a turma e a conta, antes do conteúdo`);
   assert.ok(m.fixed.every((f) => f.share <= 0.22), `${id(o)}: área fixa grande: ${JSON.stringify(m.fixed)}`);
   assert.ok(m.padBottom <= 24, `${id(o)}: sem reserva da barra fixa (${m.padBottom} px)`);
@@ -274,7 +274,7 @@ test("N8: admin com sete destinos permanece no fluxo mesmo em janela alta, com f
   assert.ok(m.sair.width >= 44 && m.sair.height >= 44 && Math.abs(m.sair.right - m.content.right) <= 1, `${id(o)}: Sair com 44 px, à direita`);
   await page.locator(".skip-link").focus();
   const order = [];
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < ADMIN.length + 3; i++) {
     await page.keyboard.press("Tab");
     const name = await page.evaluate(() => { const a = document.activeElement; return a.querySelector(".nav-short")?.textContent || a.getAttribute("aria-label") || a.id || (a.matches(".brand") ? "logo" : a.tagName); });
     order.push(name);
@@ -287,7 +287,7 @@ test("N8: admin com sete destinos permanece no fluxo mesmo em janela alta, com f
   await context.close();
   for (const p of [{ role: "admin", width: 412, height: 915, text: 2 }, { role: "admin", width: 390, height: 844 }, { role: "admin", width: 390, height: 1600 }]) {
     const { context, page } = await open(p);
-    assert.deepEqual(await modeOverFrames(page), ["static"], `${id(p)}: sete destinos no fluxo`);
+    assert.deepEqual(await modeOverFrames(page), ["static"], `${id(p)}: oito destinos no fluxo`);
     const n = await layoutOf(page);
     assert.ok(n.padBottom <= 24, `${id(p)}: sem reserva artificial de barra fixa`);
     assert.ok(n.nav.bottom <= n.main.top + 1, `${id(p)}: menu antes do conteúdo`);

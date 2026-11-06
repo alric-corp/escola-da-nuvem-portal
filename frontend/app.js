@@ -6,6 +6,7 @@ import * as adminFeedbackHandlers from "./handlers/admin-feedback.js";
 import * as feedbackHandlers from "./handlers/feedback.js";
 import * as remindersHandlers from "./handlers/reminders.js";
 import * as signupConfirmationHandlers from "./handlers/signup-confirmation.js";
+import * as practiceHandlers from "./handlers/practice.js";
 import { $, admin, demo, e, errorPanel, heading, icon, nav, notice, pageLabel, plural, roleLabel, sessionContext, studentViewBanner, teacher } from "./ui.js";
 import { state } from "./state.js";
 import { isWithdrawn } from "./participation.js";
@@ -22,6 +23,7 @@ import { accessPage } from "./pages/access.js";
 import { DESCRIPTION_MAX, TITLE_MAX, feedbackPage, feedbackProblems } from "./pages/feedback.js";
 import { adminFeedbackPage } from "./pages/admin-feedback.js";
 import { courseGuidePage } from "./pages/course-guide.js";
+import { practicePage } from "./pages/practice.js";
 
 accessHandlers.configure({ render });
 importHandlers.configure({ render });
@@ -29,6 +31,7 @@ adminFeedbackHandlers.configure({ render });
 feedbackHandlers.configure({ render, syncContext: syncReadContext });
 remindersHandlers.configure({ render, syncContext: syncReadContext });
 signupConfirmationHandlers.configure({ render });
+practiceHandlers.configure({ render });
 
 let demoRole = "student",
   config = {};
@@ -232,8 +235,9 @@ function render() {
   if (changedView) lastFocusSelector = "";
   else if (focusId) lastFocusSelector = `#${CSS.escape(focusId)}`;
   else if (focused?.matches("button")) {
-    const attr = ["data-action", "data-view", "data-filter", "data-student-pending"].find((name) => focused.hasAttribute(name));
+    const attr = ["data-action", "data-view", "data-filter", "data-student-pending", "data-practice-action"].find((name) => focused.hasAttribute(name));
     if (attr) lastFocusSelector = `button[${attr}="${CSS.escape(focused.getAttribute(attr))}"]`;
+    if (attr === "data-practice-action") lastFocusSelector += `[data-practice-value="${CSS.escape(focused.dataset.practiceValue || "")}"]`;
   }
   renderedView = state.view;
   const name =
@@ -244,7 +248,7 @@ function render() {
     `${demo ? `<div class="demo-bar">Demonstração · dados fictícios <button data-action="demo-role">Ver como ${demoRole === "student" ? "instrutor" : "aluno"} ${icon("arrow", 14)}</button><a href="./">Sair da demonstração</a></div>` : ""}
   <a class="skip-link" href="#main-content">Pular para o conteúdo</a><div class="layout"><aside class="sidebar"><a href="./" class="brand"><img class="brand-logo" src="./logo.png" alt="Escola da Nuvem" width="112" height="112" /></a><div class="workspace-label">PORTAL AWS RE/START</div>
   <label class="cohort-label" for="cohort">${teacher() || admin() ? "Turma selecionada" : "Minha turma"}</label><select id="cohort">${state.cohorts.length ? state.cohorts.map((c) => `<option value="${e(c.code)}" ${c.code === state.code ? "selected" : ""}>${e(c.code)}</option>`).join("") : "<option>Nenhuma turma vinculada</option>"}</select>
-  <nav aria-label="Menu principal">${nav("overview", teacher() ? "Painel do instrutor" : "Meu desempenho", "grid", teacher() ? "Painel" : "Desempenho")}${!teacher() ? nav("activities", "Minhas atividades", "book", "Atividades") : ""}${nav("history", teacher() ? "Publicações da turma" : "Meu histórico", "clock", teacher() ? "Publicações" : "Histórico")}${teacher() ? nav("import", "Atualizar notas", "upload", "Notas") + nav("reminders", "Lembretes", "out") : ""}${studentOnly() && !state.studentView ? nav("feedback", "Feedback", "message") : ""}${admin() && !state.studentView ? nav("access", "Turmas e acessos", "users", "Acessos") + nav("admin-feedback", "Feedbacks", "inbox") : ""}${nav("course-guide", "Guia do curso", "book", "Guia")}</nav>
+  <nav aria-label="Menu principal">${nav("overview", teacher() ? "Painel do instrutor" : "Meu desempenho", "grid", teacher() ? "Painel" : "Desempenho")}${!teacher() ? nav("activities", "Minhas atividades", "book", "Atividades") : ""}${nav("history", teacher() ? "Publicações da turma" : "Meu histórico", "clock", teacher() ? "Publicações" : "Histórico")}${teacher() ? nav("import", "Atualizar notas", "upload", "Notas") + nav("reminders", "Lembretes", "out") : ""}${studentOnly() && !state.studentView ? nav("feedback", "Feedback", "message") : ""}${admin() && !state.studentView ? nav("access", "Turmas e acessos", "users", "Acessos") + nav("admin-feedback", "Feedbacks", "inbox") : ""}${!state.studentView ? nav("practice", "Simulados AWS", "book", "Simulados") : ""}${nav("course-guide", "Guia do curso", "book", "Guia")}</nav>
   <div class="sidebar-bottom"><div class="support-card">${icon("network", 28)}<strong>Aprender abre caminhos.</strong><p>Cada atividade é mais um passo na sua jornada.</p></div><div class="account"><span class="avatar">${e(accountName.slice(0, 2).toUpperCase())}</span><div><strong>${e(accountName)}</strong><small>${roleLabel()}</small></div><button class="icon-button" data-action="logout" aria-label="Sair da conta">${icon("out")}</button></div></div></aside>
   <main class="main" id="main-content" tabindex="-1"><header class="topline"><div class="location-context"><span>${state.view === "access" || state.view === "admin-feedback" ? "Administração do portal" : state.code ? `Turma ${e(state.code)}` : "Minha conta"}${demo ? " · Demonstração" : ""}</span><strong>${e(pageLabel())}</strong></div>${sessionContext()}</header>
   ${studentViewBanner()}${content(name)}<footer class="main-footer"><span>Escola da Nuvem · AWS re/Start</span>${!studentOnly() && !state.studentView && state.view !== "feedback" ? '<button type="button" class="text-link footer-feedback" data-view="feedback">Enviar feedback</button>' : ""}<span>Seu aprendizado, uma semana de cada vez.</span></footer></main></div>`;
@@ -439,6 +443,7 @@ function fitFeedbackMessages() {
 function content(name) {
   // Informação geral autenticada: não depende da matrícula, de notas ou de uma consulta acadêmica bem-sucedida.
   if (state.view === "course-guide") return courseGuidePage();
+  if (state.view === "practice" && !state.studentView) return practicePage(practiceHandlers.view());
   if (state.bootError) return errorPanel(state.bootError, "retry-boot");
   if (state.view === "feedback" && !state.studentView) return feedbackPage(feedbackView());
   if (state.view === "admin-feedback" && admin() && !state.studentView) return adminFeedbackPage(adminFeedbackView());
@@ -869,10 +874,10 @@ async function boot() {
     }
     if (!state.cohorts.some((c) => c.code === state.code)) {
       state.code = state.cohorts[0]?.code || "";
-      if (state.view !== "course-guide") state.view = "overview";
+      if (!["course-guide", "practice"].includes(state.view)) state.view = "overview";
     }
     // A visualização como aluno continua sendo revalidada no servidor, inclusive ao retomar o guia.
-    if (state.view === "course-guide" && !state.studentView) render();
+    if (["course-guide", "practice"].includes(state.view) && !state.studentView) render();
     else await loadReport();
     if (!current() || state.me !== me) return;
     if (state.view === "reminders" && teacher()) await remindersHandlers.loadSender();
@@ -1175,10 +1180,28 @@ document.addEventListener("keydown", (event) => {
   selectGuideTab(guideTabs[next]);
 });
 
+function focusPractice(destination) {
+  const selector = { explanation: "#practice-explanation", confirm: "#practice-confirm-title" }[destination];
+  const target = destination === "question" ? $("#practice-question-title") || $("#practice-result-title") || $(".practice-page h1") : selector && $(selector);
+  target?.setAttribute("tabindex", "-1");
+  target?.focus({ preventScroll: true });
+  target?.scrollIntoView({ block: "nearest" });
+}
+setInterval(() => {
+  const tick = practiceHandlers.tick();
+  if (state.view !== "practice" || !tick) return;
+  if (tick.expired) { render(); focusPractice("question"); }
+  else if ($("#practice-clock")) $("#practice-clock").textContent = tick.remaining;
+}, 1000);
 document.addEventListener("click", (event) => {
   const button = event.target.closest("button");
   if (!button) return;
   if (state.studentView && !allowedWhileViewing(button)) return;
+  if (button.dataset.practiceAction) {
+    const destination = practiceHandlers.action(button.dataset.practiceAction, button.dataset.practiceValue);
+    if (destination) focusPractice(destination);
+    return;
+  }
   if (button.dataset.guideTab) return selectGuideTab(button.dataset.guideTab);
   const action = button.dataset.action;
   if (button.dataset.viewAsStudent)
@@ -1251,13 +1274,16 @@ document.addEventListener("click", (event) => {
     state.activityModule = "all";
     state.filter = button.dataset.activityFilter || (button.dataset.pending ? "pending" : "all");
     if (returning && state.teacherFilters) Object.assign(state, state.teacherFilters);
-    if (state.view === "course-guide") {
+    if (state.view === "practice" && !state.studentView) {
+      render();
+      $("main h1")?.scrollIntoView({ block: "start" });
+    } else if (state.view === "course-guide") {
       if (previousView !== "course-guide") state.guideTab = "rules";
       render();
       $("main h1")?.scrollIntoView({ block: "start" });
     } else if (state.view === "feedback") {
       // Página de origem: só a última tela antes do Feedback (valores aceitos pelo backend).
-      if (previousView !== "feedback") state.feedbackOrigin = previousView === "course-guide" ? "" : state.code ? previousView : "onboarding";
+      if (previousView !== "feedback") state.feedbackOrigin = ["course-guide", "practice"].includes(previousView) ? "" : state.code ? previousView : "onboarding";
       state.feedbackSent = false;
       feedbackChecked = feedbackFailure = feedbackPicked = null;
       busy(button, () => feedbackHandlers.loadMine());
@@ -1318,6 +1344,12 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.dataset.practiceSetting) return practiceHandlers.setting(target.dataset.practiceSetting, target.type === "checkbox" ? target.checked : target.value);
+  if (target.dataset.practiceOption) {
+    const destination = practiceHandlers.answer(target.dataset.practiceOption);
+    if (destination) focusPractice(destination);
+    return;
+  }
   if (target.id === "cohort")
     busy(null, async () => {
       if (state.studentView) {
@@ -1346,7 +1378,7 @@ document.addEventListener("change", (event) => {
       state.studentSearchError = "";
       state.studentSearchLoading = false;
       state.editingStudentId = null;
-      if (state.view === "course-guide") render();
+      if (["course-guide", "practice"].includes(state.view)) render();
       else if (state.view === "access" && admin()) await accessHandlers.loadAccess();
       else {
         state.view = "overview";

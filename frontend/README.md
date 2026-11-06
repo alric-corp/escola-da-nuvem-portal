@@ -47,6 +47,8 @@ Backend e infraestrutura seguem o [processo separado](../infra/README.md#5-opera
 
 ## Fluxos implementados
 
+**Simulados AWS:** área autenticada com dois simulados CLF-C02 de 65 questões cada, em PT-BR, com referências em português. O seletor separa as questões, as tentativas e os históricos de cada conjunto; o código mantém um arquivo por simulado. Antes de iniciar ou repetir, o usuário escolhe o modo de prática (explicação imediata após responder) ou de exame (correção ao final), e o limite de tempo: 90 minutos por padrão, com Estender tempo desligado, ou 135, 180 e sem limite ao ativá-lo. Há estudo por domínio, marcação de dúvidas, retomada, revisão de erros e até 20 tentativas concluídas por conta, simulado e navegador. Os resultados são percentuais de treino e não representam a nota escalonada oficial nem alteram notas, graduação ou voucher. Conteúdo, inclusão de novos conjuntos e validação: [simulados-clf-c02.md](../docs/simulados-clf-c02.md).
+
 **Administrador:** criar turmas, consultar solicitações institucionais, aprovar/vincular instrutores, remover vínculos e operar as turmas. Administração global é uma concessão manual no Cognito.
 
 **Navegação:** o Painel do instrutor reúne a consulta identificada da turma, com ordenação por nome, quantidade de atividades sem nota e menor média; filtros por situação, e-mail ausente e atividades sem nota. Ao voltar dos detalhes, os filtros e a busca são preservados. O menu não repete a tela de Notas da turma; a rota antiga continua exclusiva para instrutores autorizados. Publicações da turma reúne o histórico; Lembretes configura o remetente; Turmas e acessos administra vínculos.

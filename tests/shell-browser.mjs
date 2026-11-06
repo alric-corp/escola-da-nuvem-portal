@@ -212,8 +212,8 @@ test("S5: no celular o cabeçalho é baixo e o Sair tem área de toque de 44 px"
 });
 
 // A barra conserva três colunas e rótulos legíveis. Com o Guia, o aluno tem duas linhas;
-// o menu de sete destinos do admin passa ao fluxo. Sem degradê sobre o conteúdo.
-test("S6: aluno mantém barra de cinco destinos em duas linhas; admin usa sete destinos no fluxo sem cobrir conteúdo", async () => {
+// o menu de oito destinos do admin passa ao fluxo. Sem degradê sobre o conteúdo.
+test("S6: aluno mantém barra de seis destinos em duas linhas; admin usa oito destinos no fluxo sem cobrir conteúdo", async () => {
   for (const role of ["student", "admin"]) for (const [width, height] of [[390, 844], [320, 640]]) {
     const { context, page } = await open({ role, width, height });
     const nav = await page.locator(".sidebar nav").evaluate((el) => {

@@ -18,7 +18,7 @@ const CONSUMERS = ["app.js", ...PAGES];
 const EXPECTED = {
   me: null, cohorts: [], code: "", report: null, reportError: "", bootError: "", pendingError: "",
   sender: null, senderError: "", senderLoading: false, sort: "name", canvasActivityFilter: "all", teacherFilters: null,
-  acknowledgeRemoved: false, importLoading: false, view: "overview", guideTab: "rules",
+  acknowledgeRemoved: false, importLoading: false, view: "overview", guideTab: "rules", practice: null,
   activityKind: "all", activityModule: "all", activityOverviewKind: "all", activityOverviewModule: "all", activityOverviewSort: "name",
   filter: "all", search: "", requests: [], instructors: [],
   preview: null, csv: "", filename: "", dirty: false, accessLoading: false, accessError: "", requestsFilter: "pending",
@@ -47,8 +47,8 @@ function importsOf(file) {
     .map(([, spec]) => new URL(spec, `file:///${dir}`).pathname.slice(1));
 }
 
-test("state.js tem exatamente as 59 chaves esperadas, na mesma ordem", () => {
-  assert.equal(Object.keys(initial).length, 59);
+test("state.js tem exatamente as 60 chaves esperadas, na mesma ordem", () => {
+  assert.equal(Object.keys(initial).length, 60);
   assert.deepEqual(Object.keys(initial), Object.keys(EXPECTED));
 });
 

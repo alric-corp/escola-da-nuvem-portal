@@ -268,6 +268,7 @@ export function pageLabel() {
       overview: teacher() ? "Painel do instrutor" : "Meu desempenho",
       activities: "Minhas atividades",
       "course-guide": "Guia do curso",
+      practice: "Simulados AWS",
       "student-pending": "Pendências do aluno",
       "reminders-batch": "Lembretes em lote",
       "activity-overview": "Visão por atividade",
