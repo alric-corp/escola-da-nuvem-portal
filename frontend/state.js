@@ -18,6 +18,7 @@ export let state = {
   importLoading: false,
   view: "overview",
   guideTab: "rules",
+  practice: null,
   activityKind: "all",
   activityModule: "all",
   activityOverviewKind: "all",

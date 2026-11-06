@@ -16,9 +16,9 @@ const feedbackPageModule = await import("../frontend/pages/feedback.js");
 const importPageModule = await import("../frontend/pages/import.js");
 const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 const PAGES = ["access", "activities-overview", "admin-feedback", "class-report", "course-guide", "feedback", "history",
-  "import", "landing", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
+  "import", "landing", "practice", "reminders", "signup-confirmation", "student", "teacher"].map((page) => `pages/${page}.js`);
 const CONSUMERS = ["app.js", ...PAGES];
-const HANDLER_NAMES = ["access", "import", "admin-feedback", "feedback", "reminders", "signup-confirmation"];
+const HANDLER_NAMES = ["access", "import", "admin-feedback", "feedback", "reminders", "signup-confirmation", "practice"];
 const HANDLERS = HANDLER_NAMES.map((name) => `handlers/${name}.js`);
 
 // Imports estáticos e dinâmicos de um módulo do frontend, resolvidos como caminhos relativos a frontend/.
@@ -76,7 +76,7 @@ test("state vem só de state.js: ui.js, api.js, as páginas e os handlers não o
   assert.ok("state" in (await import("../frontend/state.js")));
 });
 
-test("app.js e as 13 páginas importam state direto de state.js, e nenhum de ui.js", () => {
+test("app.js e todas as páginas importam state direto de state.js, e nenhum de ui.js", () => {
   for (const file of CONSUMERS) {
     const imports = namedImports(file);
     const withState = [...imports].filter(([, names]) => names.has("state")).map(([from]) => from);
@@ -105,7 +105,7 @@ test("build publica state.js e todo módulo alcançável a partir de app.js, sem
 
 // Injeção nos handlers: configure guarda render; C7.4 recebe também syncContext na composição. Tolerante a espaços, tabs, quebras de
 // linha, ponto e vírgula e vírgula final; qualquer outra dependência configurável falha.
-test("cada um dos 6 handlers expõe configure que guarda os callbacks aprovados", async () => {
+test("cada handler expõe configure que guarda os callbacks aprovados", async () => {
   for (const file of HANDLERS) {
     const module = await import(`../frontend/${file}`), code = codeOf(file);
     // Sanidade do código sem comentários: nenhum export some ao tirar os comentários.
@@ -121,7 +121,7 @@ test("cada um dos 6 handlers expõe configure que guarda os callbacks aprovados"
   }
 });
 
-test("app.js configura cada um dos 6 handlers exatamente uma vez com os callbacks aprovados", () => {
+test("app.js configura cada handler exatamente uma vez com os callbacks aprovados", () => {
   const app = read("frontend/app.js");
   const namespaces = new Map([...app.matchAll(/^import\s+\*\s+as\s+(\w+)\s+from\s+["']\.\/handlers\/([\w-]+)\.js["']/gm)].map(([, ns, name]) => [name, ns]));
   assert.deepEqual([...namespaces.keys()].sort(), [...HANDLER_NAMES].sort());
@@ -209,9 +209,9 @@ test("app.js liga a confirmação de cadastro só pelo handler: actions finas, d
   // Sem sessão, a landing passa sempre pela composição: landing() só é chamada dentro de publicPage().
   assert.equal((code.match(/\blanding\(\)/g) || []).length, 1);
   assert.match(blockAfter(code, /\bfunction\s+publicPage\s*\(\s*\)/), /\blanding\(\)/);
-  // Um único timer de reenvio, que só chama render; nenhum setInterval.
+  // Um único timer de reenvio, que só chama render; sem polling na página pública.
   assert.equal((code.match(/setTimeout\(\s*render\s*,/g) || []).length, 1);
-  assert.doesNotMatch(code, /setInterval/);
+  assert.doesNotMatch(blockAfter(code, /function\s+publicPage\s*\(/), /setInterval/);
 });
 
 // Importação: rascunhos, CSV, prévia e publicação fora de app.js. Listeners, busy, boot, saída e
@@ -819,7 +819,7 @@ test("Guia do curso: seção 40 do CSS só alcança a nova página", () => {
 });
 
 test("situação de entrega só acrescenta apresentação dentro do cartão de atividade", () => {
-  const selectors = cssRules(cssSection(read("frontend/styles.css"), "41. Situação auxiliar")).flatMap((r) => r.selectors);
+  const selectors = cssRules(cssSection(read("frontend/styles.css"), "41. Situação auxiliar", "42. Simulados AWS")).flatMap((r) => r.selectors);
   assert.equal(selectors.length, 2);
   assert.ok(selectors.every((s) => /^\.activity-card \.canvas-submission(?:-observation)?$/.test(s)));
 });
