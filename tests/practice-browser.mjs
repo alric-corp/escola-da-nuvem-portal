@@ -326,6 +326,7 @@ test("interface em celular e texto ampliado não transborda no início, configur
     };
     try {
       if (options.font) await page.addStyleTag({ content: `:root { --font-ui: ${options.font}; }` });
+      await page.evaluate(() => document.fonts.ready);
       await fits(); if (options.width === 390) await evidence(page, "home-mobile");
       await openSetup(page);
       await fits();
