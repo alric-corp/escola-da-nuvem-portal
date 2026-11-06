@@ -1,12 +1,76 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import { defaultPracticeExamId, practiceDomains, practiceExams } from "../frontend/practice-content.js";
+import { isOfficialReference, q } from "../frontend/practice-exams/question.js";
 import { checkPracticeAnswer, expirePractice, finishPractice, freshPractice, practiceKey, practiceResult,
   questionById, remainingSeconds, restorePractice, sameAnswers, selectPracticeAnswer, startPractice } from "../frontend/practice.js";
 
 const now = Date.parse("2026-11-06T12:00:00Z");
 const practiceQuestions = practiceExams[0].questions;
 const start = (options = {}) => { const model = freshPractice(); startPractice(model, { shuffle: false, ...options }, now, () => .25); return model; };
+
+test("130 questões e 542 alternativas têm chaves estáveis, explicações e referências oficiais específicas", () => {
+  assert.equal(practiceExams.flatMap((exam) => exam.questions).length, 130);
+  const options = practiceExams.flatMap((exam) => exam.questions.flatMap((question) => question.options));
+  assert.equal(options.length, 542);
+  for (const exam of practiceExams) for (const question of exam.questions) {
+    assert.equal(new Set(question.options.map(({ key }) => key)).size, question.options.length);
+    for (const option of question.options) {
+      assert.match(option.key, /^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      assert.ok(option.explanation.trim());
+      assert.ok(option.references.length > 0, `${exam.id}/${question.id}/${option.key}`);
+      for (const reference of option.references) {
+        assert.equal(isOfficialReference(reference), true, reference.url);
+        assert.match(new URL(reference.url).pathname, /^\/(?:pt|pt_br)\//);
+      }
+    }
+  }
+  assert.match(practiceExams[1].questions[25].options[3].explanation, /camada 3/);
+});
+
+test("registro editorial cobre todas as referências sem consultar serviços externos", () => {
+  const audit = JSON.parse(readFileSync(new URL("../docs/simulados-referencias.json", import.meta.url), "utf8"));
+  const used = new Set(practiceExams.flatMap((exam) => exam.questions.flatMap((question) => question.options.flatMap((option) => option.references.map(({ url }) => url)))));
+  assert.equal(audit.questions, 130); assert.equal(audit.options, 542);
+  assert.equal(audit.sources.length, 179); assert.equal(used.size, 179);
+  assert.deepEqual(new Set(audit.sources.map(({ url }) => url)), used);
+  for (const source of audit.sources) {
+    assert.equal(isOfficialReference(source), true);
+    assert.ok(source.section && source.pageTitle && source.excerpt && source.reviewedAt);
+    assert.ok(source.excerpt.split(/\s+/).length <= 25);
+  }
+  assert.deepEqual(audit.sources.filter(({ language }) => language !== "pt-BR").map(({ key }) => key), ["app2container"]);
+});
+
+test("reordenar objetos preserva ID, chave, texto, explicação, referência e gabarito", () => {
+  const question = structuredClone(practiceQuestions[0]), before = new Map(question.options.map((option) => [option.key, structuredClone(option)]));
+  question.options.reverse();
+  for (const option of question.options) assert.deepEqual(option, before.get(option.key));
+  assert.equal(sameAnswers(question, ["B", "A"]), true);
+  assert.notEqual(question.options[0].id, "A");
+  const legacy = q(1, "1.1", "Questão legada", "A", ["Primeira", "Segunda"], ["Explicação A", "Explicação B"], "https://aws.amazon.com/pt/ec2/");
+  assert.equal(legacy.options[0].references, undefined);
+  assert.equal(legacy.options[0].explanation, "Explicação A");
+});
+
+test("cartões mantêm estados distintos e revisão legada honesta, escapando textos e recusando links inseguros", async () => {
+  globalThis.location = { hostname: "portal.test", search: "" };
+  const { alternativeCard } = await import("../frontend/pages/practice.js");
+  const question = practiceQuestions[0], option = question.options[0];
+  assert.doesNotMatch(alternativeCard(question, option, ["A"]), /<a\s|Sua escolha|Gabarito|practice-option-feedback/);
+  assert.match(alternativeCard(question, option, ["A"], { graded: true }), /Sua escolha · Correta/);
+  assert.match(alternativeCard(question, option, [], { graded: true }), /Resposta correta · Não selecionada/);
+  assert.match(alternativeCard(question, question.options[2], ["C"], { graded: true }), /is-incorrect/);
+  assert.doesNotMatch(alternativeCard(question, question.options[2], [], { graded: true }), /is-incorrect/);
+  const legacy = { id: "A", text: '<img src=x onerror="alert(1)">', explanation: "<script>unsafe</script>" };
+  const html = alternativeCard(question, legacy, ["A"], { graded: true });
+  assert.match(html, /Referência específica indisponível/);
+  assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img|<script|<a /);
+  const unsafe = alternativeCard(question, { ...legacy, references: [{ title: "Bad", url: "javascript:alert(1)" }] }, [], { graded: true });
+  assert.doesNotMatch(unsafe, /href=/);
+  for (const url of ["http://aws.amazon.com/", "https://aws.amazon.com.evil.test/", "https://evil.test/aws.amazon.com", "https://user:pass@aws.amazon.com/", "javascript:alert(1)"]) assert.equal(isOfficialReference({ title: "Documento", url }), false);
+});
 test("banco contém as 65 questões e o gabarito completo, incluindo a correção da questão 7", () => {
   const expected = "AB C AB A B A C C BC A D A D C B A A BD B D A C A B D A A D D B C C C A AC B BD AD A BD B C D B D D C D BE BE D CD B A B B A B B D A A A DE D".split(" ");
   assert.deepEqual(practiceQuestions.map(({ id }) => id), Array.from({ length: 65 }, (_, i) => i + 1));
@@ -194,9 +258,13 @@ test("tentativas ficam separadas por conta; armazenamento indisponível mantém 
   state.me = { email: "one@example.test" }; assert.deepEqual(handlers.view().model.current.answers[1], ["A"]);
   handlers.action("resume");
   assert.equal(state.practice.model.current.checked.length, 0, "não revela explicações com seleção dupla incompleta");
-  assert.equal(handlers.answer("B"), "explanation");
-  assert.deepEqual(state.practice.model.current.checked, [1], "revela a explicação imediatamente ao completar a seleção");
-  handlers.action("jump", "1"); assert.equal(handlers.answer("C"), "explanation", "também corrige imediatamente a seleção única");
+  assert.equal(handlers.answer("B"), undefined);
+  assert.deepEqual(state.practice.model.current.checked, [], "seleção completa aguarda confirmação");
+  assert.equal(handlers.action("check"), "explanation");
+  assert.deepEqual(state.practice.model.current.checked, [1], "a confirmação revela a explicação");
+  handlers.action("jump", "1"); assert.equal(handlers.answer("C"), undefined);
+  assert.deepEqual(state.practice.model.current.checked, [1]);
+  assert.equal(handlers.action("check"), "explanation", "seleção única também exige confirmação");
   assert.ok(storage.has(practiceKey("ONE@example.test")));
   state.studentView = { studentId: "101" }; assert.equal(handlers.view(), null);
   state.studentView = null; state.practice = null;
